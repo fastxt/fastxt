@@ -1,9 +1,17 @@
 [package]
 name = "fastxt_core"
 version = "0.1.0"
-authors = ["Yi Wang <e@yi-wang.me>"]
+authors = ["Yi Wang"]
+license = "AGPL-3.0"
 edition = "2018"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[dependencies.rusqlite]
+version = "0.21.0"
+features = ["bundled"]
 
 [dependencies]
+serde = "1.0.104"
+serde_derive = "1.0.44"
+serde_json = "1.0.44"
+tarpc = "0.20.0"
+dirs = "2.0.2"
