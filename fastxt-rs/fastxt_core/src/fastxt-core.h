@@ -15,13 +15,7 @@
     You should have received a copy of the GNU Affero General Public License
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
+#include <stdint.h>
 
-
-#[tarpc::service]
-pub trait Fastxt {
-}
-
-pub mod client;
-pub mod server;
-
-
+const char* fastxt_run(const char* to);
+void fastxt_free(char *);
