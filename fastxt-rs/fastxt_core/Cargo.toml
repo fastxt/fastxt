@@ -15,3 +15,7 @@ serde_derive = "1.0.44"
 serde_json = "1.0.44"
 tarpc = "0.20.0"
 dirs = "2.0.2"
+
+[lib]
+name = "fastxt_core"
+crate-type = ["staticlib"]
