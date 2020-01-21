@@ -1,0 +1,6 @@
+[workspace]
+
+members = [
+    "fastxt_core",
+    "fastxt_cli"
+]
