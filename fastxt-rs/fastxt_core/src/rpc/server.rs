@@ -1,5 +1,5 @@
 /*
-    Local Native
+    Fastxt
     Copyright (C) 2018-2019  Yi Wang
 
     This program is free software: you can redistribute it and/or modify

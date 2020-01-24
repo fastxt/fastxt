@@ -15,7 +15,7 @@
     You should have received a copy of the GNU Affero General Public License
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
-
+extern crate fastxt_core;
 use clap::{App, Arg};
 use fastxt_core::exe::run;
 fn main() {
