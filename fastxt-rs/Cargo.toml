@@ -2,5 +2,6 @@
 
 members = [
     "fastxt_core",
-    "fastxt_cli"
+    "fastxt_cli",
+    "fastxt_relm",
 ]

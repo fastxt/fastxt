@@ -1,0 +1,15 @@
+[package]
+name = "fastxt_relm"
+version = "0.1.0"
+authors = ["Yi Wang"]
+edition = "2018"
+
+[dependencies.fastxt_core]
+path = "../fastxt_core"
+
+
+[dependencies]
+gtk = "^0.7.0"
+relm = "^0.18.0"
+relm-derive = "^0.18.0"
+
