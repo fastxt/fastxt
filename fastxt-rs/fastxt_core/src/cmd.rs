@@ -16,6 +16,7 @@
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
 
+pub mod select;
 use rusqlite::{Connection, NO_PARAMS};
 pub fn create(conn: &Connection) {
     conn.execute_batch(
@@ -25,7 +26,7 @@ pub fn create(conn: &Connection) {
          uuid4          TEXT NOT NULL UNIQUE,
          txt            TEXT NOT NULL,
          tags           TEXT NOT NULL,
-         created_at     TEXT NOT NULL
+         created_at     TIMESTAMP  DEFAULT CURRENT_TIMESTAMP
          );
 
          CREATE TABLE IF NOT EXISTS meta (

@@ -1,11 +1,12 @@
-use gtk::{Inhibit};
-use gtk::Orientation::{Vertical};
 use gtk::prelude::*;
-use relm_derive::{Msg, widget};
-use relm::{Component, Widget, init};
+use gtk::Inhibit;
+use gtk::Orientation::Vertical;
+use relm::{init, Component, Widget};
+use relm_derive::{widget, Msg};
 
 use self::HeaderMsg::*;
 use self::WinMsg::*;
+use fastxt_core::{cmd, exe};
 
 #[derive(Msg)]
 pub enum HeaderMsg {
@@ -15,13 +16,17 @@ pub enum HeaderMsg {
 
 #[widget]
 impl Widget for Header {
-    fn model() -> () {
-
-    }
+    fn model() -> () {}
 
     fn update(&mut self, event: HeaderMsg) {
         match event {
-            Add => println!("Add"),
+            Add => {
+                let conn = exe::get_sqlite_connection();
+                cmd::create(&conn);
+                let r = cmd::select::select(&conn, &100, &0);
+                println!("{:?}", r);
+                println!("Add");
+            }
             Remove => println!("Remove"),
         }
     }
@@ -29,7 +34,7 @@ impl Widget for Header {
     view! {
         #[name="titlebar"]
         gtk::HeaderBar {
-            title: Some("Title"),
+            title: Some("Fastxt"),
             show_close_button: true,
 
             #[name="add_button"]
@@ -61,9 +66,7 @@ impl Widget for Win {
     fn model() -> Model {
         let header = init::<Header>(()).expect("Header");
 
-        Model {
-            header
-        }
+        Model { header }
     }
 
     fn update(&mut self, event: WinMsg) {

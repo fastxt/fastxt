@@ -50,3 +50,12 @@ pub extern "C" fn fastxt_free(s: *mut c_char) {
         CString::from_raw(s)
     };
 }
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct Note {
+    pub rowid: i64,
+    pub uuid4: String,
+    pub txt: String,
+    pub tags: String,
+    pub created_at: String,
+}
