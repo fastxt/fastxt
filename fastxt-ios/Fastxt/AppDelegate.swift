@@ -15,6 +15,14 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
         // Override point for customization after application launch.
+        print("good")
+        let ft = RustFastxt()
+        
+        let txt = ft.run(json_input:"""
+            {"action":"select","limit":10,"offset":0}
+            """
+        )
+        print(txt)
         return true
     }
 

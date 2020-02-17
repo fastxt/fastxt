@@ -20,7 +20,7 @@ dirs = "2.0.2"
 name = "fastxt_core"
 
 # ios only
-# crate-type = ["staticlib"]
+crate-type = ["staticlib"]
 
 # android only need this
 # crate-type = ["cdylib"]
