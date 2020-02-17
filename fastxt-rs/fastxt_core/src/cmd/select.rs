@@ -19,7 +19,19 @@ use crate::Note;
 use rusqlite::types::ToSql;
 use rusqlite::{Connection, NO_PARAMS};
 
-pub fn select(conn: &Connection, limit: &u32, offset: &u32) -> Vec<Note> {
+pub fn select(conn: &Connection, limit: &u32, offset: &u32) -> String {
+    let result_iter = select_imp(conn, limit, offset);
+    let mut d = "[ ".to_owned();
+    for r in result_iter {
+        d.push_str(&serde_json::to_string(&r).unwrap());
+        d.push_str(",");
+    }
+    d.pop();
+    d.push_str("]");
+    d
+}
+
+pub fn select_imp(conn: &Connection, limit: &u32, offset: &u32) -> Vec<Note> {
     let mut stmt = conn
         .prepare(
             "SELECT rowid, uuid4, txt, tags, created_at

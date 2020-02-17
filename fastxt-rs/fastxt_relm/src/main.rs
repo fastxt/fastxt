@@ -23,7 +23,7 @@ impl Widget for Header {
             Add => {
                 let conn = exe::get_sqlite_connection();
                 cmd::create(&conn);
-                let r = cmd::select::select(&conn, &100, &0);
+                let r = cmd::select::select_imp(&conn, &100, &0);
                 println!("{:?}", r);
                 println!("Add");
             }

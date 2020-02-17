@@ -17,7 +17,9 @@
 */
 
 use crate::cmd::create;
+use crate::cmd::select::select;
 use crate::Cmd;
+use crate::CmdSelect;
 use rusqlite::Connection;
 use std::fs;
 use std::path::Path;
@@ -56,9 +58,35 @@ pub fn run(text: &str) -> String {
     }
 }
 
-fn process(cmd: Cmd, _text: &str) -> String {
+fn process(cmd: Cmd, text: &str) -> String {
     eprintln!("process cmd {:?}", cmd);
     let conn = get_sqlite_connection();
     create(&conn);
-    "".to_string()
+
+    match cmd.action.as_ref() {
+        "select" => {
+            if let Ok(s) = serde_json::from_str::<CmdSelect>(text) {
+                do_select(&conn, &s.limit, &s.offset)
+            } else {
+                r#"{"error":"cmd select json error"}"#.to_string()
+            }
+        }
+        _ => r#"{"error": "cmd no match"}"#.to_string(),
+    }
+}
+
+fn do_select(conn: &Connection, limit: &u32, offset: &u32) -> String {
+    //    let c = select_count(&conn);
+    let c = "";
+    let j = select(&conn, limit, offset);
+    //    let d = select_by_day(&conn);
+    let d = "";
+    //    let t = select_by_tag(&conn);
+    let t = "";
+    let msg = format!(
+        r#"{{"count": {}, "notes":{}, "days": {}, "tags": {} }}"#,
+        c, j, d, t
+    );
+    // eprintln!("msg {}", msg);
+    msg
 }

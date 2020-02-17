@@ -59,3 +59,9 @@ pub struct Note {
     pub tags: String,
     pub created_at: String,
 }
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct CmdSelect {
+    pub limit: u32,
+    pub offset: u32,
+}
