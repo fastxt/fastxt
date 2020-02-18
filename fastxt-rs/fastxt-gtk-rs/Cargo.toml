@@ -1,7 +1,7 @@
 [package]
 name = "fastxt-gtk-rs"
 version = "0.1.0"
-authors = ["Yi Wang <e@yi-wang.me>"]
+authors = ["Yi Wang"]
 edition = "2018"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -13,3 +13,6 @@ features = ["v3_16"]
 [dependencies.gio]
 version = ""
 features = ["v2_44"]
+
+[dependencies.fastxt_core]
+path = "../fastxt_core"
