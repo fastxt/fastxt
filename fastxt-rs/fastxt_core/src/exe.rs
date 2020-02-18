@@ -17,12 +17,16 @@
 */
 
 use crate::cmd::create;
+use crate::cmd::insert;
 use crate::cmd::select::select;
 use crate::Cmd;
+use crate::CmdInsert;
 use crate::CmdSelect;
+use crate::Note;
 use rusqlite::Connection;
 use std::fs;
 use std::path::Path;
+use uuid::Uuid;
 
 pub fn get_sqlite_connection() -> Connection {
     let p = sqlite3_db_location();
@@ -69,6 +73,21 @@ fn process(cmd: Cmd, text: &str) -> String {
                 do_select(&conn, &s.limit, &s.offset)
             } else {
                 r#"{"error":"cmd select json error"}"#.to_string()
+            }
+        }
+        "insert" => {
+            if let Ok(i) = serde_json::from_str::<CmdInsert>(text) {
+                let note = Note {
+                    rowid: 0i64,
+                    uuid4: Uuid::new_v4().to_string(),
+                    txt: i.txt,
+                    tags: i.tags,
+                    created_at: "".to_string(),
+                };
+                insert(note);
+                do_select(&conn, &i.limit, &i.offset)
+            } else {
+                r#"{"error":"cmd insert json error"}"#.to_string()
             }
         }
         _ => r#"{"error": "cmd no match"}"#.to_string(),

@@ -65,3 +65,12 @@ pub struct CmdSelect {
     pub limit: u32,
     pub offset: u32,
 }
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct CmdInsert {
+    pub txt: String,
+    pub tags: String,
+
+    pub limit: u32,
+    pub offset: u32,
+}
