@@ -28,6 +28,17 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         window.setFrameAutosaveName("Main Window")
         window.contentView = NSHostingView(rootView: contentView)
         window.makeKeyAndOrderFront(nil)
+        let ft = RustFastxt()
+        let r = ft.run(json_input:"""
+            {"action":"insert","limit":10,"offset":0,"txt":"new text", "tags":"new tag"}
+            """
+        )
+        print(r)
+        let txt = ft.run(json_input:"""
+            {"action":"select","limit":10,"offset":0}
+            """
+        )
+        print(txt)
     }
 
     func applicationWillTerminate(_ aNotification: Notification) {

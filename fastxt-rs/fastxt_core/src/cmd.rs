@@ -44,22 +44,21 @@ pub fn create(conn: &Connection) {
     .unwrap();
 }
 
-pub fn insert(note: Note) {
-    let conn = &mut super::exe::get_sqlite_connection();
-    let tx = conn.transaction().unwrap();
-    {
-        tx.execute(
-            "
+pub fn insert(conn: &Connection, note: Note) {
+    conn.execute_named(
+        "
         INSERT INTO note (uuid4, txt, tags)
-        VALUES (?1, ?2, ?3);
-
+        VALUES (:uuid4, :txt, :tags);
         ",
-            &[&note.uuid4, &note.txt, &make_tags(&note.tags)],
-        )
-        .unwrap();
-    }
-    tx.commit().unwrap();
+        &[
+            (":uuid4", &note.uuid4),
+            (":txt", &note.txt),
+            (":tags", &make_tags(&note.tags)),
+        ],
+    )
+    .unwrap();
 }
+
 // format and dedup tags
 pub fn make_tags(input: &str) -> String {
     let re1 = Regex::new(r",+").unwrap();

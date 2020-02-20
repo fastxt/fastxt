@@ -14,6 +14,9 @@
 		3C328883239B3F6800B57D59 /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 3C328881239B3F6800B57D59 /* Main.storyboard */; };
 		3C32888F239B3F6800B57D59 /* FastxtTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C32888E239B3F6800B57D59 /* FastxtTests.swift */; };
 		3C32889A239B3F6800B57D59 /* FastxtUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C328899239B3F6800B57D59 /* FastxtUITests.swift */; };
+		3C3D7D4C23FE326E003BBF7C /* RustFastxt.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C3D7D4B23FE326E003BBF7C /* RustFastxt.swift */; };
+		3C3D7D5123FE3A75003BBF7C /* libfastxt_core.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 3C3D7D5023FE33C0003BBF7C /* libfastxt_core.a */; };
+		3C3D7D5223FE3A82003BBF7C /* libresolv.tbd in Frameworks */ = {isa = PBXBuildFile; fileRef = 3C3D7D4F23FE32E2003BBF7C /* libresolv.tbd */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -48,6 +51,11 @@
 		3C328895239B3F6800B57D59 /* FastxtUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = FastxtUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		3C328899239B3F6800B57D59 /* FastxtUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FastxtUITests.swift; sourceTree = "<group>"; };
 		3C32889B239B3F6800B57D59 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		3C3D7D4A23FE321A003BBF7C /* fastxt-core.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = "fastxt-core.h"; path = "../fastxt-rs/fastxt_core/src/fastxt-core.h"; sourceTree = "<group>"; };
+		3C3D7D4B23FE326E003BBF7C /* RustFastxt.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RustFastxt.swift; sourceTree = "<group>"; };
+		3C3D7D4D23FE32AD003BBF7C /* Fastxt-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "Fastxt-Bridging-Header.h"; sourceTree = "<group>"; };
+		3C3D7D4F23FE32E2003BBF7C /* libresolv.tbd */ = {isa = PBXFileReference; lastKnownFileType = "sourcecode.text-based-dylib-definition"; name = libresolv.tbd; path = usr/lib/libresolv.tbd; sourceTree = SDKROOT; };
+		3C3D7D5023FE33C0003BBF7C /* libfastxt_core.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libfastxt_core.a; path = "../fastxt-rs/target/universal/release/libfastxt_core.a"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -55,6 +63,8 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				3C3D7D5123FE3A75003BBF7C /* libfastxt_core.a in Frameworks */,
+				3C3D7D5223FE3A82003BBF7C /* libresolv.tbd in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -78,10 +88,14 @@
 		3C32886C239B3F6500B57D59 = {
 			isa = PBXGroup;
 			children = (
+				3C3D7D4D23FE32AD003BBF7C /* Fastxt-Bridging-Header.h */,
+				3C3D7D4B23FE326E003BBF7C /* RustFastxt.swift */,
+				3C3D7D4A23FE321A003BBF7C /* fastxt-core.h */,
 				3C328877239B3F6600B57D59 /* Fastxt */,
 				3C32888D239B3F6800B57D59 /* FastxtTests */,
 				3C328898239B3F6800B57D59 /* FastxtUITests */,
 				3C328876239B3F6600B57D59 /* Products */,
+				3C3D7D4E23FE32E1003BBF7C /* Frameworks */,
 			);
 			sourceTree = "<group>";
 		};
@@ -133,6 +147,15 @@
 				3C32889B239B3F6800B57D59 /* Info.plist */,
 			);
 			path = FastxtUITests;
+			sourceTree = "<group>";
+		};
+		3C3D7D4E23FE32E1003BBF7C /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				3C3D7D5023FE33C0003BBF7C /* libfastxt_core.a */,
+				3C3D7D4F23FE32E2003BBF7C /* libresolv.tbd */,
+			);
+			name = Frameworks;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -268,6 +291,7 @@
 			files = (
 				3C32887B239B3F6600B57D59 /* ContentView.swift in Sources */,
 				3C328879239B3F6600B57D59 /* AppDelegate.swift in Sources */,
+				3C3D7D4C23FE326E003BBF7C /* RustFastxt.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -443,9 +467,11 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
+				LIBRARY_SEARCH_PATHS = "$(PROJECT_DIR)";
 				MACOSX_DEPLOYMENT_TARGET = 10.15;
 				PRODUCT_BUNDLE_IDENTIFIER = app.fastxt.Fastxt;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_OBJC_BRIDGING_HEADER = "$(PROJECT_DIR)/Fastxt-Bridging-Header.h";
 				SWIFT_VERSION = 5.0;
 			};
 			name = Debug;
@@ -466,9 +492,11 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
+				LIBRARY_SEARCH_PATHS = "$(PROJECT_DIR)";
 				MACOSX_DEPLOYMENT_TARGET = 10.15;
 				PRODUCT_BUNDLE_IDENTIFIER = app.fastxt.Fastxt;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_OBJC_BRIDGING_HEADER = "$(PROJECT_DIR)/Fastxt-Bridging-Header.h";
 				SWIFT_VERSION = 5.0;
 			};
 			name = Release;

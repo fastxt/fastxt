@@ -50,7 +50,9 @@ fn sqlite3_db_location() -> String {
         dir_name
     );
     eprintln!("db dir location: {}", dir);
-    fs::create_dir_all(&dir).unwrap();
+    if !Path::new(&dir).exists() {
+        fs::create_dir_all(&dir).unwrap();
+    }
     format!("{}/fastxt.sqlite3", dir)
 }
 
@@ -84,7 +86,7 @@ fn process(cmd: Cmd, text: &str) -> String {
                     tags: i.tags,
                     created_at: "".to_string(),
                 };
-                insert(note);
+                insert(&conn, note);
                 do_select(&conn, &i.limit, &i.offset)
             } else {
                 r#"{"error":"cmd insert json error"}"#.to_string()
