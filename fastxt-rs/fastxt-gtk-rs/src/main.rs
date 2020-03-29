@@ -11,6 +11,8 @@ use gtk::{
     WindowPosition,
 };
 
+use fastxt_core::{cmd, exe};
+
 use std::env::args;
 
 fn append_text_column(tree: &TreeView) {
@@ -36,11 +38,16 @@ fn build_ui(application: &gtk::Application) {
     left_tree.set_headers_visible(false);
     append_text_column(&left_tree);
 
-    for i in 0..10 {
+    let conn = exe::get_sqlite_connection();
+    cmd::create(&conn);
+    let r = cmd::select::select_imp(&conn, &100, &0);
+
+    for i in r {
+        eprintln!("{:?}", i);
         // insert_with_values takes two slices: column indices and ToValue
         // trait objects. ToValue is implemented for strings, numeric types,
         // bool and Object descendants
-        let iter = left_store.insert_with_values(None, None, &[0], &[&format!("Hello {}", i)]);
+        let iter = left_store.insert_with_values(None, None, &[0], &[&format!("{:?}", i)]);
     }
 
     // right pane
@@ -49,6 +56,15 @@ fn build_ui(application: &gtk::Application) {
 
     let left_selection = left_tree.get_selection();
     left_selection.connect_changed(clone!(@weak text_view => move |tree_selection| {
+
+        let (left_model, iter) = tree_selection.get_selected().expect("Couldn't get selected");
+        let mut path = left_model.get_path(&iter).expect("Couldn't get path");
+        // get the top-level element path
+        while path.get_depth() > 1 {
+            path.up();
+        }
+        eprintln!("path {:?}", path);
+
         text_view
             .get_buffer()
             .expect("Couldn't get window")
