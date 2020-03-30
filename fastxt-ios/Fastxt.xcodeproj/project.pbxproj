@@ -20,6 +20,7 @@
 		3CED13F9238372860097A12B /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 3CED13F7238372860097A12B /* LaunchScreen.storyboard */; };
 		3CED1404238372870097A12B /* FastxtTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3CED1403238372870097A12B /* FastxtTests.swift */; };
 		3CED140F238372870097A12B /* FastxtUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3CED140E238372870097A12B /* FastxtUITests.swift */; };
+		3CEF504424318E0C00D77C63 /* TxtRowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3CEF504324318E0C00D77C63 /* TxtRowView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -59,6 +60,7 @@
 		3CED140A238372870097A12B /* FastxtUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = FastxtUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		3CED140E238372870097A12B /* FastxtUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FastxtUITests.swift; sourceTree = "<group>"; };
 		3CED1410238372870097A12B /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		3CEF504324318E0C00D77C63 /* TxtRowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TxtRowView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -125,6 +127,7 @@
 			isa = PBXGroup;
 			children = (
 				3CED13EC238372810097A12B /* AppDelegate.swift */,
+				3CEF504324318E0C00D77C63 /* TxtRowView.swift */,
 				3CED13EE238372810097A12B /* SceneDelegate.swift */,
 				3CED13F0238372810097A12B /* ContentView.swift */,
 				3CED13F2238372860097A12B /* Assets.xcassets */,
@@ -293,6 +296,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				3CED13ED238372810097A12B /* AppDelegate.swift in Sources */,
+				3CEF504424318E0C00D77C63 /* TxtRowView.swift in Sources */,
 				3CED13EF238372810097A12B /* SceneDelegate.swift in Sources */,
 				3CED13F1238372810097A12B /* ContentView.swift in Sources */,
 				3CD80BF923D7B34F007182F7 /* RustFastxt.swift in Sources */,
