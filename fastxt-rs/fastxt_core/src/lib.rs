@@ -52,6 +52,17 @@ pub extern "C" fn fastxt_free(s: *mut c_char) {
 }
 
 #[derive(Serialize, Deserialize, Debug)]
+pub struct KVStringI64 {
+    pub k: String,
+    pub v: i64,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct Tags {
+    pub tags: String,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
 pub struct Note {
     pub rowid: i64,
     pub uuid4: String,
@@ -70,6 +81,14 @@ pub struct CmdSelect {
 pub struct CmdInsert {
     pub txt: String,
     pub tags: String,
+
+    pub limit: u32,
+    pub offset: u32,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct CmdSearch {
+    pub query: String,
 
     pub limit: u32,
     pub offset: u32,

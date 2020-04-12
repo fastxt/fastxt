@@ -20,6 +20,7 @@ use crate::Note;
 use linked_hash_set::LinkedHashSet;
 use regex::Regex;
 use std::iter::FromIterator;
+pub mod search;
 pub mod select;
 use rusqlite::{Connection, NO_PARAMS};
 use uuid::Uuid;

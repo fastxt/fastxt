@@ -38,13 +38,33 @@ struct SearchBar: UIViewRepresentable {
     class Coordinator: NSObject, UISearchBarDelegate {
 
         @Binding var text: String
-
+        let ft = RustFastxt()
+        var notes : NSArray = []
+        
         init(text: Binding<String>) {
             _text = text
         }
 
         func searchBar(_ searchBar: UISearchBar, textDidChange searchText: String) {
-            text = searchText
+            AppState.clearOffset()
+            search(input: searchText, offset: 0)
+        }
+        func search(input: String, offset: Int64){
+            AppState.setQuery(query: input)
+            let txt = ft.run(json_input:"""
+                {"action":"search","query":"\(input)","limit":10,"offset":\(offset)}
+                """
+            )
+            let data = txt.data(using: .utf8)!
+            if let jsonObject = ((try? JSONSerialization.jsonObject(with: data) as? [String: NSObject]) as [String : NSObject]??) {
+                notes =  jsonObject!["notes"] as! NSArray
+                //let count = jsonObject!["count"] as! Int64
+                //AppState.setCount(count: count)
+                print(notes)
+                //paginationButton.title = AppState.makePaginationText()
+            }
+            
+            //self.tableView.reloadData()
         }
     }
 

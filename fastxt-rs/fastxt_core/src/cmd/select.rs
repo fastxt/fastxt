@@ -19,6 +19,12 @@ use crate::Note;
 use rusqlite::types::ToSql;
 use rusqlite::{Connection, NO_PARAMS};
 
+pub fn select_count(conn: &Connection) -> u32 {
+    let mut stmt = conn.prepare("SELECT count(1) FROM note").unwrap();
+    let rs = stmt.query_row(NO_PARAMS, |row| row.get(0)).unwrap();
+    rs
+}
+
 pub fn select(conn: &Connection, limit: &u32, offset: &u32) -> String {
     let result_iter = select_imp(conn, limit, offset);
     let mut d = "[ ".to_owned();

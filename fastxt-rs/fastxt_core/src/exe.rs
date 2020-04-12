@@ -18,9 +18,11 @@
 
 use crate::cmd::create;
 use crate::cmd::insert;
+use crate::cmd::search::{search, search_count};
 use crate::cmd::select::select;
 use crate::Cmd;
 use crate::CmdInsert;
+use crate::CmdSearch;
 use crate::CmdSelect;
 use crate::Note;
 use rusqlite::Connection;
@@ -70,6 +72,13 @@ fn process(cmd: Cmd, text: &str) -> String {
     create(&conn);
 
     match cmd.action.as_ref() {
+        "search" => {
+            if let Ok(s) = serde_json::from_str::<CmdSearch>(text) {
+                do_search(&conn, &s.query, &s.limit, &s.offset)
+            } else {
+                r#"{"error":"cmd search json error"}"#.to_string()
+            }
+        }
         "select" => {
             if let Ok(s) = serde_json::from_str::<CmdSelect>(text) {
                 do_select(&conn, &s.limit, &s.offset)
@@ -96,6 +105,24 @@ fn process(cmd: Cmd, text: &str) -> String {
     }
 }
 
+fn do_search(conn: &Connection, query: &str, limit: &u32, offset: &u32) -> String {
+    let c = search_count(&conn, query);
+    let j = search(&conn, query, limit, offset);
+    // let d = search_by_day(&conn, query);
+    let d = "";
+    // let t = search_by_tag(&conn, query);
+    let t = "";
+    let msg = format!(
+        r#"{{"count": {}, "notes":{}}}"#,
+        // r#"{{"count": {}, "notes":{}, "days": {}, "tags": {} }}"#,
+        // c, j, d, t
+        c,
+        j
+    );
+    // eprintln!("msg {}", msg);
+    msg
+}
+
 fn do_select(conn: &Connection, limit: &u32, offset: &u32) -> String {
     //    let c = select_count(&conn);
     let c = "";
@@ -105,8 +132,10 @@ fn do_select(conn: &Connection, limit: &u32, offset: &u32) -> String {
     //    let t = select_by_tag(&conn);
     let t = "";
     let msg = format!(
-        r#"{{"count": {}, "notes":{}, "days": {}, "tags": {} }}"#,
-        c, j, d, t
+        r#"{{"notes":{}}}"#,
+        //r#"{{"count": {}, "notes":{}, "days": {}, "tags": {} }}"#,
+        // c, j, d, t
+        j
     );
     // eprintln!("msg {}", msg);
     msg
