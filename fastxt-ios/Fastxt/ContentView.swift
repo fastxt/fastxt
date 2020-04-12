@@ -8,12 +8,19 @@
 
 import SwiftUI
 
-struct Note: Decodable, Hashable {
-    var rowid: Int64
+struct Note: Codable, Identifiable {
+    var id: Int64
     var uuid4: String
     var txt: String
     var tags: String
     var created_at: String
+    private enum CodingKeys: String, CodingKey {
+        case id = "rowid"
+        case uuid4
+        case txt
+        case tags
+        case created_at
+    }
 }
 
 struct Response: Decodable {
@@ -21,21 +28,17 @@ struct Response: Decodable {
     let notes: [Note]
 }
 
-var notes : [Note] = []
-
 struct ContentView: View {
     @State private var searchText : String = ""
+    @State var notes : [Note] = []
 
     var body: some View {
         NavigationView {
             VStack {
-                SearchBar(text: $searchText, placeholder: "type to search")
-                List {
-                    ForEach(notes, id: \.self) {
+                SearchBar(text: $searchText, notes: $notes, placeholder: "type to search")
+                List (notes){
                         note in
                         Text(note.txt)
-                    }
-                    TxtRowView()
                 }.navigationBarTitle(Text("Fastxt"))
                 Button(action:{
                     let ft = RustFastxt()
@@ -50,6 +53,14 @@ struct ContentView: View {
                         }
                         """
                     )
+                    self.notes.append(Note(
+                        id: 1000,
+                        //rowid: 1000,
+                        uuid4: "uuid4",
+                        txt: "txt",
+                        tags: "tags",
+                        created_at: "created_at"
+                    ))
                 }){
                     Text("New Fastxt")
                 }
@@ -65,18 +76,20 @@ struct ContentView_Previews: PreviewProvider {
 }
 
 struct SearchBar: UIViewRepresentable {
-
     @Binding var text: String
+    @Binding var notes: [Note]
     var placeholder: String
-
+    
     class Coordinator: NSObject, UISearchBarDelegate {
 
         @Binding var text: String
+        @Binding var notes: [Note]
         let ft = RustFastxt()
 
         
-        init(text: Binding<String>) {
+        init(text: Binding<String>, notes: Binding<[Note]>) {
             _text = text
+            _notes = notes
         }
 
         func searchBar(_ searchBar: UISearchBar, textDidChange searchText: String) {
@@ -96,7 +109,6 @@ struct SearchBar: UIViewRepresentable {
                 let resp = try decoder.decode(Response.self, from: data)
                 AppState.setCount(count: resp.count)
                 notes = resp.notes
-                print(resp.count)
             } catch {
                 print(error.localizedDescription)
             }
@@ -104,7 +116,7 @@ struct SearchBar: UIViewRepresentable {
     }
 
     func makeCoordinator() -> SearchBar.Coordinator {
-        return Coordinator(text: $text)
+        return Coordinator(text: $text, notes: $notes)
     }
 
     func makeUIView(context: UIViewRepresentableContext<SearchBar>) -> UISearchBar {
