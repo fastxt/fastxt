@@ -28,6 +28,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
             self.window = window
             window.makeKeyAndVisible()
         }
+        AppState.search(input: "", offset: 0)
     }
 
     func sceneDidDisconnect(_ scene: UIScene) {

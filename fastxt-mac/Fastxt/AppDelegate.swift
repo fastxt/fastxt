@@ -17,8 +17,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ aNotification: Notification) {
         // Create the SwiftUI view that provides the window contents.
-        let contentView = ContentView()
-
+        let contentView = ContentView().environmentObject(AppState.getEnv())
         // Create the window and set the content view. 
         window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 480, height: 300),
@@ -28,17 +27,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         window.setFrameAutosaveName("Main Window")
         window.contentView = NSHostingView(rootView: contentView)
         window.makeKeyAndOrderFront(nil)
-        let ft = RustFastxt()
-        let r = ft.run(json_input:"""
-            {"action":"insert","limit":10,"offset":0,"txt":"new text", "tags":"new tag"}
-            """
-        )
-        print(r)
-        let txt = ft.run(json_input:"""
-            {"action":"select","limit":10,"offset":0}
-            """
-        )
-        print(txt)
+        AppState.search(input: "", offset: 0)
     }
 
     func applicationWillTerminate(_ aNotification: Notification) {
