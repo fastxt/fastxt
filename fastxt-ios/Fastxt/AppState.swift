@@ -66,4 +66,51 @@ class AppState {
     static func getOffset() -> Int64 {
         return offset
     }
+    
+    static let env = Env()
+    static func getEnv()->Env{
+        return env
+    }
+    
+    static let ft = RustFastxt()
+    static func search(input: String, offset: Int64) {
+        AppState.setQuery(query: input)
+        let txt = ft.run(json_input:"""
+            {"action":"search","query":"\(input)","limit":10,"offset":\(offset)}
+            """
+        )
+        let data = txt.data(using: .utf8)!
+        let decoder = JSONDecoder()
+        do {
+            let resp = try decoder.decode(Response.self, from: data)
+            AppState.setCount(count: resp.count)
+            AppState.env.notes = resp.notes
+        } catch {
+            print(error.localizedDescription)
+        }
+    }
+}
+
+struct Note: Codable, Identifiable {
+    var id: Int64
+    var uuid4: String
+    var txt: String
+    var tags: String
+    var created_at: String
+    private enum CodingKeys: String, CodingKey {
+        case id = "rowid"
+        case uuid4
+        case txt
+        case tags
+        case created_at
+    }
+}
+
+struct Response: Decodable {
+    let count: Int64
+    let notes: [Note]
+}
+
+class Env: ObservableObject {
+    @Published var notes:[Note] = []
 }

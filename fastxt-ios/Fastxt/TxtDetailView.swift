@@ -1,23 +1,23 @@
 //
-//  TxtRowView.swift
+//  TxtDetailView.swift
 //  Fastxt
 //
-//  Created by Yi Wang on 3/29/20.
+//  Created by Yi Wang on 4/12/20.
 //  Copyright © 2020 Yi Wang. All rights reserved.
 //
 
 import SwiftUI
 
-struct TxtRowView: View {
+struct TxtDetailView: View {
     var note: Note
     var body: some View {
         Text("\(note.id) \(note.txt) \(note.tags) \(note.created_at)")
     }
 }
 
-struct TxtRowView_Previews: PreviewProvider {
+struct TxtDetailView_Previews: PreviewProvider {
     static var previews: some View {
-        TxtRowView(note: Note(
+        TxtDetailView(note: Note(
             id: 0,
             uuid4: "uuid4",
             txt: "txt",
