@@ -93,8 +93,9 @@ fn process(cmd: Cmd, text: &str) -> String {
                     uuid4: Uuid::new_v4().to_string(),
                     txt: i.txt,
                     tags: i.tags,
-                    created_at: "".to_string(),
+                    created_at: "".to_string(), // db will use default value
                 };
+                eprint!("{:?}", note);
                 insert(&conn, note);
                 do_select(&conn, &i.limit, &i.offset)
             } else {
