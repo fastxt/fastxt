@@ -22,6 +22,7 @@ use crate::cmd::search::{search, search_count};
 use crate::cmd::select::select;
 use crate::Cmd;
 use crate::CmdInsert;
+use crate::CmdRpcServer;
 use crate::CmdSearch;
 use crate::CmdSelect;
 use crate::Note;
@@ -72,6 +73,18 @@ fn process(cmd: Cmd, text: &str) -> String {
     create(&conn);
 
     match cmd.action.as_ref() {
+        "server" => {
+            eprintln!(r#"{{"server": "starting"}}"#);
+            if let Ok(s) = serde_json::from_str::<CmdRpcServer>(text) {
+                if let Ok(_) = crate::rpc::server::start(&s.addr) {
+                    format!(r#"{{"server": "started"}}"#)
+                } else {
+                    r#"{"error":"server error"}"#.to_string()
+                }
+            } else {
+                r#"{"error":"cmd server error"}"#.to_string()
+            }
+        }
         "search" => {
             if let Ok(s) = serde_json::from_str::<CmdSearch>(text) {
                 do_search(&conn, &s.query, &s.limit, &s.offset)

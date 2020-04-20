@@ -16,12 +16,10 @@
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
 
-
 #[tarpc::service]
 pub trait Fastxt {
+    async fn stop() -> bool;
 }
 
 pub mod client;
 pub mod server;
-
-

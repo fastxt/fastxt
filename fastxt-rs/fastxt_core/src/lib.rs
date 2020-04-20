@@ -21,6 +21,7 @@ extern crate serde_derive;
 
 pub mod cmd;
 pub mod exe;
+pub mod rpc;
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Cmd {
@@ -92,4 +93,14 @@ pub struct CmdSearch {
 
     pub limit: u32,
     pub offset: u32,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct CmdRpcClient {
+    pub addr: String,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct CmdRpcServer {
+    pub addr: String,
 }
