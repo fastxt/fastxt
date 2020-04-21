@@ -25,6 +25,23 @@ use tarpc::{client, context};
 use tokio::runtime::Runtime;
 use tokio_serde::formats::Json;
 
+pub fn sync(addr: &str) -> Result<String, String> {
+    let server_addr: SocketAddr = addr
+        .parse()
+        .unwrap_or_else(|e| panic!(r#"server_addr {} invalid: {}"#, addr, e));
+    let mut rt = Runtime::new().unwrap();
+    rt.block_on(async {
+        // run_sync_to_server(&server_addr).await;
+        eprintln!("sync to server done");
+    });
+    let mut rt2 = Runtime::new().unwrap();
+    rt2.block_on(async {
+        // run_sync_from_server(&server_addr).await;
+        eprintln!("sync from server done");
+    });
+    Ok("sync ok".to_string())
+}
+
 async fn run_stop_server(addr: &SocketAddr) -> io::Result<()> {
     let transport = tarpc::serde_transport::tcp::connect(addr, Json::default()).await?;
     let mut client = FastxtClient::new(client::Config::default(), transport).spawn()?;
@@ -40,6 +57,7 @@ async fn run_stop_server(addr: &SocketAddr) -> io::Result<()> {
 
     // diff uuid4
     let is_stopped = client.stop(context::current()).await?;
+    eprintln!("is_stopped: {}", is_stopped);
     Ok(())
 }
 

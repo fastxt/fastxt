@@ -41,6 +41,13 @@ pub fn upgrade(conn: &Connection) -> Result<&str, &str> {
         eprintln!("is_upgrading");
         Err("is_upgrading")
     } else {
+        if Version::parse(&get_meta_version(conn)) < Version::parse("0.1.0") {
+            set_meta_version(conn, "0.1.0");
+            eprintln!("upgraded to 0.1.0")
+        }
+        if Version::parse(&get_meta_version(conn)) == Version::parse("0.1.0") {
+            set_meta_version(conn, VERSION);
+        }
         eprintln!("upgraded to {}", VERSION);
         Ok(VERSION)
     }
@@ -74,8 +81,17 @@ pub fn get_meta_version(conn: &Connection) -> String {
             version.s
         }
         Err(_) => {
-            eprintln!("get_meta_version: no meta table, default to earliest version 0.3.10");
-            "0.3.10".to_string()
+            conn.execute_batch(
+                "
+            INSERT INTO meta
+            (meta_key, meta_value)
+            VALUES
+            ('version', '0.0.0')
+            ;",
+            )
+            .unwrap();
+            eprintln!("get_meta_version: version init to 0.0.0");
+            "0.0.0".to_string()
         }
     }
 }

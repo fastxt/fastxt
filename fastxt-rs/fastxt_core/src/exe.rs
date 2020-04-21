@@ -20,8 +20,10 @@ use crate::cmd::create;
 use crate::cmd::insert;
 use crate::cmd::search::{search, search_count};
 use crate::cmd::select::select;
+use crate::upgrade;
 use crate::Cmd;
 use crate::CmdInsert;
+use crate::CmdRpcClient;
 use crate::CmdRpcServer;
 use crate::CmdSearch;
 use crate::CmdSelect;
@@ -72,6 +74,13 @@ fn process(cmd: Cmd, text: &str) -> String {
     let conn = get_sqlite_connection();
     create(&conn);
 
+    // always run upgrade first
+    if let Ok(version) = upgrade::upgrade(&conn) {
+        eprintln!(r#"{{"upgrade-done": "{}"}}"#, version)
+    } else {
+        return r#"{"error":"upgrade error"}"#.to_string();
+    }
+
     match cmd.action.as_ref() {
         "server" => {
             eprintln!(r#"{{"server": "starting"}}"#);
@@ -113,6 +122,30 @@ fn process(cmd: Cmd, text: &str) -> String {
                 do_select(&conn, &i.limit, &i.offset)
             } else {
                 r#"{"error":"cmd insert json error"}"#.to_string()
+            }
+        }
+        "client-sync" => {
+            eprintln!(r#"{{"client": "starting"}}"#);
+            if let Ok(s) = serde_json::from_str::<CmdRpcClient>(text) {
+                if let Ok(resp) = crate::rpc::client::sync(&s.addr) {
+                    format!(r#"{{"client-sync": "{}"}}"#, resp)
+                } else {
+                    r#"{"error":"client-sync error"}"#.to_string()
+                }
+            } else {
+                r#"{"error":"cmd client-sync error"}"#.to_string()
+            }
+        }
+        "client-stop-server" => {
+            eprintln!(r#"{{"client": "starting"}}"#);
+            if let Ok(s) = serde_json::from_str::<CmdRpcClient>(text) {
+                if let Ok(resp) = crate::rpc::client::stop_server(&s.addr) {
+                    format!(r#"{{"client-stop-server": "{}"}}"#, resp)
+                } else {
+                    r#"{"error":"client-stop-server error"}"#.to_string()
+                }
+            } else {
+                r#"{"error":"cmd client-stop-server error"}"#.to_string()
             }
         }
         _ => r#"{"error": "cmd no match"}"#.to_string(),
