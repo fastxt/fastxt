@@ -15,3 +15,41 @@
     You should have received a copy of the GNU Affero General Public License
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
+
+use super::FastxtClient;
+use crate::exe::get_sqlite_connection;
+use crate::upgrade::get_meta_version;
+use std::io::{Error, ErrorKind};
+use std::{io, net::SocketAddr};
+use tarpc::{client, context};
+use tokio::runtime::Runtime;
+use tokio_serde::formats::Json;
+
+async fn run_stop_server(addr: &SocketAddr) -> io::Result<()> {
+    let transport = tarpc::serde_transport::tcp::connect(addr, Json::default()).await?;
+    let mut client = FastxtClient::new(client::Config::default(), transport).spawn()?;
+    let conn = get_sqlite_connection();
+
+    // check version
+    let version = get_meta_version(&conn);
+    let is_version_match = client.is_version_match(context::current(), version).await?;
+    eprintln!("is_version_match: {}", is_version_match);
+    if !is_version_match {
+        return Err(Error::new(ErrorKind::Other, "VERSION_NOT_MATCH"));
+    }
+
+    // diff uuid4
+    let is_stopped = client.stop(context::current()).await?;
+    Ok(())
+}
+
+pub fn stop_server(addr: &str) -> Result<String, String> {
+    let server_addr: SocketAddr = addr
+        .parse()
+        .unwrap_or_else(|e| panic!(r#"server_addr {} invalid: {}"#, addr, e));
+    let mut rt = Runtime::new().unwrap();
+    rt.block_on(async {
+        run_stop_server(&server_addr).await.unwrap();
+    });
+    Ok("stop ok".to_string())
+}

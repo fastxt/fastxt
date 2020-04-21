@@ -18,6 +18,7 @@
 
 #[tarpc::service]
 pub trait Fastxt {
+    async fn is_version_match(version: String) -> bool;
     async fn stop() -> bool;
 }
 

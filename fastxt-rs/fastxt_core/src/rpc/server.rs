@@ -17,6 +17,8 @@
 */
 
 use super::Fastxt;
+use crate::exe::get_sqlite_connection;
+use crate::upgrade::get_meta_version;
 use futures::{
     future::{self, Ready},
     prelude::*,
@@ -34,6 +36,15 @@ use tokio_serde::formats::Json;
 struct FastxtServer(SocketAddr);
 
 impl Fastxt for FastxtServer {
+    type IsVersionMatchFut = Ready<bool>;
+    fn is_version_match(self, _: context::Context, version: String) -> Self::IsVersionMatchFut {
+        let conn = get_sqlite_connection();
+        if version == get_meta_version(&conn) {
+            future::ready(true)
+        } else {
+            future::ready(false)
+        }
+    }
     type StopFut = Ready<bool>;
     fn stop(self, _: context::Context) -> Self::StopFut {
         eprintln!("server stopping");

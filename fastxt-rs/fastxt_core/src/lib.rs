@@ -22,6 +22,7 @@ extern crate serde_derive;
 pub mod cmd;
 pub mod exe;
 pub mod rpc;
+pub mod upgrade;
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Cmd {
@@ -103,4 +104,9 @@ pub struct CmdRpcClient {
 #[derive(Serialize, Deserialize, Debug)]
 pub struct CmdRpcServer {
     pub addr: String,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct OneString {
+    pub s: String,
 }
