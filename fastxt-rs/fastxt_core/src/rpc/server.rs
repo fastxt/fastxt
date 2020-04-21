@@ -31,7 +31,7 @@ use tarpc::{
     server::{self, Channel, Handler},
 };
 use tokio::runtime::Runtime;
-use tokio_serde::formats::Json;
+use tokio_serde::formats::Bincode;
 
 #[derive(Clone)]
 struct FastxtServer {
@@ -60,7 +60,7 @@ impl Fastxt for FastxtServer {
 
 async fn start_server(addr: &SocketAddr) -> io::Result<()> {
     let (abort_handle, registration) = futures::future::AbortHandle::new_pair();
-    let server = tarpc::serde_transport::tcp::listen(addr, Json::default)
+    let server = tarpc::serde_transport::tcp::listen(addr, Bincode::default)
         .await?
         // Ignore accept errors.
         .filter_map(|r| future::ready(r.ok()))

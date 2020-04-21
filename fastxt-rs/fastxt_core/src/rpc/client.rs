@@ -23,7 +23,7 @@ use std::io::{Error, ErrorKind};
 use std::{io, net::SocketAddr};
 use tarpc::{client, context};
 use tokio::runtime::Runtime;
-use tokio_serde::formats::Json;
+use tokio_serde::formats::Bincode;
 
 pub fn sync(addr: &str) -> Result<String, String> {
     let server_addr: SocketAddr = addr
@@ -43,7 +43,7 @@ pub fn sync(addr: &str) -> Result<String, String> {
 }
 
 async fn run_stop_server(addr: &SocketAddr) -> io::Result<()> {
-    let transport = tarpc::serde_transport::tcp::connect(addr, Json::default()).await?;
+    let transport = tarpc::serde_transport::tcp::connect(addr, Bincode::default()).await?;
     let mut client = FastxtClient::new(client::Config::default(), transport).spawn()?;
     let conn = get_sqlite_connection();
 
@@ -67,7 +67,10 @@ pub fn stop_server(addr: &str) -> Result<String, String> {
         .unwrap_or_else(|e| panic!(r#"server_addr {} invalid: {}"#, addr, e));
     let mut rt = Runtime::new().unwrap();
     rt.block_on(async {
-        run_stop_server(&server_addr).await.unwrap();
+        let resp = run_stop_server(&server_addr);
+        if let Err(e) = resp.await {
+            eprintln!("stop_server: {}.", e);
+        }
     });
     Ok("stop ok".to_string())
 }
