@@ -17,6 +17,9 @@
 */
 
 use super::FastxtClient;
+use crate::cmd::insert;
+use crate::cmd::sync::get_note_by_uuid4;
+use crate::cmd::sync::next_uuid4_candidates;
 use crate::exe::get_sqlite_connection;
 use crate::upgrade::get_meta_version;
 use std::io::{Error, ErrorKind};
@@ -25,18 +28,77 @@ use tarpc::{client, context};
 use tokio::runtime::Runtime;
 use tokio_serde::formats::Bincode;
 
+async fn run_sync_to_server(addr: &SocketAddr) -> io::Result<()> {
+    let transport = tarpc::serde_transport::tcp::connect(addr, Bincode::default()).await?;
+    let mut client = FastxtClient::new(client::Config::default(), transport).spawn()?;
+    let conn = get_sqlite_connection();
+
+    // check version
+    let version = get_meta_version(&conn);
+    let is_version_match = client.is_version_match(context::current(), version).await?;
+    eprintln!("is_version_match: {}", is_version_match);
+    if !is_version_match {
+        return Err(Error::new(ErrorKind::Other, "VERSION_NOT_MATCH"));
+    }
+
+    // diff uuid4
+    let diff_uuid4 = client
+        .diff_uuid4_to_server(context::current(), next_uuid4_candidates(&conn))
+        .await?;
+    eprintln!("diff_uuid4_to_server len: {:?}", diff_uuid4.len());
+
+    // send one by one
+    for u in diff_uuid4 {
+        client
+            .send_note(context::current(), get_note_by_uuid4(&conn, &u))
+            .await?;
+    }
+    eprintln!("send_note done");
+
+    Ok(())
+}
+
+async fn run_sync_from_server(addr: &SocketAddr) -> io::Result<()> {
+    let transport = tarpc::serde_transport::tcp::connect(addr, Bincode::default()).await?;
+    let mut client = FastxtClient::new(client::Config::default(), transport).spawn()?;
+    let conn = get_sqlite_connection();
+
+    // check version
+    let version = get_meta_version(&conn);
+    let is_version_match = client.is_version_match(context::current(), version).await?;
+    eprintln!("is_version_match: {}", is_version_match);
+    if !is_version_match {
+        return Err(Error::new(ErrorKind::Other, "VERSION_NOT_MATCH"));
+    }
+
+    // diff uuid4
+    let diff_uuid4 = client
+        .diff_uuid4_from_server(context::current(), next_uuid4_candidates(&conn))
+        .await?;
+    eprintln!("diff_uuid4_from_server len: {:?}", diff_uuid4.len());
+
+    // send one by one
+    for u in diff_uuid4 {
+        let note = client.receive_note(context::current(), u).await?;
+        insert(&conn, note);
+    }
+    eprintln!("receive_note done");
+
+    Ok(())
+}
+
 pub fn sync(addr: &str) -> Result<String, String> {
     let server_addr: SocketAddr = addr
         .parse()
         .unwrap_or_else(|e| panic!(r#"server_addr {} invalid: {}"#, addr, e));
     let mut rt = Runtime::new().unwrap();
     rt.block_on(async {
-        // run_sync_to_server(&server_addr).await;
+        run_sync_to_server(&server_addr).await;
         eprintln!("sync to server done");
     });
     let mut rt2 = Runtime::new().unwrap();
     rt2.block_on(async {
-        // run_sync_from_server(&server_addr).await;
+        run_sync_from_server(&server_addr).await;
         eprintln!("sync from server done");
     });
     Ok("sync ok".to_string())

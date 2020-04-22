@@ -22,6 +22,7 @@ use regex::Regex;
 use std::iter::FromIterator;
 pub mod search;
 pub mod select;
+pub mod sync;
 use rusqlite::{Connection, NO_PARAMS};
 use uuid::Uuid;
 
@@ -33,7 +34,7 @@ pub fn create(conn: &Connection) {
          uuid4          TEXT NOT NULL UNIQUE,
          txt            TEXT NOT NULL,
          tags           TEXT NOT NULL,
-         created_at     TIMESTAMP  DEFAULT CURRENT_TIMESTAMP
+         created_at     TEXT NOT NULL
          );
 
          CREATE TABLE IF NOT EXISTS meta (
@@ -48,13 +49,14 @@ pub fn create(conn: &Connection) {
 pub fn insert(conn: &Connection, note: Note) {
     conn.execute_named(
         "
-        INSERT INTO note (uuid4, txt, tags)
-        VALUES (:uuid4, :txt, :tags);
+        INSERT INTO note (uuid4, txt, tags, created_at)
+        VALUES (:uuid4, :txt, :tags, :created_at);
         ",
         &[
             (":uuid4", &note.uuid4),
             (":txt", &note.txt),
             (":tags", &make_tags(&note.tags)),
+            (":created_at", &note.created_at),
         ],
     )
     .unwrap();

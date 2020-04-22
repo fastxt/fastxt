@@ -17,14 +17,16 @@
 */
 
 use super::Fastxt;
+use crate::cmd::insert;
+use crate::cmd::sync::{diff_uuid4_from_server, diff_uuid4_to_server, get_note_by_uuid4};
 use crate::exe::get_sqlite_connection;
 use crate::upgrade::get_meta_version;
+use crate::Note;
 use futures::future::{AbortHandle, Abortable, Aborted};
 use futures::{
     future::{self, Ready},
     prelude::*,
 };
-use std::process;
 use std::{io, net::SocketAddr};
 use tarpc::{
     context,
@@ -48,6 +50,40 @@ impl Fastxt for FastxtServer {
         } else {
             future::ready(false)
         }
+    }
+    type DiffUuid4ToServerFut = Ready<Vec<String>>;
+    fn diff_uuid4_to_server(
+        self,
+        _: context::Context,
+        candidates: Vec<String>,
+    ) -> Self::DiffUuid4ToServerFut {
+        let conn = get_sqlite_connection();
+        let diff = diff_uuid4_to_server(&conn, candidates);
+        future::ready(diff)
+    }
+    type DiffUuid4FromServerFut = Ready<Vec<String>>;
+    fn diff_uuid4_from_server(
+        self,
+        _: context::Context,
+        candidates: Vec<String>,
+    ) -> Self::DiffUuid4FromServerFut {
+        let conn = get_sqlite_connection();
+        let diff = diff_uuid4_from_server(&conn, candidates);
+        future::ready(diff)
+    }
+    type SendNoteFut = Ready<bool>;
+    fn send_note(self, _: context::Context, note: Note) -> Self::SendNoteFut {
+        let conn = get_sqlite_connection();
+        eprintln!("upsert note {:?}", note);
+        insert(&conn, note);
+        future::ready(true)
+    }
+    type ReceiveNoteFut = Ready<Note>;
+    fn receive_note(self, _: context::Context, uuid4: String) -> Self::ReceiveNoteFut {
+        eprintln!("receive note {:?}", uuid4);
+        let conn = get_sqlite_connection();
+        let note = get_note_by_uuid4(&conn, &uuid4);
+        future::ready(note)
     }
     // https://gitter.im/tarpc/Lobby?at=5d465444d7fc954750f63a7b
     // https://github.com/tikue/tarpc/blob/shutdown-example/example-service/src/server.rs#L43-L48

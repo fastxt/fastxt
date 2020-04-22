@@ -15,10 +15,14 @@
     You should have received a copy of the GNU Affero General Public License
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
-
+use crate::Note;
 #[tarpc::service]
 pub trait Fastxt {
     async fn is_version_match(version: String) -> bool;
+    async fn diff_uuid4_to_server(candidates: Vec<String>) -> Vec<String>;
+    async fn diff_uuid4_from_server(candidates: Vec<String>) -> Vec<String>;
+    async fn send_note(note: Note) -> bool;
+    async fn receive_note(uuid4: String) -> Note;
     async fn stop() -> bool;
 }
 

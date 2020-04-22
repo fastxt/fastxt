@@ -28,6 +28,8 @@ use crate::CmdRpcServer;
 use crate::CmdSearch;
 use crate::CmdSelect;
 use crate::Note;
+use chrono;
+use chrono::prelude::Utc;
 use rusqlite::Connection;
 use std::fs;
 use std::path::Path;
@@ -110,12 +112,13 @@ fn process(cmd: Cmd, text: &str) -> String {
         }
         "insert" => {
             if let Ok(i) = serde_json::from_str::<CmdInsert>(text) {
+                let created_at = Utc::now().format("%Y-%m-%d %H:%M:%S:%f UTC").to_string();
                 let note = Note {
                     rowid: 0i64,
                     uuid4: Uuid::new_v4().to_string(),
                     txt: i.txt,
                     tags: i.tags,
-                    created_at: "".to_string(), // db will use default value
+                    created_at: created_at,
                 };
                 eprint!("{:?}", note);
                 insert(&conn, note);
