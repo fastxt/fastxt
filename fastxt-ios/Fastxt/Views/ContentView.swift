@@ -11,15 +11,42 @@ import SwiftUI
 struct ContentView: View {
     @State private var searchText : String = ""
     @EnvironmentObject var env : Env
-    
+    @State private var showingSync = false
     var body: some View {
         NavigationView {
             VStack {
-                SearchBar(text: $searchText, placeholder: "type to search")
+                HStack{
+                    Text("   Fastxt")
+                    SearchBar(text: $searchText, placeholder: "type to search")
+                    Button(action:{
+                        self.showingSync.toggle()
+                    }){
+                        Text("Sync   ")
+                    }.sheet(isPresented: $showingSync){
+                     SyncView()
+                    }
+                }
+                HStack{
+                    Button(action:{
+                        let offset = AppState.decOffset()
+                        AppState.search(input: AppState.getQuery(), offset: offset)
+                    }){
+                        Text("   Prev")
+                    }//.padding()
+                    Spacer()
+                    Text(env.paginationText)
+                    Spacer()
+                    Button(action:{
+                        let offset = AppState.incOffset()
+                        AppState.search(input: AppState.getQuery(), offset: offset)
+                    }){
+                        Text("Next   ")
+                    }//.padding()
+                }
                 List (env.notes){
                     note in
                     NavigationLink(destination: TxtDetailView(note: note)) {
-                        TxtRowView(note: note)
+                        TxtRowView(note: note, query: self.$searchText)
                     }
                 }.navigationBarTitle(Text("Fastxt"))
                 Button(action:{
@@ -36,7 +63,7 @@ struct ContentView: View {
                         """
                     )
                 }){
-                    Text("New Fastxt")
+                    Text("Create New")
                 }
             }
         }
