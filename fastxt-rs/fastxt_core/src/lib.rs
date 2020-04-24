@@ -89,6 +89,15 @@ pub struct CmdInsert {
 }
 
 #[derive(Serialize, Deserialize, Debug)]
+pub struct CmdDelete {
+    pub query: String,
+    pub rowid: i64,
+
+    pub limit: u32,
+    pub offset: u32,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
 pub struct CmdSearch {
     pub query: String,
 

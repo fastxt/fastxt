@@ -46,6 +46,11 @@ pub fn create(conn: &Connection) {
     .unwrap();
 }
 
+pub fn delete(conn: &Connection, rowid: i64) {
+    conn.execute("delete from note where rowid = ?1", &[&rowid])
+        .unwrap();
+}
+
 pub fn insert(conn: &Connection, note: Note) {
     conn.execute_named(
         "

@@ -17,11 +17,13 @@
 */
 
 use crate::cmd::create;
+use crate::cmd::delete;
 use crate::cmd::insert;
 use crate::cmd::search::{search, search_count};
 use crate::cmd::select::select;
 use crate::upgrade;
 use crate::Cmd;
+use crate::CmdDelete;
 use crate::CmdInsert;
 use crate::CmdRpcClient;
 use crate::CmdRpcServer;
@@ -125,6 +127,14 @@ fn process(cmd: Cmd, text: &str) -> String {
                 do_select(&conn, &i.limit, &i.offset)
             } else {
                 r#"{"error":"cmd insert json error"}"#.to_string()
+            }
+        }
+        "delete" => {
+            if let Ok(s) = serde_json::from_str::<CmdDelete>(text) {
+                delete(&conn, s.rowid);
+                do_search(&conn, &s.query, &s.limit, &s.offset)
+            } else {
+                r#"{"error":"cmd delete json error"}"#.to_string()
             }
         }
         "client-sync" => {

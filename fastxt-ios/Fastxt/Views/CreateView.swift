@@ -86,6 +86,7 @@ struct TextView: UIViewRepresentable {
         textView.isScrollEnabled = false
         textView.isEditable = true
         textView.isUserInteractionEnabled = true
+        textView.isSelectable = true
         //textView.backgroundColor = UIColor(white: 0.0, alpha: 0.05)
 
         // Set the placeholder
