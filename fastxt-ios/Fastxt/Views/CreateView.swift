@@ -25,24 +25,27 @@ struct CreateView: View {
                 }
                 Spacer()
                 Button(action:{
-                    AppState.ft.run(json_input:"""
-                        {"action":"insert",
-                        "txt":"\(String(self.txt))",
-                        "tags":"\(self.tags)",
-                        "limit": 10,
-                        "offset": 0
-                        }
-                        """
-                    )
+                    let input = """
+                    {"action":"insert",
+                    "txt":"\(String(self.txt))",
+                    "tags":"\(self.tags)",
+                    "limit": 10,
+                    "offset": 0
+                    }
+                    """
+                    print(input)
+                    AppState.ft.run(json_input: input)
                     self.isPresented = false
-                    AppState.search(input: AppState.getQuery(), offset: 0)
+                    AppState.search(input: "", offset: 0)
                 }){
                     Text("Save")
                 }
             }
-            TextField("comma or space as tag seperator", text: $tags)
-            TextView(placeholder: "enter your txt", text: self.$txt, minHeight: self.textHeight, calculatedHeight: self.$textHeight)
-            .frame(minHeight: self.textHeight, maxHeight: self.textHeight)
+            TextField("enter tags: comma or space as tag seperator", text: $tags)
+            Text("enter txt below:").foregroundColor(.gray)
+            TextView(placeholder: "write your txt here ...", text: self.$txt, minHeight: self.textHeight, calculatedHeight: self.$textHeight)
+                .frame(minHeight: self.textHeight, maxHeight: self.textHeight)
+                
             Spacer()
         }.padding()
         
@@ -83,11 +86,11 @@ struct TextView: UIViewRepresentable {
         textView.isScrollEnabled = false
         textView.isEditable = true
         textView.isUserInteractionEnabled = true
-        textView.backgroundColor = UIColor(white: 0.0, alpha: 0.05)
+        //textView.backgroundColor = UIColor(white: 0.0, alpha: 0.05)
 
         // Set the placeholder
         textView.text = placeholder
-        textView.textColor = UIColor.lightGray
+        //textView.textColor = UIColor.lightGray
 
         return textView
     }
