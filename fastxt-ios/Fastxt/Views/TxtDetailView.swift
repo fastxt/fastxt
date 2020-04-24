@@ -26,7 +26,7 @@ struct TxtDetailView: View {
             }
             Text(note.txt)
             Spacer()
-        }
+        }.padding()
     }
 }
 

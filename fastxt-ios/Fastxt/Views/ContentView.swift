@@ -12,60 +12,56 @@ struct ContentView: View {
     @State private var searchText : String = ""
     @EnvironmentObject var env : Env
     @State private var showingSync = false
+    @State var showingCreate = false
     var body: some View {
         NavigationView {
-            VStack {
-                HStack{
-                    Text("   Fastxt")
-                    SearchBar(text: $searchText, placeholder: "type to search")
-                    Button(action:{
-                        self.showingSync.toggle()
-                    }){
-                        Text("Sync   ")
-                    }.sheet(isPresented: $showingSync){
-                     SyncView()
-                    }
-                }
-                HStack{
-                    Button(action:{
-                        let offset = AppState.decOffset()
-                        AppState.search(input: AppState.getQuery(), offset: offset)
-                    }){
-                        Text("   Prev")
-                    }//.padding()
-                    Spacer()
-                    Text(env.paginationText)
-                    Spacer()
-                    Button(action:{
-                        let offset = AppState.incOffset()
-                        AppState.search(input: AppState.getQuery(), offset: offset)
-                    }){
-                        Text("Next   ")
-                    }//.padding()
-                }
-                List (env.notes){
-                    note in
-                    NavigationLink(destination: TxtDetailView(note: note)) {
-                        TxtRowView(note: note, query: self.$searchText)
-                    }
-                }.navigationBarTitle(Text("Fastxt"))
-                Button(action:{
-                    let ft = RustFastxt()
-                    let txt = "txt"
-                    let tags = "tags"
-                    ft.run(json_input:"""
-                        {"action":"insert",
-                        "txt":"\(txt)",
-                        "tags":"\(tags)",
-                        "limit": 10,
-                        "offset": 0
+            VStack{
+                List {
+                    HStack{
+                        SearchBar(text: $searchText, placeholder: "type to search")
+                        Text("Sync").onTapGesture {
+                            self.showingSync.toggle()
+                        }.foregroundColor(.blue)
+                        .sheet(isPresented: $showingSync){
+                            SyncView()
                         }
-                        """
-                    )
-                }){
-                    Text("Create New")
+                    }
+                    HStack{
+                        Text("Prev").onTapGesture {
+                            let offset = AppState.decOffset()
+                            AppState.search(input: AppState.getQuery(), offset: offset)
+                        }.foregroundColor(.blue)
+                        Spacer()
+                        Text(env.paginationText)
+                        Spacer()
+                        Text("Next").onTapGesture {
+                            let offset = AppState.incOffset()
+                            AppState.search(input: AppState.getQuery(), offset: offset)
+                        }.foregroundColor(.blue)
+
+                    }
+                    ForEach(env.notes, id: \.self) {
+                        note in
+                        NavigationLink(destination: TxtDetailView(note: note)) {
+                            TxtRowView(note: note, query: self.$searchText)
+                        }
+                    }
+                    //.listRowInsets(EdgeInsets())
+
                 }
+                Text("Own your txt on your device.")
+            }.navigationBarTitle(Text("Fastxt"))
+            .navigationBarItems(trailing:
+                Button(action:{
+                    self.showingCreate.toggle()
+                }){
+                    Text("Create")
+                }
+            )
+            .sheet(isPresented: $showingCreate) {
+                CreateView(isPresented: self.$showingCreate)
             }
+
         }
     }
 }

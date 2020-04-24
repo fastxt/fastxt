@@ -11,6 +11,7 @@
 		3C9BD15424513ED500A90283 /* CodeScanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C9BD15324513ED400A90283 /* CodeScanner.swift */; };
 		3C9BD15624513F7100A90283 /* SyncView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C9BD15524513F7100A90283 /* SyncView.swift */; };
 		3CABE32B2443D459004BEB8F /* TxtDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3CABE32A2443D459004BEB8F /* TxtDetailView.swift */; };
+		3CB94AFE245258E900273476 /* CreateView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3CB94AFD245258E900273476 /* CreateView.swift */; };
 		3CD80BF923D7B34F007182F7 /* RustFastxt.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3CD80BF823D7B34F007182F7 /* RustFastxt.swift */; };
 		3CD80BFA23D7B34F007182F7 /* RustFastxt.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3CD80BF823D7B34F007182F7 /* RustFastxt.swift */; };
 		3CD80BFB23D7B34F007182F7 /* RustFastxt.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3CD80BF823D7B34F007182F7 /* RustFastxt.swift */; };
@@ -49,6 +50,7 @@
 		3C9BD15324513ED400A90283 /* CodeScanner.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = CodeScanner.swift; sourceTree = "<group>"; };
 		3C9BD15524513F7100A90283 /* SyncView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncView.swift; sourceTree = "<group>"; };
 		3CABE32A2443D459004BEB8F /* TxtDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TxtDetailView.swift; sourceTree = "<group>"; };
+		3CB94AFD245258E900273476 /* CreateView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CreateView.swift; sourceTree = "<group>"; };
 		3CD80BF723D7B308007182F7 /* fastxt-core.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = "fastxt-core.h"; path = "../fastxt-rs/fastxt_core/src/fastxt-core.h"; sourceTree = "<group>"; };
 		3CD80BF823D7B34F007182F7 /* RustFastxt.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RustFastxt.swift; sourceTree = "<group>"; };
 		3CD80BFC23D7B3F8007182F7 /* Fastxt-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "Fastxt-Bridging-Header.h"; sourceTree = "<group>"; };
@@ -102,6 +104,7 @@
 			isa = PBXGroup;
 			children = (
 				3CED13F0238372810097A12B /* ContentView.swift */,
+				3CB94AFD245258E900273476 /* CreateView.swift */,
 				3CEF504324318E0C00D77C63 /* TxtRowView.swift */,
 				3CABE32A2443D459004BEB8F /* TxtDetailView.swift */,
 				3C9BD15524513F7100A90283 /* SyncView.swift */,
@@ -327,6 +330,7 @@
 				3CED13ED238372810097A12B /* AppDelegate.swift in Sources */,
 				3C9BD15424513ED500A90283 /* CodeScanner.swift in Sources */,
 				3CEF504424318E0C00D77C63 /* TxtRowView.swift in Sources */,
+				3CB94AFE245258E900273476 /* CreateView.swift in Sources */,
 				3CED13EF238372810097A12B /* SceneDelegate.swift in Sources */,
 				3C7200B3243AAF93009B3D7D /* AppState.swift in Sources */,
 				3CED13F1238372810097A12B /* ContentView.swift in Sources */,

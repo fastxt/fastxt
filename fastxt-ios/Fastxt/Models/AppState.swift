@@ -93,7 +93,7 @@ class AppState {
     }
 }
 
-struct Note: Codable, Identifiable {
+struct Note: Codable, Identifiable, Hashable {
     var id: Int64
     var uuid4: String
     var txt: String
