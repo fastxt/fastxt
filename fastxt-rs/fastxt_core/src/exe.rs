@@ -46,10 +46,10 @@ pub fn get_sqlite_connection() -> Connection {
 
 fn sqlite3_db_location() -> String {
     if cfg!(target_os = "android") {
-        fs::create_dir_all("/sdcard/LocalNative").unwrap();
-        return "/sdcard/LocalNative/fastxt.sqlite3".to_string();
+        fs::create_dir_all("/sdcard/Fastxt").unwrap();
+        return "/sdcard/Fastxt/fastxt.sqlite3".to_string();
     }
-    let mut dir_name = "LocalNative";
+    let mut dir_name = "Fastxt";
     if cfg!(target_os = "ios") {
         dir_name = "Documents";
     }
