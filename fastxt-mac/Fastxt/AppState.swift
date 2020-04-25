@@ -100,4 +100,9 @@ struct Response: Decodable {
 class Env: ObservableObject {
     @Published var notes:[Note] = []
     @Published var paginationText:String = "/"
+    @Published var searchText = "" {
+        didSet {
+            AppState.search(input: searchText, offset: 0)
+        }
+    }
 }

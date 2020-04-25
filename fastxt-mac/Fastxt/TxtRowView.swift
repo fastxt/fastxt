@@ -39,8 +39,6 @@ struct TxtRowView: View {
                     tag in
                     Text(tag).onTapGesture {
                         self.query = String(tag)
-                        AppState.clearOffset()
-                        AppState.search(input: String(tag), offset: 0)
                     }.foregroundColor(.blue)
                 }
             }
