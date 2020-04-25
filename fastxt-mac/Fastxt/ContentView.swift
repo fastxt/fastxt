@@ -60,8 +60,7 @@ struct ContentView: View {
                     //.listRowInsets(EdgeInsets())
                 }
                 Text("Own your txt on your device.")
-            }.frame(minWidth: 225, maxWidth: 300)
-
+            }.frame(minWidth: 300, maxWidth: 300)
         }.frame(minWidth: 700, minHeight: 300)
     }
 }

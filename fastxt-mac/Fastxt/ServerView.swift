@@ -7,24 +7,59 @@
 //
 
 import SwiftUI
+import CoreImage.CIFilterBuiltins
 
 struct ServerView: View {
-    var body: some View {
-        VStack{
+    @EnvironmentObject var env : Env
+    @State private var isServerRunning = false
+    var body: some View {  
+        VStack(alignment: .leading){
+            Text("As Server")
             HStack{
-                Button(action:{
-                    
-                }){
-                    Text("Start Server")
+                if isServerRunning{
+                    Button(action:{
+                        DispatchQueue.background(background: {
+                            AppState.ft.run(json_input: """
+                                {"action":"client-stop-server", "addr":"\(self.env.addr)"}
+                            """)
+                        }, completion:{
+                            
+                            print("done client stop server")
+                        })
+
+                    }){
+                        Text("Stop Server")
+                    }
+
+                }else{
+                    Button(action:{
+                        self.env.addr = AppState.ft.run(json_input: """
+                            {"action":"server-addr"}
+                        """)
+                        self.isServerRunning = true
+                        DispatchQueue.background(background: {
+                            AppState.ft.run(json_input: """
+                                {"action":"server", "addr":"\(self.env.addr)"}
+                            """)
+                        }, completion:{
+                            self.isServerRunning = false
+                            print("done server")
+                        })
+                    }){
+                        Text("Start Server")
+                    }
                 }
-                Button(action:{
-                    
-                }){
-                    Text("Stop Server")
-                }
+
+
                 Spacer()
             }
-            Text("Server address")
+            
+            if isServerRunning{
+                Text("Server address:port")
+                Text(env.addr)
+                QRCodeView().environmentObject(AppState.env)
+            }
+            Spacer()
         }
     }
 }
@@ -34,3 +69,4 @@ struct ServerView_Previews: PreviewProvider {
         ServerView()
     }
 }
+

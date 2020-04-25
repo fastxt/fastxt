@@ -23,12 +23,13 @@ uuid = { version = "0.7.4", features = ["v4"] }
 tokio = { version = "0.2", features = ["full"] }
 tokio-serde = { version = "0.6", features = ["bincode"] }
 futures = "0.3"
+get_if_addrs = "0.5.3"
 
 [lib]
 name = "fastxt_core"
 
 # mac and ios
-crate-type = ["staticlib"]
+# crate-type = ["staticlib"]
 
 # android only need this
 # crate-type = ["cdylib"]

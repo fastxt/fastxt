@@ -25,6 +25,7 @@
 		3CABE3342443DDAA004BEB8F /* TxtDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3CABE3332443DDAA004BEB8F /* TxtDetailView.swift */; };
 		3CF13A3124547CCD0079AB15 /* SyncView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3CF13A3024547CCD0079AB15 /* SyncView.swift */; };
 		3CF13A332454806C0079AB15 /* ClientView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3CF13A322454806C0079AB15 /* ClientView.swift */; };
+		3CF13A3524550A0D0079AB15 /* QRCodeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3CF13A3424550A0D0079AB15 /* QRCodeView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -72,6 +73,7 @@
 		3CABE3332443DDAA004BEB8F /* TxtDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TxtDetailView.swift; sourceTree = "<group>"; };
 		3CF13A3024547CCD0079AB15 /* SyncView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncView.swift; sourceTree = "<group>"; };
 		3CF13A322454806C0079AB15 /* ClientView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClientView.swift; sourceTree = "<group>"; };
+		3CF13A3424550A0D0079AB15 /* QRCodeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QRCodeView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -134,6 +136,7 @@
 				3C246BA22453CCB400F0B708 /* CreateView.swift */,
 				3CF13A3024547CCD0079AB15 /* SyncView.swift */,
 				3C246BA62453E7A000F0B708 /* ServerView.swift */,
+				3CF13A3424550A0D0079AB15 /* QRCodeView.swift */,
 				3CF13A322454806C0079AB15 /* ClientView.swift */,
 				3CABE3312443DD7A004BEB8F /* TxtRowView.swift */,
 				3CABE3332443DDAA004BEB8F /* TxtDetailView.swift */,
@@ -313,6 +316,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				3CF13A3524550A0D0079AB15 /* QRCodeView.swift in Sources */,
 				3C246BA72453E7A000F0B708 /* ServerView.swift in Sources */,
 				3CABE3342443DDAA004BEB8F /* TxtDetailView.swift in Sources */,
 				3C32887B239B3F6600B57D59 /* ContentView.swift in Sources */,

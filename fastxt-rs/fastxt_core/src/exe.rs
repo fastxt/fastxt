@@ -86,6 +86,10 @@ fn process(cmd: Cmd, text: &str) -> String {
     }
 
     match cmd.action.as_ref() {
+        "server-addr" =>{
+            // format!(r#"{{"addr": "{}"}}"#, crate::rpc::server::get_server_addr())
+            crate::rpc::server::get_server_addr()
+        }
         "server" => {
             eprintln!(r#"{{"server": "starting"}}"#);
             if let Ok(s) = serde_json::from_str::<CmdRpcServer>(text) {

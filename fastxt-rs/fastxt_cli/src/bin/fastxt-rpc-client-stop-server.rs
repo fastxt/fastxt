@@ -28,7 +28,7 @@ fn main() {
                 .takes_value(true),
         )
         .get_matches();
-    let addr = matches.value_of("addr").unwrap_or("127.0.0.1:3456");
+    let addr = matches.value_of("addr").unwrap_or("0.0.0.0:3456");
     eprintln!("addr: {}", addr);
     run(&(r#"{"action":"client-stop-server", "addr": ""#.to_string() + addr + r#""}"#));
 }

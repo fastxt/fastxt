@@ -18,6 +18,9 @@
 use clap::{App, Arg};
 use fastxt_core::exe::run;
 fn main() {
+    let addr = run(&(r#"{"action":"server-addr"}"#));
+    eprintln!("server addr: {}", addr);
+
     let matches = App::new("fastxt-rpc-server")
         .arg(
             Arg::with_name("addr")
@@ -26,7 +29,7 @@ fn main() {
                 .takes_value(true),
         )
         .get_matches();
-    let addr = matches.value_of("addr").unwrap_or("127.0.0.1:3456");
+    let addr = matches.value_of("addr").unwrap_or("0.0.0.0:3456");
     eprintln!("addr: {}", addr);
     run(&(r#"{"action":"server", "addr": ""#.to_string() + addr + r#""}"#));
 }

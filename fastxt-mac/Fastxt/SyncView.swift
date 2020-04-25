@@ -10,9 +10,9 @@ import SwiftUI
 
 struct SyncView: View {
     var body: some View {
-        VStack{
-            ServerView()
-            ClientView()
+        HStack{
+            ServerView().environmentObject(AppState.env).padding()
+            ClientView().padding()
         }
     }
 }

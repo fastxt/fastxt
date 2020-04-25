@@ -9,17 +9,23 @@
 import SwiftUI
 
 struct ClientView: View {
+    @State private var addr:String = ""
     var body: some View {
-        VStack{
-            HStack{
-                Button(action:{
-                    
-                }){
-                    Text("Start Client and Sync")
-                }
-                Spacer()
+        VStack(alignment: .leading){
+            Text("As Client")
+            Text("Input other Fastxt server's address:port")
+            TextField("xxx.xxx.xxx.xxx:3456", text: $addr)
+            Button(action:{
+                DispatchQueue.background(background: {
+                    AppState.ft.run(json_input: """
+                        {"action":"client-sync", "addr":"\(self.addr)"}
+                    """)
+                }, completion:{
+                    print("done client sync")
+                })
+            }){
+                Text("Sync")
             }
-//            TextField("address:port")
             Spacer()
         }
     }
