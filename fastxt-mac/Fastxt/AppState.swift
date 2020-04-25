@@ -19,6 +19,7 @@ class AppState {
         
 //        let p: Int64 = Int64(ceil((0.0 + Double(end)) / Double(LIMIT)))
 //        let z: Int64 = Int64(ceil((Double(count) + 0.0) / Double(LIMIT)))
+        env.paginationText = "\(start)-\(end)/\(count)"
         return "\(start)-\(end)/\(count)"
     }
     static func getQuery() -> String{
@@ -72,6 +73,7 @@ class AppState {
         } catch {
             print(error.localizedDescription)
         }
+        makePaginationText()
     }
 }
 

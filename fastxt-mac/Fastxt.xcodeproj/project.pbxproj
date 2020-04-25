@@ -7,6 +7,8 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		3C246BA32453CCB400F0B708 /* CreateView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C246BA22453CCB400F0B708 /* CreateView.swift */; };
+		3C246BA52453D50900F0B708 /* MacEditorTextView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C246BA42453D50900F0B708 /* MacEditorTextView.swift */; };
 		3C328879239B3F6600B57D59 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C328878239B3F6600B57D59 /* AppDelegate.swift */; };
 		3C32887B239B3F6600B57D59 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C32887A239B3F6600B57D59 /* ContentView.swift */; };
 		3C32887D239B3F6800B57D59 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 3C32887C239B3F6800B57D59 /* Assets.xcassets */; };
@@ -40,6 +42,8 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		3C246BA22453CCB400F0B708 /* CreateView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CreateView.swift; sourceTree = "<group>"; };
+		3C246BA42453D50900F0B708 /* MacEditorTextView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacEditorTextView.swift; sourceTree = "<group>"; };
 		3C328875239B3F6600B57D59 /* Fastxt.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Fastxt.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		3C328878239B3F6600B57D59 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		3C32887A239B3F6600B57D59 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
@@ -121,8 +125,10 @@
 				3CABE32F2443DCBD004BEB8F /* AppState.swift */,
 				3C328878239B3F6600B57D59 /* AppDelegate.swift */,
 				3C32887A239B3F6600B57D59 /* ContentView.swift */,
+				3C246BA22453CCB400F0B708 /* CreateView.swift */,
 				3CABE3312443DD7A004BEB8F /* TxtRowView.swift */,
 				3CABE3332443DDAA004BEB8F /* TxtDetailView.swift */,
+				3C246BA42453D50900F0B708 /* MacEditorTextView.swift */,
 				3C32887C239B3F6800B57D59 /* Assets.xcassets */,
 				3C328881239B3F6800B57D59 /* Main.storyboard */,
 				3C328884239B3F6800B57D59 /* Info.plist */,
@@ -300,8 +306,10 @@
 			files = (
 				3CABE3342443DDAA004BEB8F /* TxtDetailView.swift in Sources */,
 				3C32887B239B3F6600B57D59 /* ContentView.swift in Sources */,
+				3C246BA52453D50900F0B708 /* MacEditorTextView.swift in Sources */,
 				3CABE3322443DD7A004BEB8F /* TxtRowView.swift in Sources */,
 				3C328879239B3F6600B57D59 /* AppDelegate.swift in Sources */,
+				3C246BA32453CCB400F0B708 /* CreateView.swift in Sources */,
 				3C3D7D4C23FE326E003BBF7C /* RustFastxt.swift in Sources */,
 				3CABE3302443DCBD004BEB8F /* AppState.swift in Sources */,
 			);

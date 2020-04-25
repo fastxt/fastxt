@@ -26,6 +26,13 @@ struct ContentView: View {
                             Text("Sync")
 //                            SyncView()
                         }
+                        Button(action:{
+                            self.showingCreate.toggle()
+                        }){
+                            Text("Create")
+                        }.sheet(isPresented: $showingCreate) {
+                            CreateView(isPresented: self.$showingCreate)
+                        }
                     }
                     HStack{
                         Text("Prev").onTapGesture {
@@ -51,19 +58,9 @@ struct ContentView: View {
 
                 }
                 Text("Own your txt on your device.")
-            }//.navigationBarTitle(Text("Fastxt"))
-//            .navigationBarItems(trailing:
-//                Button(action:{
-//                    self.showingCreate.toggle()
-//                }){
-//                    Text("Create")
-//                }
-//            )
-//            .sheet(isPresented: $showingCreate) {
-////                CreateView(isPresented: self.$showingCreate)
-//            }
+            }.frame(minWidth: 225, maxWidth: 300)
 
-        }
+        }.frame(minWidth: 700, minHeight: 300)
     }
 }
 

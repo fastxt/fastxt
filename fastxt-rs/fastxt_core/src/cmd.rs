@@ -47,6 +47,7 @@ pub fn create(conn: &Connection) {
 }
 
 pub fn delete(conn: &Connection, rowid: i64) {
+    eprintln!("delete rowid {}", rowid);
     conn.execute("delete from note where rowid = ?1", &[&rowid])
         .unwrap();
 }

@@ -27,7 +27,7 @@ futures = "0.3"
 [lib]
 name = "fastxt_core"
 
-# ios only
+# mac and ios
 crate-type = ["staticlib"]
 
 # android only need this
