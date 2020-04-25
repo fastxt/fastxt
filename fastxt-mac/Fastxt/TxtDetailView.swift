@@ -11,7 +11,22 @@ import SwiftUI
 struct TxtDetailView: View {
     var note: Note
     var body: some View {
-        Text("\(note.id) \(note.txt) \(note.tags) \(note.created_at)")
+        VStack(alignment: .leading){
+            HStack{
+                Spacer()
+                ForEach(note.tags.split(separator: ","), id:\.self){
+                    tag in
+                    Text(tag)
+                }
+            }
+            HStack{
+                Text(note.created_at.prefix(19))
+                Spacer()
+                Text("\(String(note.uuid4.prefix(5))).. \(String(note.id))")
+            }
+            Text(note.txt)
+            Spacer()
+        }.padding()
     }
 }
 

@@ -11,34 +11,58 @@ import SwiftUI
 struct ContentView: View {
     @State private var searchText : String = ""
     @EnvironmentObject var env : Env
-    
+    @State private var showingSync = false
+    @State var showingCreate = false
     var body: some View {
         NavigationView {
-            VStack {
-                //SearchBar(text: $searchText, placeholder: "type to search")
-                List (env.notes){
-                    note in
-                    NavigationLink(destination: TxtDetailView(note: note)) {
-                        TxtRowView(note: note)
-                    }
-                }//.navigationBarTitle(Text("Fastxt"))
-                Button(action:{
-                    let ft = RustFastxt()
-                    let txt = "txt"
-                    let tags = "tags"
-                    ft.run(json_input:"""
-                        {"action":"insert",
-                        "txt":"\(txt)",
-                        "tags":"\(tags)",
-                        "limit": 10,
-                        "offset": 0
+            VStack{
+                List {
+                    HStack{
+//                        SearchBar(text: $searchText, placeholder: "type to search")
+                        Text("Sync").onTapGesture {
+                            self.showingSync.toggle()
+                        }.foregroundColor(.blue)
+                        .sheet(isPresented: $showingSync){
+                            Text("Sync")
+//                            SyncView()
                         }
-                        """
-                    )
-                }){
-                    Text("New Fastxt")
+                    }
+                    HStack{
+                        Text("Prev").onTapGesture {
+                            let offset = AppState.decOffset()
+                            AppState.search(input: AppState.getQuery(), offset: offset)
+                        }.foregroundColor(.blue)
+                        Spacer()
+                        Text(env.paginationText)
+                        Spacer()
+                        Text("Next").onTapGesture {
+                            let offset = AppState.incOffset()
+                            AppState.search(input: AppState.getQuery(), offset: offset)
+                        }.foregroundColor(.blue)
+
+                    }
+                    ForEach(env.notes, id: \.self) {
+                        note in
+                        NavigationLink(destination: TxtDetailView(note: note)) {
+                            TxtRowView(note: note, query: self.$searchText)
+                        }
+                    }
+                    //.listRowInsets(EdgeInsets())
+
                 }
-            }
+                Text("Own your txt on your device.")
+            }//.navigationBarTitle(Text("Fastxt"))
+//            .navigationBarItems(trailing:
+//                Button(action:{
+//                    self.showingCreate.toggle()
+//                }){
+//                    Text("Create")
+//                }
+//            )
+//            .sheet(isPresented: $showingCreate) {
+////                CreateView(isPresented: self.$showingCreate)
+//            }
+
         }
     }
 }
@@ -48,14 +72,12 @@ struct ContentView_Previews: PreviewProvider {
         ContentView()
     }
 }
-//
-//struct SearchBar: NSViewRepresentable {
-//    typealias NSViewType = type
-//
+
+//struct SearchBar: UIViewRepresentable {
 //    @Binding var text: String
 //    var placeholder: String
 //
-//    class Coordinator: NSObject, NSSearchBarDelegate {
+//    class Coordinator: NSObject, UISearchBarDelegate {
 //
 //        @Binding var text: String
 //
@@ -63,7 +85,7 @@ struct ContentView_Previews: PreviewProvider {
 //            _text = text
 //        }
 //
-//        func searchBar(_ searchBar: NSSearchBar, textDidChange searchText: String) {
+//        func searchBar(_ searchBar: UISearchBar, textDidChange searchText: String) {
 //            AppState.clearOffset()
 //            AppState.search(input: searchText, offset: 0)
 //        }
@@ -73,8 +95,8 @@ struct ContentView_Previews: PreviewProvider {
 //        return Coordinator(text: $text)
 //    }
 //
-//    func makeUIView(context: NSViewRepresentableContext<SearchBar>) -> NSSearchBar {
-//        let searchBar = NSSearchBar(frame: .zero)
+//    func makeUIView(context: UIViewRepresentableContext<SearchBar>) -> UISearchBar {
+//        let searchBar = UISearchBar(frame: .zero)
 //        searchBar.delegate = context.coordinator
 //        searchBar.placeholder = placeholder
 //        searchBar.searchBarStyle = .minimal
@@ -82,8 +104,7 @@ struct ContentView_Previews: PreviewProvider {
 //        return searchBar
 //    }
 //
-//    func updateUIView(_ uiView: NSSearchBar, context: NSViewRepresentableContext<SearchBar>) {
+//    func updateUIView(_ uiView: UISearchBar, context: UIViewRepresentableContext<SearchBar>) {
 //        uiView.text = text
 //    }
 //}
-//
