@@ -18,7 +18,16 @@ struct ContentView: View {
         NavigationView {
             VStack{
                 HStack{
-                    Text("   Fastxt").foregroundColor(.gray)
+                    Text("   Fastxt")
+                    Spacer()
+                    NavigationLink(destination: SyncView()) {
+                        Text("Sync")
+                    }
+                    NavigationLink(destination: CreateView(isPresented: self.$showingCreate)) {
+                        Text("Create")
+                    }
+                }
+                HStack{
                     TextField("type to search",text: $env.searchText)
                     Button(action:{
                         self.env.searchText = ""
@@ -27,23 +36,7 @@ struct ContentView: View {
                     }
                 }
                 List {
-                    HStack{
-                        Button(action:{
-                            self.showingServer.toggle()
-                        }){
-                            Text("Start Server")
-                        }.sheet(isPresented: $showingServer) {
-                            ServerView(isPresented: self.$showingServer)
-                        }
-                        Spacer()
-                        Button(action:{
-                            self.showingCreate.toggle()
-                        }){
-                            Text("Create")
-                        }.sheet(isPresented: $showingCreate) {
-                            CreateView(isPresented: self.$showingCreate)
-                        }
-                    }
+
                     HStack{
                         Text("Prev").onTapGesture {
                             let offset = AppState.decOffset()

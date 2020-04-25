@@ -23,6 +23,8 @@
 		3CABE3302443DCBD004BEB8F /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3CABE32F2443DCBD004BEB8F /* AppState.swift */; };
 		3CABE3322443DD7A004BEB8F /* TxtRowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3CABE3312443DD7A004BEB8F /* TxtRowView.swift */; };
 		3CABE3342443DDAA004BEB8F /* TxtDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3CABE3332443DDAA004BEB8F /* TxtDetailView.swift */; };
+		3CF13A3124547CCD0079AB15 /* SyncView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3CF13A3024547CCD0079AB15 /* SyncView.swift */; };
+		3CF13A332454806C0079AB15 /* ClientView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3CF13A322454806C0079AB15 /* ClientView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -68,6 +70,8 @@
 		3CABE32F2443DCBD004BEB8F /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppState.swift; sourceTree = "<group>"; };
 		3CABE3312443DD7A004BEB8F /* TxtRowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TxtRowView.swift; sourceTree = "<group>"; };
 		3CABE3332443DDAA004BEB8F /* TxtDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TxtDetailView.swift; sourceTree = "<group>"; };
+		3CF13A3024547CCD0079AB15 /* SyncView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncView.swift; sourceTree = "<group>"; };
+		3CF13A322454806C0079AB15 /* ClientView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClientView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -128,7 +132,9 @@
 				3C328878239B3F6600B57D59 /* AppDelegate.swift */,
 				3C32887A239B3F6600B57D59 /* ContentView.swift */,
 				3C246BA22453CCB400F0B708 /* CreateView.swift */,
+				3CF13A3024547CCD0079AB15 /* SyncView.swift */,
 				3C246BA62453E7A000F0B708 /* ServerView.swift */,
+				3CF13A322454806C0079AB15 /* ClientView.swift */,
 				3CABE3312443DD7A004BEB8F /* TxtRowView.swift */,
 				3CABE3332443DDAA004BEB8F /* TxtDetailView.swift */,
 				3C246BA42453D50900F0B708 /* MacEditorTextView.swift */,
@@ -311,7 +317,9 @@
 				3CABE3342443DDAA004BEB8F /* TxtDetailView.swift in Sources */,
 				3C32887B239B3F6600B57D59 /* ContentView.swift in Sources */,
 				3C246BA52453D50900F0B708 /* MacEditorTextView.swift in Sources */,
+				3CF13A332454806C0079AB15 /* ClientView.swift in Sources */,
 				3CABE3322443DD7A004BEB8F /* TxtRowView.swift in Sources */,
+				3CF13A3124547CCD0079AB15 /* SyncView.swift in Sources */,
 				3C328879239B3F6600B57D59 /* AppDelegate.swift in Sources */,
 				3C246BA32453CCB400F0B708 /* CreateView.swift in Sources */,
 				3C3D7D4C23FE326E003BBF7C /* RustFastxt.swift in Sources */,

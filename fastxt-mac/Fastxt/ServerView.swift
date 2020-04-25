@@ -9,22 +9,28 @@
 import SwiftUI
 
 struct ServerView: View {
-    @Binding var isPresented: Bool
     var body: some View {
         VStack{
             HStack{
                 Button(action:{
-                    self.isPresented = false
+                    
                 }){
-                    Text("Cancel")
+                    Text("Start Server")
                 }
+                Button(action:{
+                    
+                }){
+                    Text("Stop Server")
+                }
+                Spacer()
             }
+            Text("Server address")
         }
     }
 }
 
 struct ServerView_Previews: PreviewProvider {
     static var previews: some View {
-        ServerView(isPresented: .constant(true))
+        ServerView()
     }
 }

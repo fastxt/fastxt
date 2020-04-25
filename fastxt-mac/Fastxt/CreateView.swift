@@ -21,13 +21,7 @@ struct CreateView: View {
                     self.tags = ""
                     self.txt = ""
                 }){
-                    Text("Reset")
-                }
-                Spacer()
-                Button(action:{
-                    self.isPresented = false
-                }){
-                    Text("Cancel")
+                    Text("Clear")
                 }
                 Button(action:{
                     let input = """
@@ -45,6 +39,7 @@ struct CreateView: View {
                 }){
                     Text("Save")
                 }
+                Spacer()
             }
             TextField("enter tags: comma or space as tag seperator", text: $tags)
             Text("enter txt below:").foregroundColor(.gray)
