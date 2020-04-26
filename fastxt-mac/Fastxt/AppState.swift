@@ -51,7 +51,9 @@ class AppState {
     static func getOffset() -> Int64 {
         return offset
     }
-    
+    static func setOffset(offset: Int64) {
+        self.offset = offset
+    }
     static let env = Env()
     static func getEnv()->Env{
         return env
@@ -59,6 +61,7 @@ class AppState {
     
     static let ft = RustFastxt()
     static func search(input: String, offset: Int64) {
+        AppState.setOffset(offset: offset)
         AppState.setQuery(query: input)
         let txt = ft.run(json_input:"""
             {"action":"search","query":"\(input)","limit":10,"offset":\(offset)}
@@ -103,7 +106,7 @@ class Env: ObservableObject {
     @Published var paginationText:String = "/"
     @Published var searchText = "" {
         didSet {
-            AppState.search(input: searchText, offset: AppState.getOffset())
+            AppState.search(input: searchText, offset: 0)
         }
     }
 }
