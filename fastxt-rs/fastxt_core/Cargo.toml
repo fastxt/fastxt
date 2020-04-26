@@ -29,7 +29,7 @@ get_if_addrs = "0.5.3"
 name = "fastxt_core"
 
 # mac and ios
-# crate-type = ["staticlib"]
+crate-type = ["staticlib"]
 
 # android only need this
 # crate-type = ["cdylib"]

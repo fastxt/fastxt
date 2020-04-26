@@ -43,7 +43,7 @@ struct TxtRowView: View {
                 }
             }
             HStack{
-                Text(note.created_at.prefix(19))
+                Text("\(String(note.created_at.prefix(16))) utc")
                 Spacer()
                 Text("\(String(note.uuid4.prefix(5))).. \(String(note.id))")
             }

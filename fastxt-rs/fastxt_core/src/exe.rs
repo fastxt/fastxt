@@ -118,7 +118,7 @@ fn process(cmd: Cmd, text: &str) -> String {
         }
         "insert" => {
             if let Ok(i) = serde_json::from_str::<CmdInsert>(text) {
-                let created_at = Utc::now().format("%Y-%m-%d %H:%M:%S:%f UTC").to_string();
+                let created_at = Utc::now().format("%Y-%m-%d %H:%M:%S%.3f UTC").to_string();
                 let note = Note {
                     rowid: 0i64,
                     uuid4: Uuid::new_v4().to_string(),

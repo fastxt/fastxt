@@ -36,7 +36,8 @@ pub fn create(conn: &Connection) {
          tags           TEXT NOT NULL,
          created_at     TEXT NOT NULL
          );
-
+         CREATE INDEX IF NOT EXISTS idx_created_at
+         ON note (created_at);
          CREATE TABLE IF NOT EXISTS meta (
          meta_key        TEXT PRIMARY KEY,
          meta_value      TEXT NOT NULL
