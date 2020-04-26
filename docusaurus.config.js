@@ -1,16 +1,16 @@
 module.exports = {
-  title: 'My Site',
-  tagline: 'The tagline of my site',
-  url: 'https://your-docusaurus-test-site.com',
+  title: 'Fastxt',
+  tagline: 'Own your txt on your device',
+  url: 'https://fastxt.app',
   baseUrl: '/',
   favicon: 'img/favicon.ico',
-  organizationName: 'facebook', // Usually your GitHub org/user name.
-  projectName: 'docusaurus', // Usually your repo name.
+  organizationName: 'fastxt', // Usually your GitHub org/user name.
+  projectName: 'fastxt', // Usually your repo name.
   themeConfig: {
     navbar: {
-      title: 'My Site',
+      title: 'Fastxt',
       logo: {
-        alt: 'My Site Logo',
+        alt: 'Fastxt',
         src: 'img/logo.svg',
       },
       links: [
@@ -22,8 +22,8 @@ module.exports = {
         },
         {to: 'blog', label: 'Blog', position: 'left'},
         {
-          href: 'https://github.com/facebook/docusaurus',
-          label: 'GitHub',
+          href: 'https://gitlab.com/fastxt/fastxt',
+          label: 'GitLab',
           position: 'right',
         },
       ],
@@ -75,7 +75,7 @@ module.exports = {
           ],
         },
       ],
-      copyright: `Copyright © ${new Date().getFullYear()} My Project, Inc. Built with Docusaurus.`,
+      copyright: `Copyright © ${new Date().getFullYear()} Fastxt. Built with Docusaurus.`,
     },
   },
   presets: [
