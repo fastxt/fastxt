@@ -68,7 +68,7 @@ class AppState {
             action: "search",
             query: input,
             limit: 10,
-            offset: 0
+            offset: offset
         )
         do {
             let data = try encoder.encode(cmd)
@@ -90,6 +90,7 @@ class AppState {
         }
         
     }
+    
     static func insert(txt:String, tags:String){
         let encoder = JSONEncoder()
         let cmd = CmdInsert(
@@ -105,6 +106,25 @@ class AppState {
             print(input)
             AppState.ft.run(json_input: input)
             AppState.search(input: "", offset: 0)
+        } catch {
+            print(error.localizedDescription)
+        }
+    }
+    
+    static func delete(rowid: Int64){
+        let encoder = JSONEncoder()
+        let cmd = CmdDelete(
+            action: "delete",
+            query: AppState.getQuery(),
+            rowid: rowid,
+            limit: 10,
+            offset: AppState.getOffset()
+        )
+        do {
+            let data = try encoder.encode(cmd)
+            let input = String(data: data, encoding: .utf8)!
+            print(input)
+            AppState.ft.run(json_input: input)
         } catch {
             print(error.localizedDescription)
         }
@@ -137,6 +157,14 @@ struct CmdInsert: Codable {
 struct CmdSearch: Codable {
     var action: String
     var query: String
+    var limit: Int64
+    var offset: Int64
+}
+
+struct CmdDelete: Codable {
+    var action: String
+    var query: String
+    var rowid: Int64
     var limit: Int64
     var offset: Int64
 }

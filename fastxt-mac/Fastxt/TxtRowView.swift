@@ -25,10 +25,7 @@ struct TxtRowView: View {
                         title: Text("Do you really want to delete this item \(String(note.uuid4.prefix(5))).. \(String(note.id))?"),
                         message: Text("There is no undo"),
                         primaryButton: .destructive(Text("Delete")){
-                            AppState.ft.run(json_input:"""
-                                {"action":"delete","rowid":\(self.note.id),"query":"\(AppState.getQuery())","limit":10,"offset":\(AppState.getOffset())}
-                                """
-                            )
+                            AppState.delete(rowid: self.note.id)
                             AppState.search(input: AppState.getQuery(), offset: AppState.getOffset())
                         },
                         secondaryButton: .cancel()
