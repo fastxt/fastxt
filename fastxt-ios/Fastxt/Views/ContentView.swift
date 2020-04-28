@@ -9,7 +9,6 @@
 import SwiftUI
 
 struct ContentView: View {
-    @State private var searchText : String = ""
     @EnvironmentObject var env : Env
     @State private var showingSync = false
     @State var showingCreate = false
@@ -18,7 +17,10 @@ struct ContentView: View {
             VStack{
                 List {
                     HStack{
-                        SearchBar(text: $searchText, placeholder: "type to search")
+                        Text("X").onTapGesture {
+                            self.env.searchText = ""
+                        }.foregroundColor(.blue)
+                        TextField("type to search",text: $env.searchText)
                         Text("Sync").onTapGesture {
                             self.showingSync.toggle()
                         }.foregroundColor(.blue)
@@ -43,7 +45,7 @@ struct ContentView: View {
                     ForEach(env.notes, id: \.self) {
                         note in
                         NavigationLink(destination: TxtDetailView(note: note)) {
-                            TxtRowView(note: note, query: self.$searchText)
+                            TxtRowView(note: note, query: self.$env.searchText)
                         }
                     }
                     //.listRowInsets(EdgeInsets())

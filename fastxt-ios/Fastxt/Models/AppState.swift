@@ -67,7 +67,9 @@ class AppState {
     static func getOffset() -> Int64 {
         return offset
     }
-    
+    static func setOffset(offset: Int64) {
+        self.offset = offset
+    }
     static let env = Env()
     static func getEnv()->Env{
         return env
@@ -75,21 +77,73 @@ class AppState {
     
     static let ft = RustFastxt()
     static func search(input: String, offset: Int64) {
+        AppState.setOffset(offset: offset)
         AppState.setQuery(query: input)
-        let txt = ft.run(json_input:"""
-            {"action":"search","query":"\(input)","limit":10,"offset":\(offset)}
-            """
+        let encoder = JSONEncoder()
+        let cmd = CmdSearch(
+            action: "search",
+            query: input,
+            limit: 10,
+            offset: offset
         )
-        let data = txt.data(using: .utf8)!
-        let decoder = JSONDecoder()
         do {
-            let resp = try decoder.decode(Response.self, from: data)
-            AppState.setCount(count: resp.count)
-            AppState.env.notes = resp.notes
+            let data = try encoder.encode(cmd)
+            let input = String(data: data, encoding: .utf8)!
+            print(input)
+            let txt = AppState.ft.run(json_input: input)
+            let data1 = txt.data(using: .utf8)!
+            let decoder = JSONDecoder()
+            do {
+                let resp = try decoder.decode(Response.self, from: data1)
+                AppState.setCount(count: resp.count)
+                AppState.env.notes = resp.notes
+            } catch {
+                print(error.localizedDescription)
+            }
+            makePaginationText()
         } catch {
             print(error.localizedDescription)
         }
-        makePaginationText()
+        
+    }
+    
+    static func insert(txt:String, tags:String){
+        let encoder = JSONEncoder()
+        let cmd = CmdInsert(
+            action: "insert",
+            txt: txt,
+            tags: tags,
+            limit: 10,
+            offset: 0
+        )
+        do {
+            let data = try encoder.encode(cmd)
+            let input = String(data: data, encoding: .utf8)!
+            print(input)
+            AppState.ft.run(json_input: input)
+            AppState.search(input: "", offset: 0)
+        } catch {
+            print(error.localizedDescription)
+        }
+    }
+    
+    static func delete(rowid: Int64){
+        let encoder = JSONEncoder()
+        let cmd = CmdDelete(
+            action: "delete",
+            query: AppState.getQuery(),
+            rowid: rowid,
+            limit: 10,
+            offset: AppState.getOffset()
+        )
+        do {
+            let data = try encoder.encode(cmd)
+            let input = String(data: data, encoding: .utf8)!
+            print(input)
+            AppState.ft.run(json_input: input)
+        } catch {
+            print(error.localizedDescription)
+        }
     }
 }
 
@@ -108,12 +162,56 @@ struct Note: Codable, Identifiable, Hashable {
     }
 }
 
+struct CmdInsert: Codable {
+    var action: String
+    var txt: String
+    var tags: String
+    var limit: Int64
+    var offset: Int64
+}
+
+struct CmdSearch: Codable {
+    var action: String
+    var query: String
+    var limit: Int64
+    var offset: Int64
+}
+
+struct CmdDelete: Codable {
+    var action: String
+    var query: String
+    var rowid: Int64
+    var limit: Int64
+    var offset: Int64
+}
+
 struct Response: Decodable {
     let count: Int64
     let notes: [Note]
 }
 
 class Env: ObservableObject {
+    @Published var addr:String = ""
     @Published var notes:[Note] = []
     @Published var paginationText:String = "/"
+    @Published var searchText = "" {
+        didSet {
+            AppState.search(input: searchText, offset: 0)
+        }
+    }
+}
+
+extension DispatchQueue {
+
+    static func background(delay: Double = 0.0, background: (()->Void)? = nil, completion: (() -> Void)? = nil) {
+        DispatchQueue.global(qos: .background).async {
+            background?()
+            if let completion = completion {
+                DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: {
+                    completion()
+                })
+            }
+        }
+    }
+
 }

@@ -25,16 +25,7 @@ struct CreateView: View {
                 }
                 Spacer()
                 Button(action:{
-                    let input = """
-                    {"action":"insert",
-                    "txt":"\(String(self.txt))",
-                    "tags":"\(self.tags)",
-                    "limit": 10,
-                    "offset": 0
-                    }
-                    """
-                    print(input)
-                    AppState.ft.run(json_input: input)
+                    AppState.insert(txt: self.txt, tags: self.tags)
                     self.isPresented = false
                     AppState.search(input: "", offset: 0)
                 }){
