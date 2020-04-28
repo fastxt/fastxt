@@ -63,20 +63,32 @@ class AppState {
     static func search(input: String, offset: Int64) {
         AppState.setOffset(offset: offset)
         AppState.setQuery(query: input)
-        let txt = ft.run(json_input:"""
-            {"action":"search","query":"\(input)","limit":10,"offset":\(offset)}
-            """
+        let encoder = JSONEncoder()
+        let cmd = CmdSearch(
+            action: "search",
+            query: input,
+            limit: 10,
+            offset: 0
         )
-        let data = txt.data(using: .utf8)!
-        let decoder = JSONDecoder()
         do {
-            let resp = try decoder.decode(Response.self, from: data)
-            AppState.setCount(count: resp.count)
-            AppState.env.notes = resp.notes
+            let data = try encoder.encode(cmd)
+            let input = String(data: data, encoding: .utf8)!
+            print(input)
+            let txt = AppState.ft.run(json_input: input)
+            let data1 = txt.data(using: .utf8)!
+            let decoder = JSONDecoder()
+            do {
+                let resp = try decoder.decode(Response.self, from: data1)
+                AppState.setCount(count: resp.count)
+                AppState.env.notes = resp.notes
+            } catch {
+                print(error.localizedDescription)
+            }
+            makePaginationText()
         } catch {
             print(error.localizedDescription)
         }
-        makePaginationText()
+        
     }
     static func insert(txt:String, tags:String){
         let encoder = JSONEncoder()
@@ -118,6 +130,13 @@ struct CmdInsert: Codable {
     var action: String
     var txt: String
     var tags: String
+    var limit: Int64
+    var offset: Int64
+}
+
+struct CmdSearch: Codable {
+    var action: String
+    var query: String
     var limit: Int64
     var offset: Int64
 }
