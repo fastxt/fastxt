@@ -25,6 +25,9 @@
 		3CED13F9238372860097A12B /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 3CED13F7238372860097A12B /* LaunchScreen.storyboard */; };
 		3CED1404238372870097A12B /* FastxtTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3CED1403238372870097A12B /* FastxtTests.swift */; };
 		3CED140F238372870097A12B /* FastxtUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3CED140E238372870097A12B /* FastxtUITests.swift */; };
+		3CEED0A32457D9EF0015A578 /* ServerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3CEED0A22457D9EF0015A578 /* ServerView.swift */; };
+		3CEED0A52457DA4D0015A578 /* QRCodeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3CEED0A42457DA4D0015A578 /* QRCodeView.swift */; };
+		3CEED0A72457DABE0015A578 /* ClientView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3CEED0A62457DABD0015A578 /* ClientView.swift */; };
 		3CEF504424318E0C00D77C63 /* TxtRowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3CEF504324318E0C00D77C63 /* TxtRowView.swift */; };
 /* End PBXBuildFile section */
 
@@ -70,6 +73,9 @@
 		3CED140A238372870097A12B /* FastxtUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = FastxtUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		3CED140E238372870097A12B /* FastxtUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FastxtUITests.swift; sourceTree = "<group>"; };
 		3CED1410238372870097A12B /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		3CEED0A22457D9EF0015A578 /* ServerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServerView.swift; sourceTree = "<group>"; };
+		3CEED0A42457DA4D0015A578 /* QRCodeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QRCodeView.swift; sourceTree = "<group>"; };
+		3CEED0A62457DABD0015A578 /* ClientView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClientView.swift; sourceTree = "<group>"; };
 		3CEF504324318E0C00D77C63 /* TxtRowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TxtRowView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -108,7 +114,10 @@
 				3CEF504324318E0C00D77C63 /* TxtRowView.swift */,
 				3CABE32A2443D459004BEB8F /* TxtDetailView.swift */,
 				3C9BD15524513F7100A90283 /* SyncView.swift */,
+				3CEED0A22457D9EF0015A578 /* ServerView.swift */,
+				3CEED0A62457DABD0015A578 /* ClientView.swift */,
 				3C9BD15324513ED400A90283 /* CodeScanner.swift */,
+				3CEED0A42457DA4D0015A578 /* QRCodeView.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -326,10 +335,13 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				3CEED0A52457DA4D0015A578 /* QRCodeView.swift in Sources */,
 				3C9BD15624513F7100A90283 /* SyncView.swift in Sources */,
 				3CED13ED238372810097A12B /* AppDelegate.swift in Sources */,
 				3C9BD15424513ED500A90283 /* CodeScanner.swift in Sources */,
 				3CEF504424318E0C00D77C63 /* TxtRowView.swift in Sources */,
+				3CEED0A72457DABE0015A578 /* ClientView.swift in Sources */,
+				3CEED0A32457D9EF0015A578 /* ServerView.swift in Sources */,
 				3CB94AFE245258E900273476 /* CreateView.swift in Sources */,
 				3CED13EF238372810097A12B /* SceneDelegate.swift in Sources */,
 				3C7200B3243AAF93009B3D7D /* AppState.swift in Sources */,

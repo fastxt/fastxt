@@ -199,6 +199,7 @@ class Env: ObservableObject {
             AppState.search(input: searchText, offset: 0)
         }
     }
+    @Published var isServerRunning:Bool = false
 }
 
 extension DispatchQueue {
