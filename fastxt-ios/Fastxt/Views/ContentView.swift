@@ -16,17 +16,17 @@ struct ContentView: View {
         NavigationView {
             VStack{
                 List {
+                    NavigationLink(destination: CreateView(isPresented: self.$showingCreate)){
+                        Text("Create").foregroundColor(.blue)
+                    }
+                    NavigationLink(destination: SyncView()){
+                        Text("Sync").foregroundColor(.blue)
+                    }
                     HStack{
+                        TextField("type to search",text: $env.searchText)
                         Text("X").onTapGesture {
                             self.env.searchText = ""
                         }.foregroundColor(.blue)
-                        TextField("type to search",text: $env.searchText)
-                        Text("Sync").onTapGesture {
-                            self.showingSync.toggle()
-                        }.foregroundColor(.blue)
-                        .sheet(isPresented: $showingSync){
-                            SyncView()
-                        }
                     }
                     HStack{
                         Text("Prev").onTapGesture {
@@ -53,17 +53,6 @@ struct ContentView: View {
                 }
                 Text("Own your txt on your device.")
             }.navigationBarTitle(Text("Fastxt"))
-            .navigationBarItems(trailing:
-                Button(action:{
-                    self.showingCreate.toggle()
-                }){
-                    Text("Create")
-                }
-            )
-            .sheet(isPresented: $showingCreate) {
-                CreateView(isPresented: self.$showingCreate)
-            }
-
         }
     }
 }
