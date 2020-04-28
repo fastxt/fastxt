@@ -9,13 +9,11 @@
 import SwiftUI
 
 struct CreateView: View {
-    @Binding var isPresented: Bool
     @State var tags: String = ""
     @State var txt: String = ""
     @State var textHeight: CGFloat = 150
     var body: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            
+        VStack(alignment: .leading, spacing: 20) {            
             HStack{
                 Button(action:{
                     self.tags = ""
@@ -24,18 +22,7 @@ struct CreateView: View {
                     Text("Clear")
                 }
                 Button(action:{
-                    let input = """
-                    {"action":"insert",
-                    "txt":"\(String(self.txt))",
-                    "tags":"\(self.tags)",
-                    "limit": 10,
-                    "offset": 0
-                    }
-                    """
-                    print(input)
-                    AppState.ft.run(json_input: input)
-                    self.isPresented = false
-                    AppState.search(input: "", offset: 0)
+                    AppState.insert(txt: self.txt, tags: self.tags)
                 }){
                     Text("Save")
                 }
@@ -56,6 +43,6 @@ struct CreateView: View {
 
 struct CreateView_Previews: PreviewProvider {
     static var previews: some View {
-        CreateView(isPresented: .constant(true))
+        CreateView()
     }
 }

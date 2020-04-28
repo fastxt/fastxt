@@ -11,7 +11,6 @@ import SwiftUI
 struct ContentView: View {
     @EnvironmentObject var env : Env
     @State private var showingSync = false
-    @State private var showingCreate = false
     @State private var showingServer = false
     
     var body: some View {
@@ -23,7 +22,7 @@ struct ContentView: View {
                     NavigationLink(destination: SyncView()) {
                         Text("Sync")
                     }
-                    NavigationLink(destination: CreateView(isPresented: self.$showingCreate)) {
+                    NavigationLink(destination: CreateView()) {
                         Text("Create")
                     }
                 }

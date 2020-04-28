@@ -78,6 +78,25 @@ class AppState {
         }
         makePaginationText()
     }
+    static func insert(txt:String, tags:String){
+        let encoder = JSONEncoder()
+        let cmd = CmdInsert(
+            action: "insert",
+            txt: txt,
+            tags: tags,
+            limit: 10,
+            offset: 0
+        )
+        do {
+            let data = try encoder.encode(cmd)
+            let input = String(data: data, encoding: .utf8)!
+            print(input)
+            AppState.ft.run(json_input: input)
+            AppState.search(input: "", offset: 0)
+        } catch {
+            print(error.localizedDescription)
+        }
+    }
 }
 
 struct Note: Codable, Identifiable, Hashable {
@@ -93,6 +112,14 @@ struct Note: Codable, Identifiable, Hashable {
         case tags
         case created_at
     }
+}
+
+struct CmdInsert: Codable {
+    var action: String
+    var txt: String
+    var tags: String
+    var limit: Int64
+    var offset: Int64
 }
 
 struct Response: Decodable {
@@ -125,3 +152,4 @@ extension DispatchQueue {
     }
 
 }
+
