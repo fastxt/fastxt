@@ -11,12 +11,11 @@ import CoreImage.CIFilterBuiltins
 
 struct ServerView: View {
     @EnvironmentObject var env : Env
-    @State private var isServerRunning = false
     var body: some View {  
         VStack(alignment: .leading){
             Text("As Server")
             HStack{
-                if isServerRunning{
+                if env.isServerRunning{
                     Button(action:{
                         DispatchQueue.background(background: {
                             AppState.ft.run(json_input: """
@@ -36,13 +35,13 @@ struct ServerView: View {
                         self.env.addr = AppState.ft.run(json_input: """
                             {"action":"server-addr"}
                         """)
-                        self.isServerRunning = true
+                        self.env.isServerRunning = true
                         DispatchQueue.background(background: {
                             AppState.ft.run(json_input: """
                                 {"action":"server", "addr":"\(self.env.addr)"}
                             """)
                         }, completion:{
-                            self.isServerRunning = false
+                            self.env.isServerRunning = false
                             print("done server")
                         })
                     }){
@@ -54,7 +53,7 @@ struct ServerView: View {
                 Spacer()
             }
             
-            if isServerRunning{
+            if env.isServerRunning{
                 Text("Server address:port")
                 Text(env.addr)
                 QRCodeView().environmentObject(AppState.env)
