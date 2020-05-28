@@ -14,6 +14,7 @@ struct ClientView: View {
     @State private var foundResult: Bool = false
     var body: some View {
         VStack(alignment: .leading){
+            Text("As Client")
             HStack{
                 Button(action:{
                     self.foundResult = false
