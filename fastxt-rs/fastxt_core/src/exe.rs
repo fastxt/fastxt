@@ -86,7 +86,7 @@ fn process(cmd: Cmd, text: &str) -> String {
     }
 
     match cmd.action.as_ref() {
-        "server-addr" =>{
+        "server-addr" => {
             // format!(r#"{{"addr": "{}"}}"#, crate::rpc::server::get_server_addr())
             crate::rpc::server::get_server_addr()
         }

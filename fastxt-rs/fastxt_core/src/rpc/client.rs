@@ -88,20 +88,22 @@ async fn run_sync_from_server(addr: &SocketAddr) -> io::Result<()> {
 }
 
 pub fn sync(addr: &str) -> Result<String, String> {
-    let server_addr: SocketAddr = addr
-        .parse()
-        .unwrap_or_else(|e| panic!(r#"server_addr {} invalid: {}"#, addr, e));
-    let mut rt = Runtime::new().unwrap();
-    rt.block_on(async {
-        run_sync_to_server(&server_addr).await;
-        eprintln!("sync to server done");
-    });
-    let mut rt2 = Runtime::new().unwrap();
-    rt2.block_on(async {
-        run_sync_from_server(&server_addr).await;
-        eprintln!("sync from server done");
-    });
-    Ok("sync ok".to_string())
+    match addr.parse() {
+        Ok(server_addr) => {
+            let mut rt = Runtime::new().unwrap();
+            rt.block_on(async {
+                run_sync_to_server(&server_addr).await;
+                eprintln!("sync to server done");
+            });
+            let mut rt2 = Runtime::new().unwrap();
+            rt2.block_on(async {
+                run_sync_from_server(&server_addr).await;
+                eprintln!("sync from server done");
+            });
+            Ok("sync ok".to_string())
+        }
+        Err(e) => Ok(format!(r#"server_addr {} invalid: {}"#, addr, e).to_string()),
+    }
 }
 
 async fn run_stop_server(addr: &SocketAddr) -> io::Result<()> {
