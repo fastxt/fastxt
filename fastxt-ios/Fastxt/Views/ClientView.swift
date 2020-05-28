@@ -28,6 +28,8 @@ struct ClientView: View {
                         {"action":"client-sync",
                         "addr":"\(self.scanResult)"}
                         """)
+                    let offset = AppState.getOffset()
+                    AppState.search(input: AppState.getQuery(), offset: offset)
                 }){
                      Text("Start Sync")
                 }
