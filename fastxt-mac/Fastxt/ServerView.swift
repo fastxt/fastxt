@@ -48,8 +48,7 @@ struct ServerView: View {
                         Text("Start Server")
                     }
                 }
-
-
+                
                 Spacer()
             }
             
