@@ -1,6 +1,6 @@
 module.exports = {
   title: 'Fastxt',
-  tagline: 'Own your txt on your device',
+  tagline: 'Own your txt on your device.',
   url: 'https://fastxt.app',
   baseUrl: '/',
   favicon: 'img/favicon.ico',
@@ -11,7 +11,7 @@ module.exports = {
       title: 'Fastxt',
       logo: {
         alt: 'Fastxt',
-        src: 'img/logo.svg',
+        src: 'img/logo.png',
       },
       links: [
         {
@@ -21,6 +21,7 @@ module.exports = {
           position: 'left',
         },
         {to: 'blog', label: 'Blog', position: 'left'},
+        {to: 'privacy-policy', label: 'Privacy', position: 'left'},
         {
           href: 'https://gitlab.com/fastxt/fastxt',
           label: 'GitLab',
@@ -35,43 +36,31 @@ module.exports = {
           title: 'Docs',
           items: [
             {
-              label: 'Style Guide',
-              to: 'docs/doc1',
+              label: 'Developer Setup',
+              to: 'docs/developer-setup',
             },
             {
-              label: 'Second Doc',
-              to: 'docs/doc2',
+              label: 'Privacy Policy',
+              to: 'privacy-policy',
             },
           ],
         },
         {
-          title: 'Community',
+          title: 'Video',
           items: [
             {
-              label: 'Stack Overflow',
-              href: 'https://stackoverflow.com/questions/tagged/docusaurus',
-            },
-            {
-              label: 'Discord',
-              href: 'https://discordapp.com/invite/docusaurus',
+              label: 'Youtube',
+              href: 'https://www.youtube.com/channel/UCO3qFIyK0eSmqvMknsslWRw',
             },
           ],
         },
         {
-          title: 'Social',
+          title: 'Code',
           items: [
             {
-              label: 'Blog',
-              to: 'blog',
-            },
-            {
-              label: 'GitHub',
-              href: 'https://github.com/facebook/docusaurus',
-            },
-            {
-              label: 'Twitter',
-              href: 'https://twitter.com/docusaurus',
-            },
+              label: 'GitLab',
+              href: 'https://gitlab.com/fastxt',
+            }
           ],
         },
       ],
