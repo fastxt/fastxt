@@ -15,7 +15,7 @@ module.exports = {
       },
       links: [
         {
-          to: 'docs/doc1',
+          to: 'docs/developer-setup',
           activeBasePath: 'docs',
           label: 'Docs',
           position: 'left',
@@ -64,7 +64,7 @@ module.exports = {
           ],
         },
       ],
-      copyright: `Copyright © ${new Date().getFullYear()} Fastxt. Built with Docusaurus.`,
+      copyright: `Unless otherwise noted, contents on this website are copyleft with a CC-by-SA 4.0 license.`,
     },
   },
   presets: [
@@ -74,7 +74,7 @@ module.exports = {
         docs: {
           sidebarPath: require.resolve('./sidebars.js'),
           editUrl:
-            'https://github.com/facebook/docusaurus/edit/master/website/',
+            'https://gitlab.com/fastxt/fastxt-app-docusaurus/edit/master/',
         },
         theme: {
           customCss: require.resolve('./src/css/custom.css'),

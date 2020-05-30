@@ -70,24 +70,24 @@ function Home() {
                 'button button--outline button--secondary button--lg',
                 styles.getStarted,
               )}
-              to={useBaseUrl('docs/doc1')}>
-              Quick Start
+              to="https://apps.apple.com/us/app/fastxt/id1488406732">
+              iOS iPadOS
             </Link>
-          </div>
-          <div className={styles.buttons}>
             <Link
               className={classnames(
                 'button button--outline button--secondary button--lg',
                 styles.getStarted,
               )}
-              to={useBaseUrl('docs/doc1')}>
-              Developer Setup
+              to="https://apps.apple.com/us/app/fastxt-desktop/id1508900852">
+              macOS
             </Link>
-
-
-
           </div>
+        <div className="container">
+          <iframe width="560" height="315" src="https://www.youtube-nocookie.com/embed/tZhbwV_a0fs" frameborder="0" allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture" allowfullscreen class="video"></iframe>
         </div>
+        </div>
+
+
       </header>
       <main>
         {features && features.length && (
