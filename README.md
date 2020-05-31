@@ -1,7 +1,7 @@
 # Fastxt
 [fastxt.app](https://fastxt.app)
 
-A cross-platform tool to save and sync your txt in local SQLite database without going through any centralized service.
+Fastxt, as a sister project to [Local Native](https://localnative.app), with very similar design and toolchain, is a decentralized cross-platform application to save and sync your txt in local SQLite database without going through any centralized service.
 
 # Videos
 [Local Native YouTube Channel](https://www.youtube.com/channel/UCO3qFIyK0eSmqvMknsslWRw)
