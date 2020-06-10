@@ -4,8 +4,12 @@ title: Developer Setup
 sidebar_label: Developer Setup
 ---
 
+Clone the code repo
 ```
-rustup override set beta
-rustup target add x86_64-apple-ios-macabi
+git clone git@gitlab.com:fastxt/fastxt.git
 ```
-sandbox sqlite file location
+
+SQLite database file location on macOS
+```
+~/Library/Containers/app.fastxt.Fastxt/Data/Fastxt/fastxt.sqlite3
+```

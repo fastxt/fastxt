@@ -71,7 +71,7 @@ function Home() {
                 styles.getStarted,
               )}
               to="https://apps.apple.com/us/app/fastxt/id1488406732">
-              iOS iPadOS
+              iOS & iPadOS
             </Link>
             <Link
               className={classnames(
