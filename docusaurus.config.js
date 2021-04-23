@@ -50,7 +50,7 @@ module.exports = {
           items: [
             {
               label: 'Youtube',
-              href: 'https://www.youtube.com/channel/UCO3qFIyK0eSmqvMknsslWRw',
+              href: 'https://www.youtube.com/channel/UCJemcWCEswRWrfHV7SlAgrw',
             },
           ],
         },

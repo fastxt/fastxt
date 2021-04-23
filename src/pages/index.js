@@ -83,7 +83,7 @@ function Home() {
             </Link>
           </div>
         <div className="container">
-          <iframe width="560" height="315" src="https://www.youtube-nocookie.com/embed/tZhbwV_a0fs" frameborder="0" allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture" allowfullscreen class="video"></iframe>
+            <iframe width="560" height="315" src="https://www.youtube-nocookie.com/embed/fB-XNO6-TXo" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
         </div>
         </div>
 
