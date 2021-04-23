@@ -24,6 +24,11 @@ $ npm run build
 
 This command generates static content into the `build` directory and can be served using any static contents hosting service.
 
+## License
+<a rel="license" href="http://creativecommons.org/licenses/by-sa/4.0/"><img alt="Creative Commons License" style="border-width:0" src="https://i.creativecommons.org/l/by-sa/4.0/88x31.png" /></a><br />
+Unless otherwise noted, contents created by the Fastxt team on this website are copyleft with a
+<a rel="license" href="http://creativecommons.org/licenses/by-sa/4.0/">Creative Commons Attribution-ShareAlike 4.0 International License</a>.
+
 ## Developer Certificate of Origin
 Inspired by and borrowed from [Librem5](https://developer.puri.sm/Librem5/Appendix/dco.html).
 
