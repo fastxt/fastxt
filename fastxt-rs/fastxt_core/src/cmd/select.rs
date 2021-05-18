@@ -17,11 +17,11 @@
 */
 use crate::Note;
 use rusqlite::types::ToSql;
-use rusqlite::{Connection, NO_PARAMS};
+use rusqlite::Connection;
 
 pub fn select_count(conn: &Connection) -> u32 {
     let mut stmt = conn.prepare("SELECT count(1) FROM note").unwrap();
-    let rs = stmt.query_row(NO_PARAMS, |row| row.get(0)).unwrap();
+    let rs = stmt.query_row([], |row| row.get(0)).unwrap();
     rs
 }
 
@@ -46,7 +46,7 @@ pub fn select_imp(conn: &Connection, limit: &u32, offset: &u32) -> Vec<Note> {
         )
         .unwrap();
     let note_iter = stmt
-        .query_map_named(
+        .query_map(
             &[
                 (":limit", limit as &dyn ToSql),
                 (":offset", offset as &dyn ToSql),

@@ -23,8 +23,7 @@ use std::iter::FromIterator;
 pub mod search;
 pub mod select;
 pub mod sync;
-use rusqlite::{Connection, NO_PARAMS};
-use uuid::Uuid;
+use rusqlite::Connection;
 
 pub fn create(conn: &Connection) {
     conn.execute_batch(
@@ -54,7 +53,7 @@ pub fn delete(conn: &Connection, rowid: i64) {
 }
 
 pub fn insert(conn: &Connection, note: Note) {
-    conn.execute_named(
+    conn.execute(
         "
         INSERT INTO note (uuid4, txt, tags, created_at)
         VALUES (:uuid4, :txt, :tags, :created_at);
