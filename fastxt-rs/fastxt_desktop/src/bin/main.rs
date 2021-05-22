@@ -1,8 +1,13 @@
 use anyhow::Result;
 use druid::widget::{
-    Button, CrossAxisAlignment, Flex, Label, MainAxisAlignment, Split, TextBox, ViewSwitcher,
+    Button, CrossAxisAlignment, Either, Flex, Label, MainAxisAlignment, Maybe, SizedBox, Split,
+    TextBox, ViewSwitcher,
 };
 use druid::{AppLauncher, Color, Data, Insets, Lens, Widget, WidgetExt, WindowDesc};
+use fastxt_desktop::utils::qrcode_builder;
+use qrcode::{EcLevel, Version};
+
+const SERVER_ADDR: &str = "192.168.3.3:3456";
 
 #[derive(Clone, Data, Lens)]
 struct AppState {
@@ -10,9 +15,9 @@ struct AppState {
     tags: String,
     query: String,
     current_view: RightPanel,
-    server_addr: String,
     server_switch: String,
-    server_status: ServerStatus,
+    server_is_on: bool,
+    remote_addr: String,
     sync_status: String,
 }
 
@@ -23,9 +28,9 @@ impl Default for AppState {
             tags: "".to_string(),
             query: "".to_string(),
             current_view: RightPanel::FormPage,
-            server_addr: "192.168.3.3:3456".to_string(),
             server_switch: "Start Server".to_string(),
-            server_status: ServerStatus::Stop,
+            server_is_on: false,
+            remote_addr: "".to_string(),
             sync_status: "".to_string(),
         }
     }
@@ -35,12 +40,6 @@ impl Default for AppState {
 enum RightPanel {
     SyncPage,
     FormPage,
-}
-
-#[derive(Clone, Data, Copy, PartialEq)]
-enum ServerStatus {
-    Start,
-    Stop,
 }
 
 fn main() -> Result<()> {
@@ -157,13 +156,12 @@ fn build_sync_left() -> impl Widget<AppState> {
         .with_default_spacer()
         .with_child(
             Button::new(|data: &AppState, _: &_| data.server_switch.clone()).on_click(
-                |_, data: &mut AppState, _: &_| match data.server_status {
-                    ServerStatus::Start => {
-                        data.server_status = ServerStatus::Stop;
+                |_, data: &mut AppState, _: &_| {
+                    if data.server_is_on {
+                        data.server_is_on = false;
                         data.server_switch = "Start Server".into();
-                    }
-                    ServerStatus::Stop => {
-                        data.server_status = ServerStatus::Start;
+                    } else {
+                        data.server_is_on = true;
                         data.server_switch = "Stop Server".into();
                     }
                 },
@@ -172,35 +170,41 @@ fn build_sync_left() -> impl Widget<AppState> {
         .with_child(
             Flex::column()
                 .cross_axis_alignment(CrossAxisAlignment::Start)
-                .with_child(Label::new(|data: &AppState, _: &_| {
-                    match data.server_status {
-                        ServerStatus::Start => "Server address:port".to_string(),
-                        ServerStatus::Stop => "".to_string(),
-                    }
-                }))
-                .with_child(Label::new(|data: &AppState, _: &_| {
-                    match data.server_status {
-                        ServerStatus::Start => data.server_addr.clone(),
-                        ServerStatus::Stop => "".to_string(),
-                    }
-                })),
+                .with_child(Either::new(
+                    |data: &AppState, _| data.server_is_on,
+                    Label::new("Server address:port"),
+                    SizedBox::empty(),
+                ))
+                .with_child(Either::new(
+                    |data: &AppState, _| data.server_is_on,
+                    Label::new(SERVER_ADDR),
+                    SizedBox::empty(),
+                )),
         )
         .with_default_spacer()
         .with_child(
             Flex::column()
                 .main_axis_alignment(MainAxisAlignment::Center)
                 .cross_axis_alignment(CrossAxisAlignment::Center)
-                .with_child(Label::new(|data: &AppState, _: &_| {
-                    match data.server_status {
-                        ServerStatus::Start => "Server QR Code".to_string(),
-                        ServerStatus::Stop => "".to_string(),
-                    }
-                }))
+                .with_child(Either::new(
+                    |data: &AppState, _| data.server_is_on,
+                    Label::new("Server QR Code"),
+                    SizedBox::empty(),
+                ))
                 .with_default_spacer()
-                .with_flex_child(
-                    Label::new("QRCode"), // TODO : - Implement an actual QR Code
-                    1.0,
-                ),
+                .with_child(Either::new(
+                    |data: &AppState, _| data.server_is_on,
+                    qrcode_builder(
+                        SERVER_ADDR,
+                        Version::Normal(3),
+                        EcLevel::L,
+                        (200, 200),
+                        "#000000",
+                        "#ffffff",
+                    )
+                    .unwrap(),
+                    SizedBox::empty(),
+                )),
         )
         .with_flex_spacer(1.0)
         .expand_width()
@@ -217,7 +221,7 @@ fn build_sync_right() -> impl Widget<AppState> {
         .with_flex_child(
             TextBox::new()
                 .with_placeholder("xxx.xxx.xxx.xxx:3456")
-                .lens(AppState::server_addr)
+                .lens(AppState::remote_addr)
                 .expand_width(),
             1.0,
         )
