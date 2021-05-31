@@ -17,11 +17,10 @@
 */
 use super::make_tags;
 use super::select::{select, select_count};
-use crate::{KVStringI64, Note, Tags};
+use crate::Note;
 use regex::Regex;
 use rusqlite::types::ToSql;
 use rusqlite::Connection;
-use std::collections::HashMap;
 
 pub fn search_count(conn: &Connection, query: &str) -> u32 {
     let words = make_words(query);
@@ -51,7 +50,7 @@ pub fn search_count(conn: &Connection, query: &str) -> u32 {
 
     eprintln!("params {:?}", params.len());
 
-    let rs = stmt.query_map_named(&params, |row| row.get(0)).unwrap();
+    let rs = stmt.query_map(&*params, |row| row.get(0)).unwrap();
     let mut c: u32 = 0;
     for r in rs {
         c = r.unwrap();
@@ -93,7 +92,7 @@ pub fn search(conn: &Connection, query: &str, limit: &u32, offset: &u32) -> Stri
     eprintln!("params {:?}", params.len());
 
     let note_iter = stmt
-        .query_map_named(&params, |row| {
+        .query_map(&*params, |row| {
             Ok(Note {
                 rowid: row.get(0)?,
                 uuid4: row.get(1)?,

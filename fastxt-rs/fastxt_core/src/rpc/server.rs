@@ -30,10 +30,10 @@ use futures::{
 use std::{io, net::SocketAddr};
 use tarpc::{
     context,
-    server::{self, Channel, Handler},
+    server::{self, Channel, Incoming},
+    tokio_serde::formats::Bincode,
 };
 use tokio::runtime::Runtime;
-use tokio_serde::formats::Bincode;
 
 #[derive(Clone)]
 struct FastxtServer {
@@ -110,7 +110,7 @@ async fn start_server(addr: &SocketAddr) -> io::Result<()> {
                 client_addr: channel.as_ref().as_ref().peer_addr().unwrap(),
                 abort_handle: abort_handle.clone(),
             };
-            channel.respond_with(server.serve()).execute()
+            channel.execute(server.serve())
         })
         // Max 10 channels.
         .buffer_unordered(10)
@@ -125,7 +125,7 @@ pub fn start(addr: &str) -> Result<(), &'static str> {
     let server_addr: SocketAddr = addr
         .parse()
         .unwrap_or_else(|e| panic!(r#"server_addr {} invalid: {}"#, addr, e));
-    let mut rt = Runtime::new().unwrap();
+    let rt = Runtime::new().unwrap();
     rt.block_on(async {
         start_server(&server_addr).await;
     });

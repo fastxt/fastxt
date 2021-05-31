@@ -1,0 +1,21 @@
+[package]
+name = "fastxt_desktop"
+version = "0.1.0"
+edition = "2018"
+authors = ["Ares <ttenx@pm.me>"]
+
+[[bin]]
+name = "fastxt"
+path = "src/bin/main.rs"
+
+[dependencies]
+anyhow = "1"
+
+[dependencies.druid]
+features = ["svg"]
+git = "https://github.com.cnpmjs.org/linebender/druid.git"
+
+[dependencies.qrcode]
+default-features = false
+features = ["svg"]
+version = "0.11"

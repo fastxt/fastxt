@@ -1,8 +1,15 @@
 [workspace]
 
 members = [
-    "fastxt_core",
     "fastxt_cli",
-    "fastxt_relm",
-    "fastxt-gtk-rs",
+    "fastxt_core",
+    "fastxt_desktop",
 ]
+
+[profile.dev]
+opt-level = 1
+split-debuginfo = "unpacked"
+
+[profile.release]
+codegen-units = 1
+lto = true
