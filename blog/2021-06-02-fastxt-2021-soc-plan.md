@@ -1,5 +1,5 @@
 ---
-title: "Fastxt 2021 SoC 6/02"
+title: "Fastxt 2021 SoC 6/02 Plan"
 author: Ares
 
 categories: ["2021 Summer of Code"]
