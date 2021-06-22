@@ -46,6 +46,19 @@ module.exports = {
           ],
         },
         {
+          title: 'Community',
+          items: [
+            {
+              label: 'Librem Social',
+              href: 'https://social.librem.one/@yi',
+            },
+            {
+              label: 'Open Collective',
+              href: 'https://opencollective.com/fastxt',
+            },
+          ],
+        },
+        {
           title: 'Video',
           items: [
             {
