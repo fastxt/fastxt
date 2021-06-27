@@ -86,11 +86,6 @@ function Home() {
             <iframe width="560" height="315" src="https://www.youtube-nocookie.com/embed/fB-XNO6-TXo" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
         </div>
         </div>
-
-          <div class="container">
-            <div><h3> WeChat </h3> </div>
-            <img src="img/wechat/localnative-wechat-qrcode_344.jpg" width="150" />
-          </div>
       </header>
       <main>
         {features && features.length && (
@@ -105,6 +100,11 @@ function Home() {
           </section>
         )}
       </main>
+      <div class="container">
+        <div><h3> Scan with WeChat </h3> </div>
+        <img src="img/wechat/localnative-wechat-qrcode_344.jpg" width="150" />
+        <div> Keep up to date with news and tutorial. </div>
+      </div>
     </Layout>
   );
 }
