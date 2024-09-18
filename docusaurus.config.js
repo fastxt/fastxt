@@ -13,7 +13,7 @@ module.exports = {
         alt: 'Fastxt',
         src: 'img/logo.png',
       },
-      links: [
+      items: [
         {
           to: 'docs/developer-setup',
           activeBasePath: 'docs',
