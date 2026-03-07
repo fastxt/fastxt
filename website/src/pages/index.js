@@ -8,13 +8,13 @@ import styles from './styles.module.css';
 
 const features = [
   {
-    title: <>Fast</>,
+    title: <>On-Device AI</>,
     imageUrl: 'img/undraw_fast_loading_0lbh.svg',
     description: (
       <>
-        Fast free text search. <br/>
-        Fast save. <br/>
-        Fast sync.
+        Native AI models on every platform. <br/>
+        Apple Foundation Models, Android App Functions, self-hosted LLMs. <br/>
+        Your data never leaves your device.
       </>
     ),
   },
@@ -35,6 +35,29 @@ const features = [
       Sync between multiple devices you own (desktop or mobile) by scanning QR code generated on the same network (Wi-Fi/LAN).
       </>
     ),
+  },
+];
+
+const roadmapItems = [
+  {
+    title: 'Smart Tagging',
+    description: 'Auto-suggest tags for saved text based on content analysis using on-device AI.',
+  },
+  {
+    title: 'Semantic Search',
+    description: 'Find notes by meaning, not just keyword matching — powered by local embeddings.',
+  },
+  {
+    title: 'Summarization',
+    description: 'Condense long text entries into concise summaries, all processed on-device.',
+  },
+  {
+    title: 'AI-Assisted Organization',
+    description: 'Automatic grouping and categorization of notes using native AI models.',
+  },
+  {
+    title: 'Cross-Device AI Sync',
+    description: 'AI-generated metadata (tags, summaries) syncs alongside your text via P2P.',
   },
 ];
 
@@ -59,7 +82,7 @@ function Home() {
   return (
     <Layout
       title={`${siteConfig.title}`}
-      description="Decentralized cross-platform application">
+      description="Decentralized cross-platform text app with on-device AI">
       <header className={classnames('hero hero--primary', styles.heroBanner)}>
         <div className="container">
           <h1 className="hero__title">{siteConfig.title}</h1>
@@ -94,6 +117,21 @@ function Home() {
               <div className="row">
                 {features.map((props, idx) => (
                   <Feature key={idx} {...props} />
+                ))}
+              </div>
+            </div>
+          </section>
+        )}
+        {roadmapItems && roadmapItems.length && (
+          <section className={styles.features}>
+            <div className="container">
+              <h2 style={{textAlign: 'center', marginBottom: '2rem'}}>Roadmap</h2>
+              <div className="row">
+                {roadmapItems.map((item, idx) => (
+                  <div key={idx} className={classnames('col col--4', styles.feature)}>
+                    <h3>{item.title}</h3>
+                    <p>{item.description}</p>
+                  </div>
                 ))}
               </div>
             </div>

@@ -1,6 +1,6 @@
 module.exports = {
   title: 'Fastxt',
-  tagline: 'Own your txt on your device.',
+  tagline: 'Own your txt. On-device AI. Sync everywhere.',
   url: 'https://fastxt.app',
   baseUrl: '/',
   favicon: 'img/favicon.ico',

@@ -4,9 +4,24 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Fastxt is a decentralized, cross-platform application for saving and syncing text in a local SQLite database without going through any centralized service. It is a sister project to [Local Native](https://localnative.app) with similar design and toolchain.
+Fastxt is a decentralized, cross-platform application for saving and syncing text in a local SQLite database without going through any centralized service. It leverages native on-device AI models to help users organize their text information — privately, without sending data to the cloud. It is a sister project to [Local Native](https://localnative.app) with similar design and toolchain.
 
 **License**: AGPL-3.0
+
+## On-Device AI Vision
+
+Fastxt integrates native AI capabilities on each platform to help users organize, tag, summarize, and search their text notes — all processed locally on-device:
+
+- **Apple (iOS/macOS)**: Apple Foundation Models via the Foundation framework — on-device language understanding, summarization, and smart organization
+- **Android**: Android App Functions / on-device ML models (e.g., Gemini Nano) for text intelligence
+- **Desktop (Linux/Windows)**: Self-hosted LLMs (e.g., llama.cpp, Ollama) for local inference without cloud dependency
+
+### Key AI Features (Roadmap)
+- **Smart Tagging**: Auto-suggest tags for saved text based on content
+- **Semantic Search**: Find notes by meaning, not just keyword matching
+- **Summarization**: Condense long text entries into concise summaries
+- **Organization**: AI-assisted grouping and categorization of notes
+- **Cross-Device Sync**: AI-generated metadata syncs alongside text via the existing P2P RPC protocol
 
 ## Repository Layout
 
