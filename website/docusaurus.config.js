@@ -4,9 +4,14 @@ module.exports = {
   url: 'https://fastxt.app',
   baseUrl: '/',
   favicon: 'img/favicon.ico',
-  organizationName: 'fastxt', // Usually your GitHub org/user name.
-  projectName: 'fastxt', // Usually your repo name.
+  organizationName: 'fastxt',
+  projectName: 'fastxt',
   themeConfig: {
+    colorMode: {
+      defaultMode: 'dark',
+      disableSwitch: true,
+      respectPrefersColorScheme: false,
+    },
     navbar: {
       title: 'Fastxt',
       logo: {
@@ -23,9 +28,10 @@ module.exports = {
         {to: 'blog', label: 'Blog', position: 'left'},
         {to: 'privacy-policy', label: 'Privacy', position: 'left'},
         {
-          href: 'https://gitlab.com/fastxt/fastxt',
-          label: 'GitLab',
+          href: 'https://github.com/fastxt/fastxt',
           position: 'right',
+          className: 'header-github-link',
+          'aria-label': 'GitHub repository',
         },
       ],
     },
@@ -71,8 +77,8 @@ module.exports = {
           title: 'Code',
           items: [
             {
-              label: 'GitLab',
-              href: 'https://gitlab.com/fastxt',
+              label: 'GitHub',
+              href: 'https://github.com/fastxt',
             }
           ],
         },
@@ -86,8 +92,7 @@ module.exports = {
       {
         docs: {
           sidebarPath: require.resolve('./sidebars.js'),
-          editUrl:
-            'https://gitlab.com/fastxt/fastxt-app-docusaurus/edit/master/',
+          editUrl: 'https://github.com/fastxt/fastxt/tree/main/website/',
         },
         theme: {
           customCss: require.resolve('./src/css/custom.css'),

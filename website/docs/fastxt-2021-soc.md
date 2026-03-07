@@ -20,7 +20,7 @@ Ares
 （* 标注的为必做，+ 标注的为必须要有大方向上的进展）
 
 * 写 Fastxt 2021 Soc 计划 Blog 和 总结 Blog （*）
-* 编写和完善 <https://fastxt.app> 网站文档 （*）
+* 编写和完善 [fastxt.app](https://fastxt.app) 网站文档 （*）
 * 使用 druid 框架实现并取代目前用 Swift UI 实现的 Fastxt 桌面程序 （+）
 
 其中，最后一个目标应在 2021 年 8 月 31 日之前实现。在此之后，10 月 15 日前应完成教程的撰写。
@@ -30,7 +30,7 @@ Ares
 * 调研 druid 框架，阅读和模仿开源项目 [psst](https://github.com/jpochyla/psst)
 * 完成 Fastxt 的 UI 部分，包含完整的界面，菜单，样式，功能（不包括与 fastxt-core 联动）
 * 根据需求调整或补充计划并写一篇总结 Blog
-* 编写和完善 <https://fastxt.app> 网站文档
+* 编写和完善 [fastxt.app](https://fastxt.app) 网站文档
 
 #### 第二阶段规划（7 月 18 日 ~ 8 月 31 日）
 
