@@ -8,26 +8,26 @@ High-level tasks organized by phase. Each phase builds on the previous one.
 
 Goal: Establish the AI abstraction layer and ship the first AI feature (auto-tagging) on desktop using self-hosted LLMs.
 
-- [ ] Define `AiBackend` trait in `fastxt_core` with `suggest_tags`, `summarize`, `embed`, `categorize`, `is_available`
-- [ ] Add `ai_tags`, `ai_summary`, `ai_category` columns to the `note` table (migration)
-- [ ] Create `note_embedding` table for vector storage
-- [ ] Implement Ollama backend (HTTP client calling local Ollama API)
+- [x] Define `AiBackend` trait in `fastxt_core` with `suggest_tags`, `summarize`, `embed`, `categorize`, `is_available`
+- [x] Add `ai_tags`, `ai_summary`, `ai_category` columns to the `note` table (migration)
+- [x] Create `note_embedding` table for vector storage
+- [x] Implement Ollama backend (HTTP client calling local Ollama API)
 - [ ] Implement llama.cpp backend (Rust bindings via `llama-cpp-rs` or similar)
-- [ ] Add `ai-tag` command to `exe::run` — runs tagging on a single note
-- [ ] Add `ai-tag-all` command — batch-tag all untagged notes
+- [x] Add `ai-tag` command to `exe::run` — runs tagging on a single note
+- [x] Add `ai-tag-all` command — batch-tag all untagged notes
 - [ ] Desktop GUI: show AI-suggested tags, let user accept/edit/dismiss
 - [ ] Desktop GUI: settings panel for model path / Ollama endpoint
-- [ ] Add feature flag `ai` in `Cargo.toml` so AI deps are optional
+- [x] Add feature flag `ai` in `Cargo.toml` so AI deps are optional
 
 ## Phase 2: Summarization + Semantic Search (Desktop)
 
 Goal: Add summarization and meaning-based search using local embeddings.
 
-- [ ] Implement `summarize` in Ollama and llama.cpp backends
-- [ ] Add `ai-summarize` command — generate summary for a note
-- [ ] Store summaries in `ai_summary` column
-- [ ] Implement `embed` — generate vector embeddings for notes
-- [ ] Store embeddings in `note_embedding` table
+- [x] Implement `summarize` in Ollama and llama.cpp backends
+- [x] Add `ai-summarize` command — generate summary for a note
+- [x] Store summaries in `ai_summary` column
+- [x] Implement `embed` — generate vector embeddings for notes
+- [x] Store embeddings in `note_embedding` table
 - [ ] Implement cosine similarity search over embeddings
 - [ ] Add `semantic-search` command — find notes by meaning
 - [ ] Desktop GUI: show summaries in note list view

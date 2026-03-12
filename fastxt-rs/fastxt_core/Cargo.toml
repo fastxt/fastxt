@@ -1,9 +1,13 @@
 [package]
 name = "fastxt_core"
-version = "0.1.0"
+version = "0.2.0"
 authors = ["Yi Wang"]
 license = "AGPL-3.0"
 edition = "2018"
+
+[features]
+default = []
+ai = ["reqwest"]
 
 [dependencies.rusqlite]
 version = "0.25"
@@ -24,6 +28,9 @@ tokio = { version = "1", features = ["full"] }
 futures = "0.3"
 get_if_addrs = "0.5.3"
 tokio-serde = { version = "0.8", features = ["bincode"] }
+
+# AI feature dependencies (optional)
+reqwest = { version = "0.11", features = ["blocking", "json"], optional = true }
 
 [lib]
 name = "fastxt_core"

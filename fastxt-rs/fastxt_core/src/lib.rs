@@ -24,6 +24,9 @@ pub mod exe;
 pub mod rpc;
 pub mod upgrade;
 
+#[cfg(feature = "ai")]
+pub mod ai;
+
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Cmd {
     pub action: String,
@@ -118,4 +121,71 @@ pub struct CmdRpcServer {
 #[derive(Serialize, Deserialize, Debug)]
 pub struct OneString {
     pub s: String,
+}
+
+// AI command structs
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct CmdAiTag {
+    /// Text to analyze for tag suggestions
+    pub text: String,
+    /// Optional: Ollama endpoint URL
+    pub endpoint: Option<String>,
+    /// Optional: Model name (e.g., "llama3.2")
+    pub model: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct CmdAiTagAll {
+    /// Maximum number of notes to process
+    pub limit: Option<u32>,
+    /// Optional: Ollama endpoint URL
+    pub endpoint: Option<String>,
+    /// Optional: Model name
+    pub model: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct CmdAiSummarize {
+    /// Rowid of the note to summarize
+    pub rowid: i64,
+    /// Optional: Ollama endpoint URL
+    pub endpoint: Option<String>,
+    /// Optional: Model name
+    pub model: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct AiTagsResponse {
+    /// Suggested tags from AI
+    pub tags: Vec<String>,
+    /// Whether AI backend was available
+    pub available: bool,
+    /// Error message if any
+    pub error: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct AiSummarizeResponse {
+    /// Generated summary
+    pub summary: Option<String>,
+    /// Whether AI backend was available
+    pub available: bool,
+    /// Error message if any
+    pub error: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct NoteWithAi {
+    pub rowid: i64,
+    pub uuid4: String,
+    pub txt: String,
+    pub tags: String,
+    pub created_at: String,
+    /// AI-suggested tags (JSON array)
+    pub ai_tags: Option<String>,
+    /// AI-generated summary
+    pub ai_summary: Option<String>,
+    /// AI-assigned category
+    pub ai_category: Option<String>,
 }

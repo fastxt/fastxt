@@ -33,13 +33,22 @@ pub fn create(conn: &Connection) {
          uuid4          TEXT NOT NULL UNIQUE,
          txt            TEXT NOT NULL,
          tags           TEXT NOT NULL,
-         created_at     TEXT NOT NULL
+         created_at     TEXT NOT NULL,
+         ai_tags        TEXT,
+         ai_summary     TEXT,
+         ai_category    TEXT
          );
          CREATE INDEX IF NOT EXISTS idx_created_at
          ON note (created_at);
          CREATE TABLE IF NOT EXISTS meta (
          meta_key        TEXT PRIMARY KEY,
          meta_value      TEXT NOT NULL
+         );
+         CREATE TABLE IF NOT EXISTS note_embedding (
+         note_rowid     INTEGER PRIMARY KEY REFERENCES note(rowid),
+         embedding      BLOB NOT NULL,
+         model_id       TEXT NOT NULL,
+         created_at     TEXT NOT NULL
          );
          COMMIT;",
     )
@@ -83,4 +92,114 @@ pub fn make_tags(input: &str) -> String {
     }
     s.pop();
     s.to_string()
+}
+
+/// Migrate database to add AI columns if they don't exist.
+/// Called during upgrade process.
+pub fn migrate_ai_columns(conn: &Connection) {
+    // Add AI columns to note table if they don't exist
+    let columns = ["ai_tags", "ai_summary", "ai_category"];
+    for col in &columns {
+        let check_sql = format!(
+            "SELECT COUNT(*) FROM pragma_table_info('note') WHERE name='{}'",
+            col
+        );
+        let count: i32 = conn.query_row(&check_sql, [], |row| row.get(0)).unwrap_or(0);
+        if count == 0 {
+            let alter_sql = format!("ALTER TABLE note ADD COLUMN {} TEXT", col);
+            if let Err(e) = conn.execute(&alter_sql, []) {
+                eprintln!("Warning: Failed to add column {}: {}", col, e);
+            } else {
+                eprintln!("Added column {} to note table", col);
+            }
+        }
+    }
+
+    // Create note_embedding table if it doesn't exist
+    if let Err(e) = conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS note_embedding (
+         note_rowid     INTEGER PRIMARY KEY REFERENCES note(rowid),
+         embedding      BLOB NOT NULL,
+         model_id       TEXT NOT NULL,
+         created_at     TEXT NOT NULL
+         );",
+    ) {
+        eprintln!("Warning: Failed to create note_embedding table: {}", e);
+    }
+}
+
+/// Update AI tags for a note.
+pub fn update_ai_tags(conn: &Connection, rowid: i64, ai_tags: &str) {
+    if let Err(e) = conn.execute(
+        "UPDATE note SET ai_tags = ?1 WHERE rowid = ?2",
+        rusqlite::params![ai_tags, rowid],
+    ) {
+        eprintln!("Failed to update ai_tags: {}", e);
+    }
+}
+
+/// Update AI summary for a note.
+pub fn update_ai_summary(conn: &Connection, rowid: i64, ai_summary: &str) {
+    if let Err(e) = conn.execute(
+        "UPDATE note SET ai_summary = ?1 WHERE rowid = ?2",
+        rusqlite::params![ai_summary, rowid],
+    ) {
+        eprintln!("Failed to update ai_summary: {}", e);
+    }
+}
+
+/// Update AI category for a note.
+pub fn update_ai_category(conn: &Connection, rowid: i64, ai_category: &str) {
+    if let Err(e) = conn.execute(
+        "UPDATE note SET ai_category = ?1 WHERE rowid = ?2",
+        rusqlite::params![ai_category, rowid],
+    ) {
+        eprintln!("Failed to update ai_category: {}", e);
+    }
+}
+
+/// Get notes without AI tags (for batch processing).
+pub fn select_notes_without_ai_tags(conn: &Connection, limit: u32) -> Vec<crate::Note> {
+    let mut stmt = conn
+        .prepare(
+            "SELECT rowid, uuid4, txt, tags, created_at
+             FROM note
+             WHERE ai_tags IS NULL OR ai_tags = ''
+             ORDER BY created_at DESC
+             LIMIT ?1",
+        )
+        .unwrap();
+
+    let notes = stmt
+        .query_map(&[&limit], |row| {
+            Ok(crate::Note {
+                rowid: row.get(0)?,
+                uuid4: row.get(1)?,
+                txt: row.get(2)?,
+                tags: row.get(3)?,
+                created_at: row.get(4)?,
+            })
+        })
+        .unwrap()
+        .filter_map(|n| n.ok())
+        .collect();
+
+    notes
+}
+
+/// Store embedding for a note.
+pub fn store_embedding(conn: &Connection, note_rowid: i64, embedding: &[f32], model_id: &str) {
+    let created_at = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
+    let embedding_bytes: Vec<u8> = embedding
+        .iter()
+        .flat_map(|f| f.to_le_bytes())
+        .collect();
+
+    if let Err(e) = conn.execute(
+        "INSERT OR REPLACE INTO note_embedding (note_rowid, embedding, model_id, created_at)
+         VALUES (?1, ?2, ?3, ?4)",
+        rusqlite::params![note_rowid, embedding_bytes, model_id, created_at],
+    ) {
+        eprintln!("Failed to store embedding: {}", e);
+    }
 }

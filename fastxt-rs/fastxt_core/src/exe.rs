@@ -21,8 +21,13 @@ use crate::cmd::delete;
 use crate::cmd::insert;
 use crate::cmd::search::{search, search_count};
 use crate::cmd::select::select;
+use crate::cmd::{select_notes_without_ai_tags, update_ai_tags, update_ai_summary};
 use crate::upgrade;
+use crate::AiTagsResponse;
 use crate::Cmd;
+use crate::CmdAiTag;
+use crate::CmdAiTagAll;
+use crate::CmdAiSummarize;
 use crate::CmdDelete;
 use crate::CmdInsert;
 use crate::CmdRpcClient;
@@ -165,6 +170,27 @@ fn process(cmd: Cmd, text: &str) -> String {
                 r#"{"error":"cmd client-stop-server error"}"#.to_string()
             }
         }
+        "ai-tag" => {
+            if let Ok(cmd) = serde_json::from_str::<CmdAiTag>(text) {
+                do_ai_tag(&cmd)
+            } else {
+                r#"{"error":"cmd ai-tag json error"}"#.to_string()
+            }
+        }
+        "ai-tag-all" => {
+            if let Ok(cmd) = serde_json::from_str::<CmdAiTagAll>(text) {
+                do_ai_tag_all(&conn, &cmd)
+            } else {
+                r#"{"error":"cmd ai-tag-all json error"}"#.to_string()
+            }
+        }
+        "ai-summarize" => {
+            if let Ok(cmd) = serde_json::from_str::<CmdAiSummarize>(text) {
+                do_ai_summarize(&conn, &cmd)
+            } else {
+                r#"{"error":"cmd ai-summarize json error"}"#.to_string()
+            }
+        }
         _ => r#"{"error": "cmd no match"}"#.to_string(),
     }
 }
@@ -203,4 +229,187 @@ fn do_select(conn: &Connection, limit: &u32, offset: &u32) -> String {
     );
     // eprintln!("msg {}", msg);
     msg
+}
+
+/// Handle ai-tag command - suggest tags for given text.
+fn do_ai_tag(cmd: &CmdAiTag) -> String {
+    #[cfg(feature = "ai")]
+    {
+        use crate::ai::{get_default_backend, AiBackend, AiConfig};
+
+        let config = AiConfig {
+            endpoint: cmd.endpoint.clone(),
+            model: cmd.model.clone(),
+            ..Default::default()
+        };
+
+        let backend = get_default_backend();
+
+        if !backend.is_available() {
+            let response = AiTagsResponse {
+                tags: vec![],
+                available: false,
+                error: Some("AI backend not available. Make sure Ollama is running.".to_string()),
+            };
+            return serde_json::to_string(&response).unwrap();
+        }
+
+        match backend.suggest_tags(&cmd.text, &config) {
+            Ok(tags) => {
+                let response = AiTagsResponse {
+                    tags,
+                    available: true,
+                    error: None,
+                };
+                serde_json::to_string(&response).unwrap()
+            }
+            Err(e) => {
+                let response = AiTagsResponse {
+                    tags: vec![],
+                    available: true,
+                    error: Some(e.to_string()),
+                };
+                serde_json::to_string(&response).unwrap()
+            }
+        }
+    }
+
+    #[cfg(not(feature = "ai"))]
+    {
+        let response = AiTagsResponse {
+            tags: vec![],
+            available: false,
+            error: Some("AI feature not enabled. Build with --features ai".to_string()),
+        };
+        serde_json::to_string(&response).unwrap()
+    }
+}
+
+/// Handle ai-tag-all command - batch tag all notes without AI tags.
+fn do_ai_tag_all(conn: &Connection, cmd: &CmdAiTagAll) -> String {
+    #[cfg(feature = "ai")]
+    {
+        use crate::ai::{get_default_backend, AiBackend, AiConfig};
+
+        let config = AiConfig {
+            endpoint: cmd.endpoint.clone(),
+            model: cmd.model.clone(),
+            ..Default::default()
+        };
+
+        let backend = get_default_backend();
+
+        if !backend.is_available() {
+            return r#"{"error":"AI backend not available. Make sure Ollama is running."}"#
+                .to_string();
+        }
+
+        let limit = cmd.limit.unwrap_or(50);
+        let notes = select_notes_without_ai_tags(conn, limit);
+
+        if notes.is_empty() {
+            return r#"{"processed":0,"message":"No notes without AI tags"}"#.to_string();
+        }
+
+        let mut processed = 0;
+        let mut errors = 0;
+
+        for note in notes {
+            match backend.suggest_tags(&note.txt, &config) {
+                Ok(tags) => {
+                    let tags_json = serde_json::to_string(&tags).unwrap();
+                    update_ai_tags(conn, note.rowid, &tags_json);
+                    processed += 1;
+                }
+                Err(e) => {
+                    eprintln!("Failed to tag note {}: {}", note.rowid, e);
+                    errors += 1;
+                }
+            }
+        }
+
+        format!(
+            r#"{{"processed":{},"errors":{},"message":"Batch tagging complete"}}"#,
+            processed, errors
+        )
+    }
+
+    #[cfg(not(feature = "ai"))]
+    {
+        r#"{"error":"AI feature not enabled. Build with --features ai"}"#.to_string()
+    }
+}
+
+/// Handle ai-summarize command - generate summary for a note.
+fn do_ai_summarize(conn: &Connection, cmd: &CmdAiSummarize) -> String {
+    #[cfg(feature = "ai")]
+    {
+        use crate::ai::{get_default_backend, AiBackend, AiConfig};
+
+        let config = AiConfig {
+            endpoint: cmd.endpoint.clone(),
+            model: cmd.model.clone(),
+            ..Default::default()
+        };
+
+        let backend = get_default_backend();
+
+        if !backend.is_available() {
+            let response = crate::AiSummarizeResponse {
+                summary: None,
+                available: false,
+                error: Some("AI backend not available. Make sure Ollama is running.".to_string()),
+            };
+            return serde_json::to_string(&response).unwrap();
+        }
+
+        // Fetch the note text
+        let txt: Option<String> = conn
+            .query_row(
+                "SELECT txt FROM note WHERE rowid = ?1",
+                &[&cmd.rowid],
+                |row| row.get(0),
+            )
+            .ok();
+
+        match txt {
+            Some(text) => match backend.summarize(&text, &config) {
+                Ok(summary) => {
+                    update_ai_summary(conn, cmd.rowid, &summary);
+                    let response = crate::AiSummarizeResponse {
+                        summary: Some(summary),
+                        available: true,
+                        error: None,
+                    };
+                    serde_json::to_string(&response).unwrap()
+                }
+                Err(e) => {
+                    let response = crate::AiSummarizeResponse {
+                        summary: None,
+                        available: true,
+                        error: Some(e.to_string()),
+                    };
+                    serde_json::to_string(&response).unwrap()
+                }
+            },
+            None => {
+                let response = crate::AiSummarizeResponse {
+                    summary: None,
+                    available: true,
+                    error: Some(format!("Note with rowid {} not found", cmd.rowid)),
+                };
+                serde_json::to_string(&response).unwrap()
+            }
+        }
+    }
+
+    #[cfg(not(feature = "ai"))]
+    {
+        let response = crate::AiSummarizeResponse {
+            summary: None,
+            available: false,
+            error: Some("AI feature not enabled. Build with --features ai".to_string()),
+        };
+        serde_json::to_string(&response).unwrap()
+    }
 }
