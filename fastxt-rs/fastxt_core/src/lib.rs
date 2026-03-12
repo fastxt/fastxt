@@ -67,7 +67,7 @@ pub struct Tags {
     pub tags: String,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Note {
     pub rowid: i64,
     pub uuid4: String,
@@ -188,4 +188,58 @@ pub struct NoteWithAi {
     pub ai_summary: Option<String>,
     /// AI-assigned category
     pub ai_category: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct CmdSemanticSearch {
+    /// Query text to search for
+    pub query: String,
+    /// Maximum number of results
+    pub limit: Option<u32>,
+    /// Minimum similarity threshold (0.0 - 1.0)
+    pub threshold: Option<f32>,
+    /// Optional: Ollama endpoint URL
+    pub endpoint: Option<String>,
+    /// Optional: Model name for embeddings
+    pub model: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct CmdAiEmbed {
+    /// Rowid of the note to embed
+    pub rowid: i64,
+    /// Optional: Ollama endpoint URL
+    pub endpoint: Option<String>,
+    /// Optional: Model name for embeddings
+    pub model: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct CmdAiEmbedAll {
+    /// Maximum number of notes to process
+    pub limit: Option<u32>,
+    /// Optional: Ollama endpoint URL
+    pub endpoint: Option<String>,
+    /// Optional: Model name for embeddings
+    pub model: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct SemanticSearchResult {
+    pub note: Note,
+    pub similarity: f32,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct SemanticSearchResponse {
+    pub results: Vec<SemanticSearchResult>,
+    pub available: bool,
+    pub error: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct AiEmbedResponse {
+    pub success: bool,
+    pub available: bool,
+    pub error: Option<String>,
 }

@@ -21,20 +21,30 @@ use crate::cmd::delete;
 use crate::cmd::insert;
 use crate::cmd::search::{search, search_count};
 use crate::cmd::select::select;
-use crate::cmd::{select_notes_without_ai_tags, update_ai_tags, update_ai_summary};
+use crate::cmd::{
+    select_notes_without_ai_tags, select_notes_without_embeddings, semantic_search,
+    store_embedding, update_ai_tags, update_ai_summary,
+};
 use crate::upgrade;
+use crate::AiEmbedResponse;
+use crate::AiSummarizeResponse;
 use crate::AiTagsResponse;
 use crate::Cmd;
+use crate::CmdAiEmbed;
+use crate::CmdAiEmbedAll;
+use crate::CmdAiSummarize;
 use crate::CmdAiTag;
 use crate::CmdAiTagAll;
-use crate::CmdAiSummarize;
 use crate::CmdDelete;
 use crate::CmdInsert;
 use crate::CmdRpcClient;
 use crate::CmdRpcServer;
 use crate::CmdSearch;
 use crate::CmdSelect;
+use crate::CmdSemanticSearch;
 use crate::Note;
+use crate::SemanticSearchResponse;
+use crate::SemanticSearchResult;
 use chrono;
 use chrono::prelude::Utc;
 use rusqlite::Connection;
@@ -189,6 +199,27 @@ fn process(cmd: Cmd, text: &str) -> String {
                 do_ai_summarize(&conn, &cmd)
             } else {
                 r#"{"error":"cmd ai-summarize json error"}"#.to_string()
+            }
+        }
+        "ai-embed" => {
+            if let Ok(cmd) = serde_json::from_str::<CmdAiEmbed>(text) {
+                do_ai_embed(&conn, &cmd)
+            } else {
+                r#"{"error":"cmd ai-embed json error"}"#.to_string()
+            }
+        }
+        "ai-embed-all" => {
+            if let Ok(cmd) = serde_json::from_str::<CmdAiEmbedAll>(text) {
+                do_ai_embed_all(&conn, &cmd)
+            } else {
+                r#"{"error":"cmd ai-embed-all json error"}"#.to_string()
+            }
+        }
+        "semantic-search" => {
+            if let Ok(cmd) = serde_json::from_str::<CmdSemanticSearch>(text) {
+                do_semantic_search(&conn, &cmd)
+            } else {
+                r#"{"error":"cmd semantic-search json error"}"#.to_string()
             }
         }
         _ => r#"{"error": "cmd no match"}"#.to_string(),
@@ -407,6 +438,203 @@ fn do_ai_summarize(conn: &Connection, cmd: &CmdAiSummarize) -> String {
     {
         let response = crate::AiSummarizeResponse {
             summary: None,
+            available: false,
+            error: Some("AI feature not enabled. Build with --features ai".to_string()),
+        };
+        serde_json::to_string(&response).unwrap()
+    }
+}
+
+/// Handle ai-embed command - generate embedding for a single note.
+fn do_ai_embed(conn: &Connection, cmd: &CmdAiEmbed) -> String {
+    #[cfg(feature = "ai")]
+    {
+        use crate::ai::{get_default_backend, AiBackend, AiConfig};
+
+        let config = AiConfig {
+            endpoint: cmd.endpoint.clone(),
+            model: cmd.model.clone(),
+            ..Default::default()
+        };
+
+        let backend = get_default_backend();
+
+        if !backend.is_available() {
+            let response = AiEmbedResponse {
+                success: false,
+                available: false,
+                error: Some("AI backend not available. Make sure Ollama is running.".to_string()),
+            };
+            return serde_json::to_string(&response).unwrap();
+        }
+
+        // Fetch the note text
+        let txt: Option<String> = conn
+            .query_row(
+                "SELECT txt FROM note WHERE rowid = ?1",
+                &[&cmd.rowid],
+                |row| row.get(0),
+            )
+            .ok();
+
+        match txt {
+            Some(text) => match backend.embed(&text, &config) {
+                Ok(embedding) => {
+                    let model_id = config.model.clone().unwrap_or_else(|| "unknown".to_string());
+                    store_embedding(conn, cmd.rowid, &embedding, &model_id);
+                    let response = AiEmbedResponse {
+                        success: true,
+                        available: true,
+                        error: None,
+                    };
+                    serde_json::to_string(&response).unwrap()
+                }
+                Err(e) => {
+                    let response = AiEmbedResponse {
+                        success: false,
+                        available: true,
+                        error: Some(e.to_string()),
+                    };
+                    serde_json::to_string(&response).unwrap()
+                }
+            },
+            None => {
+                let response = AiEmbedResponse {
+                    success: false,
+                    available: true,
+                    error: Some(format!("Note with rowid {} not found", cmd.rowid)),
+                };
+                serde_json::to_string(&response).unwrap()
+            }
+        }
+    }
+
+    #[cfg(not(feature = "ai"))]
+    {
+        let response = AiEmbedResponse {
+            success: false,
+            available: false,
+            error: Some("AI feature not enabled. Build with --features ai".to_string()),
+        };
+        serde_json::to_string(&response).unwrap()
+    }
+}
+
+/// Handle ai-embed-all command - batch embed all notes without embeddings.
+fn do_ai_embed_all(conn: &Connection, cmd: &CmdAiEmbedAll) -> String {
+    #[cfg(feature = "ai")]
+    {
+        use crate::ai::{get_default_backend, AiBackend, AiConfig};
+
+        let config = AiConfig {
+            endpoint: cmd.endpoint.clone(),
+            model: cmd.model.clone(),
+            ..Default::default()
+        };
+
+        let backend = get_default_backend();
+
+        if !backend.is_available() {
+            return r#"{"error":"AI backend not available. Make sure Ollama is running."}"#
+                .to_string();
+        }
+
+        let limit = cmd.limit.unwrap_or(50);
+        let notes = select_notes_without_embeddings(conn, limit);
+
+        if notes.is_empty() {
+            return r#"{"processed":0,"message":"No notes without embeddings"}"#.to_string();
+        }
+
+        let model_id = config.model.clone().unwrap_or_else(|| "unknown".to_string());
+        let mut processed = 0;
+        let mut errors = 0;
+
+        for note in notes {
+            match backend.embed(&note.txt, &config) {
+                Ok(embedding) => {
+                    store_embedding(conn, note.rowid, &embedding, &model_id);
+                    processed += 1;
+                }
+                Err(e) => {
+                    eprintln!("Failed to embed note {}: {}", note.rowid, e);
+                    errors += 1;
+                }
+            }
+        }
+
+        format!(
+            r#"{{"processed":{},"errors":{},"message":"Batch embedding complete"}}"#,
+            processed, errors
+        )
+    }
+
+    #[cfg(not(feature = "ai"))]
+    {
+        r#"{"error":"AI feature not enabled. Build with --features ai"}"#.to_string()
+    }
+}
+
+/// Handle semantic-search command - find notes by meaning.
+fn do_semantic_search(conn: &Connection, cmd: &CmdSemanticSearch) -> String {
+    #[cfg(feature = "ai")]
+    {
+        use crate::ai::{get_default_backend, AiBackend, AiConfig};
+
+        let config = AiConfig {
+            endpoint: cmd.endpoint.clone(),
+            model: cmd.model.clone(),
+            ..Default::default()
+        };
+
+        let backend = get_default_backend();
+
+        if !backend.is_available() {
+            let response = SemanticSearchResponse {
+                results: vec![],
+                available: false,
+                error: Some("AI backend not available. Make sure Ollama is running.".to_string()),
+            };
+            return serde_json::to_string(&response).unwrap();
+        }
+
+        // Generate embedding for query
+        match backend.embed(&cmd.query, &config) {
+            Ok(query_embedding) => {
+                let model_id = config.model.clone().unwrap_or_else(|| "unknown".to_string());
+                let limit = cmd.limit.unwrap_or(10);
+                let threshold = cmd.threshold.unwrap_or(0.5);
+
+                let results = semantic_search(conn, &query_embedding, &model_id, limit, threshold);
+
+                let response = SemanticSearchResponse {
+                    results: results
+                        .into_iter()
+                        .map(|r| SemanticSearchResult {
+                            note: r.note,
+                            similarity: r.similarity,
+                        })
+                        .collect(),
+                    available: true,
+                    error: None,
+                };
+                serde_json::to_string(&response).unwrap()
+            }
+            Err(e) => {
+                let response = SemanticSearchResponse {
+                    results: vec![],
+                    available: true,
+                    error: Some(format!("Failed to generate query embedding: {}", e)),
+                };
+                serde_json::to_string(&response).unwrap()
+            }
+        }
+    }
+
+    #[cfg(not(feature = "ai"))]
+    {
+        let response = SemanticSearchResponse {
+            results: vec![],
             available: false,
             error: Some("AI feature not enabled. Build with --features ai".to_string()),
         };

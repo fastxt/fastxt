@@ -679,7 +679,9 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "druid",
+ "fastxt_core",
  "qrcode",
+ "serde_json",
 ]
 
 [[package]]

@@ -8,8 +8,14 @@ authors = ["Ares <ttenx@pm.me>"]
 name = "fastxt"
 path = "src/bin/main.rs"
 
+[features]
+default = []
+ai = ["fastxt_core/ai"]
+
 [dependencies]
 anyhow = "1"
+fastxt_core = { path = "../fastxt_core" }
+serde_json = "1"
 
 [dependencies.druid]
 features = ["svg"]

@@ -203,3 +203,187 @@ pub fn store_embedding(conn: &Connection, note_rowid: i64, embedding: &[f32], mo
         eprintln!("Failed to store embedding: {}", e);
     }
 }
+
+/// Get embedding for a note by rowid.
+pub fn get_embedding(conn: &Connection, note_rowid: i64) -> Option<(Vec<f32>, String)> {
+    conn.query_row(
+        "SELECT embedding, model_id FROM note_embedding WHERE note_rowid = ?1",
+        rusqlite::params![note_rowid],
+        |row| {
+            let bytes: Vec<u8> = row.get(0)?;
+            let model_id: String = row.get(1)?;
+            // Convert bytes back to f32 vector
+            let embedding: Vec<f32> = bytes
+                .chunks_exact(4)
+                .map(|chunk| f32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]))
+                .collect();
+            Ok((embedding, model_id))
+        },
+    )
+    .ok()
+}
+
+/// Get all embeddings with their note rowids.
+pub fn get_all_embeddings(conn: &Connection, model_id: Option<&str>) -> Vec<(i64, Vec<f32>)> {
+    let sql = match model_id {
+        Some(_) => "SELECT note_rowid, embedding FROM note_embedding WHERE model_id = ?1",
+        None => "SELECT note_rowid, embedding FROM note_embedding",
+    };
+
+    let mut stmt = conn.prepare(sql).unwrap();
+    let rows: Vec<(i64, Vec<u8>)> = match model_id {
+        Some(mid) => stmt
+            .query_map(&[mid], |row| Ok((row.get(0)?, row.get(1)?)))
+            .unwrap()
+            .filter_map(|r| r.ok())
+            .collect(),
+        None => stmt
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
+            .unwrap()
+            .filter_map(|r| r.ok())
+            .collect(),
+    };
+
+    rows.into_iter()
+        .map(|(rowid, bytes)| {
+            let embedding: Vec<f32> = bytes
+                .chunks_exact(4)
+                .map(|chunk| f32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]))
+                .collect();
+            (rowid, embedding)
+        })
+        .collect()
+}
+
+/// Compute cosine similarity between two vectors.
+pub fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
+    if a.len() != b.len() || a.is_empty() {
+        return 0.0;
+    }
+
+    let dot_product: f32 = a.iter().zip(b.iter()).map(|(x, y)| x * y).sum();
+    let mag_a: f32 = a.iter().map(|x| x * x).sum::<f32>().sqrt();
+    let mag_b: f32 = b.iter().map(|x| x * x).sum::<f32>().sqrt();
+
+    if mag_a == 0.0 || mag_b == 0.0 {
+        return 0.0;
+    }
+
+    dot_product / (mag_a * mag_b)
+}
+
+/// Result of semantic search.
+#[derive(Debug, Clone)]
+pub struct SemanticSearchResult {
+    pub note: Note,
+    pub similarity: f32,
+}
+
+/// Search notes by semantic similarity to a query embedding.
+pub fn semantic_search(
+    conn: &Connection,
+    query_embedding: &[f32],
+    model_id: &str,
+    limit: u32,
+    threshold: f32,
+) -> Vec<SemanticSearchResult> {
+    // Get all embeddings for this model
+    let embeddings = get_all_embeddings(conn, Some(model_id));
+
+    if embeddings.is_empty() {
+        return vec![];
+    }
+
+    // Compute similarities and sort
+    let mut scored: Vec<(i64, f32)> = embeddings
+        .iter()
+        .map(|(rowid, embedding)| (*rowid, cosine_similarity(query_embedding, embedding)))
+        .filter(|(_, score)| *score >= threshold)
+        .collect();
+
+    scored.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+    scored.truncate(limit as usize);
+
+    // Fetch notes for top results
+    let rowids: Vec<i64> = scored.iter().map(|(r, _)| *r).collect();
+    if rowids.is_empty() {
+        return vec![];
+    }
+
+    let placeholders: String = rowids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+    let sql = format!(
+        "SELECT rowid, uuid4, txt, tags, created_at FROM note WHERE rowid IN ({})",
+        placeholders
+    );
+
+    let mut stmt = conn.prepare(&sql).unwrap();
+    let params: Vec<&dyn rusqlite::ToSql> = rowids.iter().map(|r| r as &dyn rusqlite::ToSql).collect();
+
+    let notes: std::collections::HashMap<i64, Note> = stmt
+        .query_map(params.as_slice(), |row| {
+            Ok((
+                row.get::<_, i64>(0)?,
+                Note {
+                    rowid: row.get(0)?,
+                    uuid4: row.get(1)?,
+                    txt: row.get(2)?,
+                    tags: row.get(3)?,
+                    created_at: row.get(4)?,
+                },
+            ))
+        })
+        .unwrap()
+        .filter_map(|r| r.ok())
+        .collect();
+
+    // Combine with scores in order
+    scored
+        .into_iter()
+        .filter_map(|(rowid, score)| {
+            notes.get(&rowid).map(|note| SemanticSearchResult {
+                note: note.clone(),
+                similarity: score,
+            })
+        })
+        .collect()
+}
+
+/// Count notes without embeddings (for batch embedding generation).
+pub fn count_notes_without_embeddings(conn: &Connection) -> i64 {
+    conn.query_row(
+        "SELECT COUNT(*) FROM note n
+         WHERE NOT EXISTS (SELECT 1 FROM note_embedding e WHERE e.note_rowid = n.rowid)",
+        [],
+        |row| row.get(0),
+    )
+    .unwrap_or(0)
+}
+
+/// Get notes without embeddings (for batch embedding generation).
+pub fn select_notes_without_embeddings(conn: &Connection, limit: u32) -> Vec<crate::Note> {
+    let mut stmt = conn
+        .prepare(
+            "SELECT n.rowid, n.uuid4, n.txt, n.tags, n.created_at
+             FROM note n
+             WHERE NOT EXISTS (SELECT 1 FROM note_embedding e WHERE e.note_rowid = n.rowid)
+             ORDER BY n.created_at DESC
+             LIMIT ?1",
+        )
+        .unwrap();
+
+    let notes = stmt
+        .query_map(&[&limit], |row| {
+            Ok(crate::Note {
+                rowid: row.get(0)?,
+                uuid4: row.get(1)?,
+                txt: row.get(2)?,
+                tags: row.get(3)?,
+                created_at: row.get(4)?,
+            })
+        })
+        .unwrap()
+        .filter_map(|n| n.ok())
+        .collect();
+
+    notes
+}

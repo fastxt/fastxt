@@ -15,21 +15,23 @@ Goal: Establish the AI abstraction layer and ship the first AI feature (auto-tag
 - [ ] Implement llama.cpp backend (Rust bindings via `llama-cpp-rs` or similar)
 - [x] Add `ai-tag` command to `exe::run` — runs tagging on a single note
 - [x] Add `ai-tag-all` command — batch-tag all untagged notes
-- [ ] Desktop GUI: show AI-suggested tags, let user accept/edit/dismiss
-- [ ] Desktop GUI: settings panel for model path / Ollama endpoint
+- [x] Desktop GUI: AI Tags button to get suggestions
+- [x] Desktop GUI: AI settings page for Ollama endpoint configuration
 - [x] Add feature flag `ai` in `Cargo.toml` so AI deps are optional
 
 ## Phase 2: Summarization + Semantic Search (Desktop)
 
 Goal: Add summarization and meaning-based search using local embeddings.
 
-- [x] Implement `summarize` in Ollama and llama.cpp backends
+- [x] Implement `summarize` in Ollama backend
 - [x] Add `ai-summarize` command — generate summary for a note
 - [x] Store summaries in `ai_summary` column
 - [x] Implement `embed` — generate vector embeddings for notes
 - [x] Store embeddings in `note_embedding` table
-- [ ] Implement cosine similarity search over embeddings
-- [ ] Add `semantic-search` command — find notes by meaning
+- [x] Implement cosine similarity search over embeddings
+- [x] Add `semantic-search` command — find notes by meaning
+- [x] Add `ai-embed` command — generate embedding for single note
+- [x] Add `ai-embed-all` command — batch embed notes without embeddings
 - [ ] Desktop GUI: show summaries in note list view
 - [ ] Desktop GUI: semantic search bar alongside existing text search
 - [ ] Benchmark embedding generation speed and memory usage
