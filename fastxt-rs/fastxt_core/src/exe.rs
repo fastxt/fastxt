@@ -23,13 +23,16 @@ use crate::cmd::search::{search, search_count};
 use crate::cmd::select::select;
 use crate::cmd::{
     select_notes_without_ai_tags, select_notes_without_embeddings, semantic_search,
-    store_embedding, update_ai_tags, update_ai_summary,
+    store_embedding, update_ai_tags, update_ai_summary, update_ai_category,
 };
 use crate::upgrade;
 use crate::AiEmbedResponse;
 use crate::AiSummarizeResponse;
 use crate::AiTagsResponse;
 use crate::Cmd;
+use crate::CmdAiReprocess;
+use crate::CmdAiOrganize;
+use crate::AiOrganizeResponse;
 use crate::CmdAiEmbed;
 use crate::CmdAiEmbedAll;
 use crate::CmdAiSummarize;
@@ -140,6 +143,9 @@ fn process(cmd: Cmd, text: &str) -> String {
                     txt: i.txt,
                     tags: i.tags,
                     created_at: created_at,
+                    ai_tags: None,
+                    ai_summary: None,
+                    ai_category: None,
                 };
                 eprint!("{:?}", note);
                 insert(&conn, note);
@@ -220,6 +226,20 @@ fn process(cmd: Cmd, text: &str) -> String {
                 do_semantic_search(&conn, &cmd)
             } else {
                 r#"{"error":"cmd semantic-search json error"}"#.to_string()
+            }
+        }
+        "ai-reprocess" => {
+            if let Ok(cmd) = serde_json::from_str::<CmdAiReprocess>(text) {
+                do_ai_reprocess(&conn, &cmd)
+            } else {
+                r#"{"error":"cmd ai-reprocess json error"}"#.to_string()
+            }
+        }
+        "ai-organize" => {
+            if let Ok(cmd) = serde_json::from_str::<CmdAiOrganize>(text) {
+                do_ai_organize(&conn, &cmd)
+            } else {
+                r#"{"error":"cmd ai-organize json error"}"#.to_string()
             }
         }
         _ => r#"{"error": "cmd no match"}"#.to_string(),
@@ -635,6 +655,206 @@ fn do_semantic_search(conn: &Connection, cmd: &CmdSemanticSearch) -> String {
     {
         let response = SemanticSearchResponse {
             results: vec![],
+            available: false,
+            error: Some("AI feature not enabled. Build with --features ai".to_string()),
+        };
+        serde_json::to_string(&response).unwrap()
+    }
+}
+
+/// Handle ai-reprocess command - regenerate AI metadata using local device's model.
+fn do_ai_reprocess(conn: &Connection, cmd: &CmdAiReprocess) -> String {
+    #[cfg(feature = "ai")]
+    {
+        use crate::ai::{get_default_backend, AiBackend, AiConfig};
+
+        let config = AiConfig::default();
+        let backend = get_default_backend();
+
+        if !backend.is_available() {
+            return r#"{"error":"AI backend not available. Make sure Ollama is running."}"#
+                .to_string();
+        }
+
+        // If rowid is specified, reprocess that note only
+        let notes: Vec<(i64, String)> = match cmd.rowid {
+            Some(rowid) => {
+                let txt: Option<String> = conn
+                    .query_row(
+                        "SELECT txt FROM note WHERE rowid = ?1",
+                        rusqlite::params![rowid],
+                        |row| row.get(0),
+                    )
+                    .ok()
+                    .flatten();
+
+                match txt {
+                    Some(t) => vec![(rowid, t)],
+                    None => return format!(r#"{{"error":"Note {} not found"}}"#, rowid),
+                }
+            }
+            None => {
+                // Get all notes
+                let mut stmt = conn
+                    .prepare("SELECT rowid, txt FROM note ORDER BY created_at DESC")
+                    .unwrap();
+                let rows: Vec<(i64, String)> = stmt
+                    .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
+                    .unwrap()
+                    .filter_map(|r| r.ok())
+                    .collect();
+                rows
+            }
+        };
+
+        let mut processed = 0;
+        let mut errors = 0;
+
+        for (rowid, txt) in notes {
+            // Generate tags
+            match backend.suggest_tags(&txt, &config) {
+                Ok(tags) => {
+                    let tags_json = serde_json::to_string(&tags).unwrap();
+                    update_ai_tags(conn, rowid, &tags_json);
+                }
+                Err(e) => {
+                    eprintln!("Failed to generate tags for note {}: {}", rowid, e);
+                    errors += 1;
+                    continue;
+                }
+            }
+
+            // Generate summary
+            match backend.summarize(&txt, &config) {
+                Ok(summary) => {
+                    update_ai_summary(conn, rowid, &summary);
+                }
+                Err(e) => {
+                    eprintln!("Failed to generate summary for note {}: {}", rowid, e);
+                }
+            }
+
+            processed += 1;
+        }
+
+        format!(
+            r#"{{"processed":{},"errors":{},"message":"AI reprocessing complete"}}"#,
+            processed, errors
+        )
+    }
+
+    #[cfg(not(feature = "ai"))]
+    {
+        r#"{"error":"AI feature not enabled. Build with --features ai"}"#.to_string()
+    }
+}
+
+/// Handle ai-organize command - categorize notes by topic.
+fn do_ai_organize(conn: &Connection, cmd: &CmdAiOrganize) -> String {
+    #[cfg(feature = "ai")]
+    {
+        use crate::ai::{get_default_backend, AiBackend, AiConfig};
+        use std::collections::HashMap;
+
+        let config = AiConfig {
+            endpoint: cmd.endpoint.clone(),
+            model: cmd.model.clone(),
+            ..Default::default()
+        };
+
+        let backend = get_default_backend();
+
+        if !backend.is_available() {
+            let response = AiOrganizeResponse {
+                processed: 0,
+                errors: 0,
+                categories: HashMap::new(),
+                available: false,
+                error: Some("AI backend not available. Make sure Ollama is running.".to_string()),
+            };
+            return serde_json::to_string(&response).unwrap();
+        }
+
+        // Get notes without categories (or all notes if re-categorizing)
+        let limit = cmd.limit.unwrap_or(50);
+        let mut stmt = conn
+            .prepare(
+                "SELECT rowid, txt FROM note
+                 WHERE ai_category IS NULL OR ai_category = ''
+                 ORDER BY created_at DESC
+                 LIMIT ?1",
+            )
+            .unwrap();
+
+        let notes: Vec<(i64, String)> = stmt
+            .query_map(rusqlite::params![limit], |row| Ok((row.get(0)?, row.get(1)?)))
+            .unwrap()
+            .filter_map(|r| r.ok())
+            .collect();
+
+        if notes.is_empty() {
+            let response = AiOrganizeResponse {
+                processed: 0,
+                errors: 0,
+                categories: HashMap::new(),
+                available: true,
+                error: Some("No notes to categorize".to_string()),
+            };
+            return serde_json::to_string(&response).unwrap();
+        }
+
+        // Extract texts for batch categorization
+        let texts: Vec<&str> = notes.iter().map(|(_, txt)| txt.as_str()).collect();
+
+        // Categorize in batches of 10 (to avoid token limits)
+        let batch_size = 10;
+        let mut processed = 0u32;
+        let mut errors = 0u32;
+        let mut categories: HashMap<String, u32> = HashMap::new();
+
+        for chunk in texts.chunks(batch_size) {
+            let chunk_notes: Vec<(i64, &str)> = notes
+                .iter()
+                .skip(processed as usize)
+                .take(chunk.len())
+                .map(|(rowid, txt)| (*rowid, txt.as_str()))
+                .collect();
+
+            match backend.categorize(chunk, &config) {
+                Ok(cats) => {
+                    for ((rowid, _), category) in chunk_notes.iter().zip(cats.iter()) {
+                        update_ai_category(conn, *rowid, category);
+                        *categories.entry(category.clone()).or_insert(0) += 1;
+                        processed += 1;
+                    }
+                }
+                Err(e) => {
+                    eprintln!("Failed to categorize batch: {}", e);
+                    errors += chunk.len() as u32;
+                }
+            }
+        }
+
+        let response = AiOrganizeResponse {
+            processed,
+            errors,
+            categories,
+            available: true,
+            error: if errors > 0 {
+                Some(format!("{} notes failed to categorize", errors))
+            } else {
+                None
+            },
+        };
+        serde_json::to_string(&response).unwrap()
+    }
+
+    #[cfg(not(feature = "ai"))]
+    {
+        let response = AiOrganizeResponse {
+            processed: 0,
+            errors: 0,
+            categories: std::collections::HashMap::new(),
             available: false,
             error: Some("AI feature not enabled. Build with --features ai".to_string()),
         };

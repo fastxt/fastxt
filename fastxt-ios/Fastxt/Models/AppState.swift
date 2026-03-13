@@ -185,9 +185,37 @@ struct CmdDelete: Codable {
     var offset: Int64
 }
 
+// AI Command structs
+struct CmdAiTag: Codable {
+    var action: String
+    var text: String
+    var endpoint: String?
+    var model: String?
+}
+
+struct CmdAiSummarize: Codable {
+    var action: String
+    var rowid: Int64
+    var endpoint: String?
+    var model: String?
+}
+
 struct Response: Decodable {
     let count: Int64
     let notes: [Note]
+}
+
+// AI Response structs
+struct AiTagsResponse: Decodable {
+    let tags: [String]
+    let available: Bool
+    let error: String?
+}
+
+struct AiSummaryResponse: Decodable {
+    let summary: String?
+    let available: Bool
+    let error: String?
 }
 
 class Env: ObservableObject {
@@ -200,6 +228,77 @@ class Env: ObservableObject {
         }
     }
     @Published var isServerRunning:Bool = false
+
+    // AI-related state
+    @Published var aiSuggestedTags: [String] = []
+    @Published var aiSummary: String = ""
+    @Published var aiStatus: String = ""
+    @Published var aiAvailable: Bool = false
+    @Published var showAiTags: Bool = false
+
+    /// Get AI tag suggestions for text using Apple Foundation Models.
+    func getAiTags(for text: String) {
+        guard !text.isEmpty else {
+            aiStatus = "Enter some text first"
+            return
+        }
+
+        aiStatus = "Getting AI suggestions..."
+
+        // Use Apple Foundation Models directly
+        let response = FastxtAI.suggestTags(text: text)
+
+        if let data = response.data(using: .utf8),
+           let result = try? JSONDecoder().decode(AiTagsResponse.self, from: data) {
+            DispatchQueue.main.async { [weak self] in
+                self?.aiSuggestedTags = result.tags
+                self?.aiAvailable = result.available
+                self?.aiStatus = result.error ?? ""
+                self?.showAiTags = !result.tags.isEmpty
+            }
+        }
+    }
+
+    /// Use suggested AI tags.
+    func useAiTags(currentTags: String) -> String {
+        let newTags = aiSuggestedTags.joined(separator: ",")
+        let result = currentTags.isEmpty ? newTags : "\(currentTags),\(newTags)"
+        clearAiTags()
+        return result
+    }
+
+    /// Clear AI suggestions.
+    func clearAiTags() {
+        aiSuggestedTags = []
+        showAiTags = false
+        aiStatus = ""
+    }
+
+    /// Get AI summary for text.
+    func getAiSummary(for text: String) {
+        guard !text.isEmpty else {
+            aiStatus = "Enter some text first"
+            return
+        }
+
+        aiStatus = "Generating summary..."
+
+        let response = FastxtAI.summarize(text: text)
+
+        if let data = response.data(using: .utf8),
+           let result = try? JSONDecoder().decode(AiSummaryResponse.self, from: data) {
+            DispatchQueue.main.async { [weak self] in
+                self?.aiSummary = result.summary ?? ""
+                self?.aiAvailable = result.available
+                self?.aiStatus = result.error ?? ""
+            }
+        }
+    }
+
+    /// Check if AI is available.
+    func checkAiAvailability() {
+        aiAvailable = FastxtAI.isAvailable()
+    }
 }
 
 extension DispatchQueue {

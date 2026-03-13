@@ -1,0 +1,92 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:padding="16dp">
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Text"
+        android:textAppearance="?attr/textAppearanceCaption" />
+
+    <EditText
+        android:id="@+id/txt_input"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="top|start"
+        android:inputType="textMultiLine"
+        android:minLines="4"
+        android:hint="Write your note here..." />
+
+    <!-- AI Tags Section -->
+    <LinearLayout
+        android:id="@+id/ai_tags_container"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:visibility="gone"
+        android:layout_marginTop="8dp"
+        android:padding="8dp"
+        android:background="?attr/selectableItemBackground">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="AI Suggested Tags"
+            android:textAppearance="?attr/textAppearanceCaption"
+            android:textColor="?attr/colorPrimary" />
+
+        <com.google.android.material.chip.ChipGroup
+            android:id="@+id/ai_tags_chip_group"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp" />
+
+        <Button
+            android:id="@+id/btn_use_all_tags"
+            style="@style/Widget.MaterialComponents.Button.TextButton"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Use All"
+            android:textColor="?attr/colorSecondary" />
+
+    </LinearLayout>
+
+    <!-- AI Status -->
+    <TextView
+        android:id="@+id/ai_status_text"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:visibility="gone"
+        android:textAppearance="?attr/textAppearanceCaption"
+        android:textColor="?attr/colorError" />
+
+    <!-- AI Tags Button -->
+    <Button
+        android:id="@+id/btn_get_ai_tags"
+        style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:text="AI Tags"
+        android:enabled="false"
+        app:icon="@android:drawable/ic_menu_manage" />
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="16dp"
+        android:text="Tags"
+        android:textAppearance="?attr/textAppearanceCaption" />
+
+    <EditText
+        android:id="@+id/tags_input"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:inputType="text"
+        android:hint="Comma-separated tags" />
+
+</LinearLayout>

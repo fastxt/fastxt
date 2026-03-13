@@ -4,11 +4,11 @@ import android.content.Intent
 import android.os.Bundle
 import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.RecyclerView
-import com.google.android.material.snackbar.Snackbar
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.TextView
+import org.json.JSONObject
 
 import app.fastxt.android.dummy.DummyContent
 import kotlinx.android.synthetic.main.activity_item_list.*
@@ -16,7 +16,7 @@ import kotlinx.android.synthetic.main.item_list_content.view.*
 import kotlinx.android.synthetic.main.item_list.*
 
 /**
- * An activity representing a list of Pings. This activity
+ * An activity representing a list of Notes. This activity
  * has different presentations for handset and tablet-size devices. On
  * handsets, the activity presents a list of items, which when touched,
  * lead to a [ItemDetailActivity] representing
@@ -30,6 +30,8 @@ class ItemListActivity : AppCompatActivity() {
      * device.
      */
     private var twoPane: Boolean = false
+    private var notes: MutableList<Note> = mutableListOf()
+    private lateinit var adapter: NoteRecyclerViewAdapter
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -38,40 +40,65 @@ class ItemListActivity : AppCompatActivity() {
         setSupportActionBar(toolbar)
         toolbar.title = title
 
-        fab.setOnClickListener { view ->
-            Snackbar.make(view, "Replace with your own action", Snackbar.LENGTH_LONG)
-                    .setAction("Action", null).show()
+        fab.setOnClickListener {
+            CreateNoteDialog(this) {
+                refreshNotes()
+            }.show()
         }
 
         if (item_detail_container != null) {
-            // The detail container view will be present only in the
-            // large-screen layouts (res/values-w900dp).
-            // If this view is present, then the
-            // activity should be in two-pane mode.
             twoPane = true
         }
 
-        setupRecyclerView(item_list)
+        adapter = NoteRecyclerViewAdapter(this, notes, twoPane)
+        item_list.adapter = adapter
+
+        refreshNotes()
     }
 
-    private fun setupRecyclerView(recyclerView: RecyclerView) {
-        recyclerView.adapter = SimpleItemRecyclerViewAdapter(this, DummyContent.ITEMS, twoPane)
+    /**
+     * Refresh the notes list from the database.
+     */
+    fun refreshNotes() {
+        try {
+            val response = RustBridge.search("", 0)
+            val json = JSONObject(response)
+            val notesArray = json.getJSONArray("notes")
+
+            notes.clear()
+            for (i in 0 until notesArray.length()) {
+                val noteJson = notesArray.getJSONObject(i)
+                notes.add(Note.fromJson(noteJson))
+            }
+
+            adapter.notifyDataSetChanged()
+        } catch (e: Exception) {
+            // Fallback to dummy content if database not available
+            notes.clear()
+            notes.addAll(DummyContent.ITEMS.map {
+                Note(it.id.toLongOrNull() ?: 0, "", it.content, "", "")
+            })
+            adapter.notifyDataSetChanged()
+        }
     }
 
-    class SimpleItemRecyclerViewAdapter(private val parentActivity: ItemListActivity,
-                                        private val values: List<DummyContent.DummyItem>,
-                                        private val twoPane: Boolean) :
-            RecyclerView.Adapter<SimpleItemRecyclerViewAdapter.ViewHolder>() {
+    class NoteRecyclerViewAdapter(
+        private val parentActivity: ItemListActivity,
+        private val values: List<Note>,
+        private val twoPane: Boolean
+    ) : RecyclerView.Adapter<NoteRecyclerViewAdapter.ViewHolder>() {
 
         private val onClickListener: View.OnClickListener
 
         init {
             onClickListener = View.OnClickListener { v ->
-                val item = v.tag as DummyContent.DummyItem
+                val note = v.tag as Note
                 if (twoPane) {
                     val fragment = ItemDetailFragment().apply {
                         arguments = Bundle().apply {
-                            putString(ItemDetailFragment.ARG_ITEM_ID, item.id)
+                            putLong(ItemDetailFragment.ARG_NOTE_ID, note.id)
+                            putString(ItemDetailFragment.ARG_NOTE_TEXT, note.txt)
+                            putString(ItemDetailFragment.ARG_NOTE_TAGS, note.tags)
                         }
                     }
                     parentActivity.supportFragmentManager
@@ -80,7 +107,9 @@ class ItemListActivity : AppCompatActivity() {
                             .commit()
                 } else {
                     val intent = Intent(v.context, ItemDetailActivity::class.java).apply {
-                        putExtra(ItemDetailFragment.ARG_ITEM_ID, item.id)
+                        putExtra(ItemDetailFragment.ARG_NOTE_ID, note.id)
+                        putExtra(ItemDetailFragment.ARG_NOTE_TEXT, note.txt)
+                        putExtra(ItemDetailFragment.ARG_NOTE_TAGS, note.tags)
                     }
                     v.context.startActivity(intent)
                 }
@@ -95,8 +124,8 @@ class ItemListActivity : AppCompatActivity() {
 
         override fun onBindViewHolder(holder: ViewHolder, position: Int) {
             val item = values[position]
-            holder.idView.text = item.id
-            holder.contentView.text = item.content
+            holder.idView.text = "#${item.id}"
+            holder.contentView.text = item.txt.take(100) + if (item.txt.length > 100) "..." else ""
 
             with(holder.itemView) {
                 tag = item

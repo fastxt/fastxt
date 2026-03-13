@@ -22,6 +22,12 @@ struct ContentView: View {
                     NavigationLink(destination: SyncView()){
                         Text("Sync").foregroundColor(.blue)
                     }
+                    NavigationLink(destination: CategoryView()){
+                        HStack {
+                            Image(systemName: "folder.fill")
+                            Text("Categories")
+                        }.foregroundColor(.blue)
+                    }
                     HStack{
                         TextField("type to search",text: $env.searchText)
                         Text("X").onTapGesture {

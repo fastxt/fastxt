@@ -40,11 +40,12 @@ pub fn select(conn: &Connection, limit: &u32, offset: &u32) -> String {
 pub fn select_imp(conn: &Connection, limit: &u32, offset: &u32) -> Vec<Note> {
     let mut stmt = conn
         .prepare(
-            "SELECT rowid, uuid4, txt, tags, created_at
-        FROM note
-        order by created_at desc limit :limit offset :offset",
+            "SELECT rowid, uuid4, txt, tags, created_at, ai_tags, ai_summary, ai_category
+            FROM note
+            order by created_at desc limit :limit offset :offset",
         )
         .unwrap();
+
     let note_iter = stmt
         .query_map(
             &[
@@ -58,6 +59,9 @@ pub fn select_imp(conn: &Connection, limit: &u32, offset: &u32) -> Vec<Note> {
                     txt: row.get(2)?,
                     tags: row.get(3)?,
                     created_at: row.get(4)?,
+                    ai_tags: row.get(5)?,
+                    ai_summary: row.get(6)?,
+                    ai_category: row.get(7)?,
                 })
             },
         )

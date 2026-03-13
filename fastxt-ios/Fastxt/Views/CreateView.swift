@@ -13,16 +13,30 @@ struct CreateView: View {
     @State var tags: String = ""
     @State var txt: String = ""
     @State var textHeight: CGFloat = 150
+    @ObservedObject var env = AppState.getEnv()
+
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
-            
+
             HStack{
                 Button(action:{
                     self.tags = ""
                     self.txt = ""
+                    env.clearAiTags()
                 }){
                     Text("Reset")
                 }
+                Spacer()
+                // AI Tags button
+                Button(action:{
+                    env.getAiTags(for: self.txt)
+                }){
+                    HStack(spacing: 4) {
+                        Image(systemName: "brain")
+                        Text("AI Tags")
+                    }
+                }
+                .disabled(txt.isEmpty)
                 Spacer()
                 Button(action:{
                     AppState.insert(txt: self.txt, tags: self.tags)
@@ -32,14 +46,70 @@ struct CreateView: View {
                     Text("Save")
                 }
             }
+
+            // AI Suggested Tags Section
+            if env.showAiTags && !env.aiSuggestedTags.isEmpty {
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Text("AI Suggested Tags:")
+                            .font(.caption)
+                            .foregroundColor(.gray)
+                        Spacer()
+                        Button("Dismiss") {
+                            env.clearAiTags()
+                        }
+                        .font(.caption)
+                    }
+
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 8) {
+                            ForEach(env.aiSuggestedTags, id: \.self) { tag in
+                                Button(action: {
+                                    if self.tags.isEmpty {
+                                        self.tags = tag
+                                    } else {
+                                        self.tags = "\(self.tags),\(tag)"
+                                    }
+                                }) {
+                                    Text(tag)
+                                        .padding(.horizontal, 12)
+                                        .padding(.vertical, 6)
+                                        .background(Color.blue.opacity(0.1))
+                                        .foregroundColor(.blue)
+                                        .cornerRadius(12)
+                                }
+                            }
+                            Button("Use All") {
+                                self.tags = env.useAiTags(currentTags: self.tags)
+                            }
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                            .background(Color.green.opacity(0.1))
+                            .foregroundColor(.green)
+                            .cornerRadius(12)
+                        }
+                    }
+                }
+                .padding(8)
+                .background(Color.gray.opacity(0.05))
+                .cornerRadius(8)
+            }
+
+            // AI Status
+            if !env.aiStatus.isEmpty {
+                Text(env.aiStatus)
+                    .font(.caption)
+                    .foregroundColor(.orange)
+            }
+
             TextField("enter tags: comma or space as tag seperator", text: $tags)
             Text("enter txt below:").foregroundColor(.gray)
             TextView(placeholder: "write your txt here ...", text: self.$txt, minHeight: self.textHeight, calculatedHeight: self.$textHeight)
                 .frame(minHeight: self.textHeight, maxHeight: self.textHeight)
-                
+
             Spacer()
         }.padding()
-        
+
     }
 }
 

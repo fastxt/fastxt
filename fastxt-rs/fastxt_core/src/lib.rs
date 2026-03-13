@@ -67,13 +67,27 @@ pub struct Tags {
     pub tags: String,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
 pub struct Note {
+    #[serde(default)]
     pub rowid: i64,
+    #[serde(default)]
     pub uuid4: String,
+    #[serde(default)]
     pub txt: String,
+    #[serde(default)]
     pub tags: String,
+    #[serde(default)]
     pub created_at: String,
+    /// AI-suggested tags (JSON array string)
+    #[serde(default)]
+    pub ai_tags: Option<String>,
+    /// AI-generated summary
+    #[serde(default)]
+    pub ai_summary: Option<String>,
+    /// AI-assigned category
+    #[serde(default)]
+    pub ai_category: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -241,5 +255,38 @@ pub struct SemanticSearchResponse {
 pub struct AiEmbedResponse {
     pub success: bool,
     pub available: bool,
+    pub error: Option<String>,
+}
+
+/// Command to reprocess AI metadata using local device's model.
+#[derive(Serialize, Deserialize, Debug)]
+pub struct CmdAiReprocess {
+    /// Optional: Rowid to reprocess (if None, reprocess all)
+    pub rowid: Option<i64>,
+}
+
+/// Command to organize notes by AI-generated categories.
+#[derive(Serialize, Deserialize, Debug)]
+pub struct CmdAiOrganize {
+    /// Maximum number of notes to process
+    pub limit: Option<u32>,
+    /// Optional: Ollama endpoint URL
+    pub endpoint: Option<String>,
+    /// Optional: Model name
+    pub model: Option<String>,
+}
+
+/// Response from ai-organize command.
+#[derive(Serialize, Deserialize, Debug)]
+pub struct AiOrganizeResponse {
+    /// Number of notes processed
+    pub processed: u32,
+    /// Number of categorization errors
+    pub errors: u32,
+    /// Category distribution (category -> count)
+    pub categories: std::collections::HashMap<String, u32>,
+    /// Whether AI backend was available
+    pub available: bool,
+    /// Error message if any
     pub error: Option<String>,
 }

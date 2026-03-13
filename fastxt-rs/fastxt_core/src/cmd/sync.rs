@@ -23,7 +23,7 @@ use std::collections::HashSet;
 //client
 pub fn get_note_by_uuid4(conn: &Connection, uuid4: &str) -> Note {
     let mut stmt = conn
-        .prepare("select uuid4, txt, tags, created_at FROM note where uuid4 = ? ")
+        .prepare("select uuid4, txt, tags, created_at, ai_tags, ai_summary, ai_category FROM note where uuid4 = ? ")
         .unwrap();
     let note = stmt
         .query_row(&[uuid4], |row| {
@@ -33,6 +33,9 @@ pub fn get_note_by_uuid4(conn: &Connection, uuid4: &str) -> Note {
                 txt: row.get(1)?,
                 tags: row.get(2)?,
                 created_at: row.get(3)?,
+                ai_tags: row.get(4)?,
+                ai_summary: row.get(5)?,
+                ai_category: row.get(6)?,
             })
         })
         .unwrap();

@@ -62,19 +62,64 @@ pub fn delete(conn: &Connection, rowid: i64) {
 }
 
 pub fn insert(conn: &Connection, note: Note) {
+    // Handle AI tags merge: if both local and incoming have AI tags, union them
+    let ai_tags = note.ai_tags.as_ref().map(|incoming| {
+        // Check if there's an existing note with AI tags
+        let existing_ai_tags: Option<String> = conn
+            .query_row(
+                "SELECT ai_tags FROM note WHERE uuid4 = ?1 AND ai_tags IS NOT NULL AND ai_tags != ''",
+                rusqlite::params![&note.uuid4],
+                |row| row.get(0),
+            )
+            .ok()
+            .flatten();
+
+        match existing_ai_tags {
+            Some(existing) => merge_ai_tags(&existing, incoming),
+            None => incoming.clone(),
+        }
+    });
+
     conn.execute(
         "
-        INSERT INTO note (uuid4, txt, tags, created_at)
-        VALUES (:uuid4, :txt, :tags, :created_at);
+        INSERT OR REPLACE INTO note (uuid4, txt, tags, created_at, ai_tags, ai_summary, ai_category)
+        VALUES (:uuid4, :txt, :tags, :created_at, :ai_tags, :ai_summary, :ai_category);
         ",
-        &[
-            (":uuid4", &note.uuid4),
-            (":txt", &note.txt),
-            (":tags", &make_tags(&note.tags)),
-            (":created_at", &note.created_at),
-        ],
+        rusqlite::named_params! {
+            ":uuid4": &note.uuid4,
+            ":txt": &note.txt,
+            ":tags": &make_tags(&note.tags),
+            ":created_at": &note.created_at,
+            ":ai_tags": &ai_tags,
+            ":ai_summary": &note.ai_summary,
+            ":ai_category": &note.ai_category,
+        },
     )
     .unwrap();
+}
+
+/// Merge AI tags by unioning them (for sync).
+fn merge_ai_tags(existing: &str, incoming: &str) -> String {
+    use std::collections::HashSet;
+
+    let existing_tags: HashSet<String> = existing
+        .split(',')
+        .map(|s| s.trim().to_lowercase())
+        .filter(|s| !s.is_empty())
+        .collect();
+
+    let incoming_tags: HashSet<String> = incoming
+        .split(',')
+        .map(|s| s.trim().to_lowercase())
+        .filter(|s| !s.is_empty())
+        .collect();
+
+    let merged: Vec<String> = existing_tags
+        .union(&incoming_tags)
+        .cloned()
+        .collect();
+
+    merged.join(",")
 }
 
 // format and dedup tags
@@ -178,6 +223,9 @@ pub fn select_notes_without_ai_tags(conn: &Connection, limit: u32) -> Vec<crate:
                 txt: row.get(2)?,
                 tags: row.get(3)?,
                 created_at: row.get(4)?,
+                ai_tags: None,
+                ai_summary: None,
+                ai_category: None,
             })
         })
         .unwrap()
@@ -329,6 +377,9 @@ pub fn semantic_search(
                     txt: row.get(2)?,
                     tags: row.get(3)?,
                     created_at: row.get(4)?,
+                    ai_tags: None,
+                    ai_summary: None,
+                    ai_category: None,
                 },
             ))
         })
@@ -379,6 +430,9 @@ pub fn select_notes_without_embeddings(conn: &Connection, limit: u32) -> Vec<cra
                 txt: row.get(2)?,
                 tags: row.get(3)?,
                 created_at: row.get(4)?,
+                ai_tags: None,
+                ai_summary: None,
+                ai_category: None,
             })
         })
         .unwrap()

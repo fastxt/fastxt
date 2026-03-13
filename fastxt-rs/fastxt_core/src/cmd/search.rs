@@ -58,6 +58,8 @@ pub fn search_count(conn: &Connection, query: &str) -> u32 {
     c
 }
 
+
+
 pub fn search(conn: &Connection, query: &str, limit: &u32, offset: &u32) -> String {
     let words = make_words(query);
     if words.len() == 1 && words.get(0).unwrap().is_empty() {
@@ -99,6 +101,9 @@ pub fn search(conn: &Connection, query: &str, limit: &u32, offset: &u32) -> Stri
                 txt: row.get(2)?,
                 tags: row.get(3)?,
                 created_at: row.get(4)?,
+                ai_tags: None,
+                ai_summary: None,
+                ai_category: None,
             })
         })
         .unwrap();
