@@ -19,6 +19,10 @@
 use super::Fastxt;
 use crate::cmd::insert;
 use crate::cmd::sync::{diff_uuid4_from_server, diff_uuid4_to_server, get_note_by_uuid4};
+use crate::cmd::{
+    get_embedding_by_uuid4, get_embedding_model_id, get_embedding_uuid4s_by_model,
+    store_embedding_by_uuid4,
+};
 use crate::exe::get_sqlite_connection;
 use crate::upgrade::get_meta_version;
 use crate::Note;
@@ -37,6 +41,7 @@ use tokio::runtime::Runtime;
 
 #[derive(Clone)]
 struct FastxtServer {
+    #[allow(dead_code)]
     client_addr: SocketAddr,
     abort_handle: AbortHandle,
 }
@@ -92,6 +97,44 @@ impl Fastxt for FastxtServer {
         self.abort_handle.abort();
         future::ready(true)
     }
+
+    // Embedding sync methods
+    type GetEmbeddingModelIdFut = Ready<Option<String>>;
+    fn get_embedding_model_id(self, _: context::Context) -> Self::GetEmbeddingModelIdFut {
+        let conn = get_sqlite_connection();
+        future::ready(get_embedding_model_id(&conn))
+    }
+
+    type GetEmbeddingUuid4sFut = Ready<Vec<String>>;
+    fn get_embedding_uuid4s(
+        self,
+        _: context::Context,
+        model_id: String,
+    ) -> Self::GetEmbeddingUuid4sFut {
+        let conn = get_sqlite_connection();
+        let uuid4s = get_embedding_uuid4s_by_model(&conn, &model_id);
+        future::ready(uuid4s)
+    }
+
+    type ReceiveEmbeddingFut = Ready<Option<(Vec<u8>, String)>>;
+    fn receive_embedding(self, _: context::Context, uuid4: String) -> Self::ReceiveEmbeddingFut {
+        let conn = get_sqlite_connection();
+        let embedding = get_embedding_by_uuid4(&conn, &uuid4);
+        future::ready(embedding)
+    }
+
+    type SendEmbeddingFut = Ready<bool>;
+    fn send_embedding(
+        self,
+        _: context::Context,
+        uuid4: String,
+        embedding_bytes: Vec<u8>,
+        model_id: String,
+    ) -> Self::SendEmbeddingFut {
+        let conn = get_sqlite_connection();
+        store_embedding_by_uuid4(&conn, &uuid4, &embedding_bytes, &model_id);
+        future::ready(true)
+    }
 }
 
 async fn start_server(addr: &SocketAddr) -> io::Result<()> {
@@ -127,7 +170,7 @@ pub fn start(addr: &str) -> Result<(), &'static str> {
         .unwrap_or_else(|e| panic!(r#"server_addr {} invalid: {}"#, addr, e));
     let rt = Runtime::new().unwrap();
     rt.block_on(async {
-        start_server(&server_addr).await;
+        let _ = start_server(&server_addr).await;
     });
     Ok(())
 }
@@ -135,8 +178,8 @@ pub fn start(addr: &str) -> Result<(), &'static str> {
 pub fn get_server_addr() -> String {
     for iface in get_if_addrs::get_if_addrs().unwrap() {
         if !iface.is_loopback() {
-            return format!("{}:3456", iface.addr.ip().to_string());
+            return format!("{}:3456", iface.addr.ip());
         }
     }
-    return "".to_string();
+    String::new()
 }

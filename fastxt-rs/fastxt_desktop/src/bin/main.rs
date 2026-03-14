@@ -1,7 +1,7 @@
 use anyhow::Result;
 use druid::widget::{
-    Button, CrossAxisAlignment, Either, Flex, Label, MainAxisAlignment, SizedBox, Split,
-    TextBox, ViewSwitcher, Scroll, LineBreaking,
+    Button, CrossAxisAlignment, Either, Flex, Label, LineBreaking, MainAxisAlignment, Scroll,
+    SizedBox, Split, TextBox, ViewSwitcher,
 };
 use druid::{AppLauncher, Color, Data, Insets, Lens, Widget, WidgetExt, WindowDesc};
 use fastxt_desktop::utils::qrcode_builder;
@@ -69,6 +69,7 @@ impl Default for AppState {
 }
 
 #[derive(Clone, Data, Copy, PartialEq)]
+#[allow(clippy::enum_variant_names)]
 enum RightPanel {
     SyncPage,
     FormPage,
@@ -115,12 +116,9 @@ fn build_left_header() -> impl Widget<AppState> {
         .cross_axis_alignment(CrossAxisAlignment::Baseline)
         .with_child(Label::new("Fastxt").with_text_size(16.0))
         .with_flex_spacer(1.0)
-        .with_child(
-            Button::new("AI")
-                .on_click(|_, data: &mut AppState, _: &_| {
-                    data.current_view = RightPanel::AiSettingsPage
-                }),
-        )
+        .with_child(Button::new("AI").on_click(|_, data: &mut AppState, _: &_| {
+            data.current_view = RightPanel::AiSettingsPage
+        }))
         .with_default_spacer()
         .with_child(
             Button::new("Sync")
@@ -163,22 +161,21 @@ fn build_search_mode_toggle() -> impl Widget<AppState> {
 }
 
 fn build_category_toggle() -> impl Widget<AppState> {
-    Flex::row()
-        .with_child(
-            Button::new(|data: &AppState, _: &_| {
-                if data.category_view {
-                    "📂 Categories ✓"
-                } else {
-                    "📂 Categories"
-                }
-            })
-            .on_click(|_, data: &mut AppState, _| {
-                data.category_view = !data.category_view;
-                if data.category_view {
-                    load_categories(data);
-                }
-            }),
-        )
+    Flex::row().with_child(
+        Button::new(|data: &AppState, _: &_| {
+            if data.category_view {
+                "📂 Categories ✓"
+            } else {
+                "📂 Categories"
+            }
+        })
+        .on_click(|_, data: &mut AppState, _| {
+            data.category_view = !data.category_view;
+            if data.category_view {
+                load_categories(data);
+            }
+        }),
+    )
 }
 
 fn build_category_list() -> impl Widget<AppState> {
@@ -189,7 +186,7 @@ fn build_category_list() -> impl Widget<AppState> {
             Scroll::new(
                 Label::new(|data: &AppState, _: &_| data.categories_display.clone())
                     .with_text_size(12.0)
-                    .with_line_break_mode(LineBreaking::WordWrap)
+                    .with_line_break_mode(LineBreaking::WordWrap),
             ),
             1.0,
         )
@@ -207,23 +204,24 @@ fn build_left_search() -> impl Widget<AppState> {
                     1.0,
                 )
                 .with_default_spacer()
-                .with_child(
-                    Button::new("Go").on_click(|_, data: &mut AppState, _| {
-                        perform_search(data);
-                    }),
-                ),
+                .with_child(Button::new("Go").on_click(|_, data: &mut AppState, _| {
+                    perform_search(data);
+                })),
         )
         .with_default_spacer()
         .with_child(Either::new(
             |data: &AppState, _| data.search_mode == SearchMode::Semantic,
-            Label::new("Semantic search uses AI to find similar notes").with_text_color(Color::GRAY),
+            Label::new("Semantic search uses AI to find similar notes")
+                .with_text_color(Color::GRAY),
             SizedBox::empty(),
         ))
 }
 
 fn build_listview() -> impl Widget<AppState> {
     Flex::column()
-        .with_child(Label::new(|data: &AppState, _: &_| data.notes_count.clone()))
+        .with_child(Label::new(|data: &AppState, _: &_| {
+            data.notes_count.clone()
+        }))
         .with_default_spacer()
         .with_child(
             Flex::row()
@@ -238,7 +236,7 @@ fn build_listview() -> impl Widget<AppState> {
             Scroll::new(
                 Label::new(|data: &AppState, _: &_| data.notes_display.clone())
                     .with_text_size(12.0)
-                    .with_line_break_mode(LineBreaking::WordWrap)
+                    .with_line_break_mode(LineBreaking::WordWrap),
             ),
             1.0,
         )
@@ -293,15 +291,15 @@ fn build_form_page() -> impl Widget<AppState> {
                 .cross_axis_alignment(CrossAxisAlignment::Start)
                 .with_child(
                     Flex::row()
-                        .with_child(Label::new("Summary:").with_text_color(Color::rgb8(100, 100, 100)))
-                        .with_flex_spacer(1.0)
                         .with_child(
-                            Label::new("×")
-                                .with_text_color(Color::GRAY)
-                                .on_click(|_, data: &mut AppState, _| {
-                                    data.ai_summary = "".into();
-                                }),
-                        ),
+                            Label::new("Summary:").with_text_color(Color::rgb8(100, 100, 100)),
+                        )
+                        .with_flex_spacer(1.0)
+                        .with_child(Label::new("×").with_text_color(Color::GRAY).on_click(
+                            |_, data: &mut AppState, _| {
+                                data.ai_summary = "".into();
+                            },
+                        )),
                 )
                 .with_child(Label::new(|data: &AppState, _: &_| data.ai_summary.clone()))
                 .with_default_spacer(),
@@ -319,23 +317,20 @@ fn build_form_page() -> impl Widget<AppState> {
                             data.ai_suggested_tags.clone()
                         }))
                         .with_default_spacer()
-                        .with_child(
-                            Button::new("Use")
-                                .on_click(|_, data: &mut AppState, _| {
-                                    if data.tags.is_empty() {
-                                        data.tags = data.ai_suggested_tags.clone();
-                                    } else {
-                                        data.tags = format!("{},{}", data.tags, data.ai_suggested_tags);
-                                    }
-                                    data.ai_suggested_tags = "".into();
-                                }),
-                        )
-                        .with_child(
-                            Button::new("Replace").on_click(|_, data: &mut AppState, _| {
+                        .with_child(Button::new("Use").on_click(|_, data: &mut AppState, _| {
+                            if data.tags.is_empty() {
+                                data.tags = data.ai_suggested_tags.clone();
+                            } else {
+                                data.tags = format!("{},{}", data.tags, data.ai_suggested_tags);
+                            }
+                            data.ai_suggested_tags = "".into();
+                        }))
+                        .with_child(Button::new("Replace").on_click(
+                            |_, data: &mut AppState, _| {
                                 data.tags = data.ai_suggested_tags.clone();
                                 data.ai_suggested_tags = "".into();
-                            }),
-                        ),
+                            },
+                        )),
                 )
                 .with_default_spacer(),
             SizedBox::empty(),
@@ -502,11 +497,11 @@ fn build_ai_settings_page() -> impl Widget<AppState> {
                     }),
                 )
                 .with_default_spacer()
-                .with_child(
-                    Button::new("Embed All Notes").on_click(|_, data: &mut AppState, _| {
+                .with_child(Button::new("Embed All Notes").on_click(
+                    |_, data: &mut AppState, _| {
                         batch_embed_all(data);
-                    }),
-                ),
+                    },
+                )),
         )
         .with_default_spacer()
         .with_child(
@@ -514,13 +509,36 @@ fn build_ai_settings_page() -> impl Widget<AppState> {
                 organize_notes(data);
             }),
         )
-        .with_child(Label::new("Categorize notes into groups (work, personal, etc.)").with_text_color(Color::GRAY))
+        .with_child(
+            Label::new("Categorize notes into groups (work, personal, etc.)")
+                .with_text_color(Color::GRAY),
+        )
+        .with_default_spacer()
+        .with_child(Label::new("Category Management:"))
+        .with_default_spacer()
+        .with_child(
+            Button::new("View Categories").on_click(|_, data: &mut AppState, _| {
+                load_categories(data);
+            }),
+        )
+        .with_child(Label::new("Click to see your categorized notes").with_text_color(Color::GRAY))
+        .with_default_spacer()
+        .with_child(
+            Scroll::new(
+                Label::new(|data: &AppState, _: &_| data.categories_display.clone())
+                    .with_text_size(11.0)
+                    .with_line_break_mode(LineBreaking::WordWrap),
+            )
+            .fix_height(150.0),
+        )
         .with_default_spacer()
         .with_child(Label::new("Setup Instructions:"))
         .with_default_spacer()
         .with_child(Label::new("1. Install Ollama: https://ollama.ai"))
         .with_child(Label::new("2. Pull a model: ollama pull llama3.2"))
-        .with_child(Label::new("3. Ollama runs automatically as a background service"))
+        .with_child(Label::new(
+            "3. Ollama runs automatically as a background service",
+        ))
         .with_flex_spacer(1.0)
         .padding(15.0)
 }
@@ -563,24 +581,28 @@ fn perform_search(data: &mut AppState) {
                     let mut display_parts = Vec::new();
 
                     for note in notes {
-                        let txt: String = note.get("txt")
+                        let txt: String = note
+                            .get("txt")
                             .and_then(|t| t.as_str())
                             .unwrap_or("")
                             .chars()
                             .take(100)
                             .collect();
 
-                        let tags: String = note.get("tags")
+                        let tags: String = note
+                            .get("tags")
                             .and_then(|t| t.as_str())
                             .unwrap_or("")
                             .to_string();
 
-                        let summary: String = note.get("ai_summary")
+                        let summary: String = note
+                            .get("ai_summary")
                             .and_then(|s| s.as_str())
                             .unwrap_or("")
                             .to_string();
 
-                        let created_at: String = note.get("created_at")
+                        let created_at: String = note
+                            .get("created_at")
                             .and_then(|t| t.as_str())
                             .unwrap_or("")
                             .split(' ')
@@ -614,7 +636,11 @@ fn perform_search(data: &mut AppState) {
             if let Ok(response) = serde_json::from_str::<serde_json::Value>(&result) {
                 if let Some(results) = response.get("results").and_then(|r| r.as_array()) {
                     data.notes_count = format!("{} similar notes", results.len());
-                    data.ai_status = if response.get("available").and_then(|a| a.as_bool()).unwrap_or(false) {
+                    data.ai_status = if response
+                        .get("available")
+                        .and_then(|a| a.as_bool())
+                        .unwrap_or(false)
+                    {
                         "".to_string()
                     } else {
                         "AI not available for semantic search".to_string()
@@ -624,28 +650,31 @@ fn perform_search(data: &mut AppState) {
                     let mut display_parts = Vec::new();
                     for r in results {
                         if let Some(note) = r.get("note") {
-                            let similarity = r.get("similarity")
-                                .and_then(|s| s.as_f64())
-                                .unwrap_or(0.0);
+                            let similarity =
+                                r.get("similarity").and_then(|s| s.as_f64()).unwrap_or(0.0);
 
-                            let txt: String = note.get("txt")
+                            let txt: String = note
+                                .get("txt")
                                 .and_then(|t| t.as_str())
                                 .unwrap_or("")
                                 .chars()
                                 .take(100)
                                 .collect();
 
-                            let tags: String = note.get("tags")
+                            let tags: String = note
+                                .get("tags")
                                 .and_then(|t| t.as_str())
                                 .unwrap_or("")
                                 .to_string();
 
-                            let summary: String = note.get("ai_summary")
+                            let summary: String = note
+                                .get("ai_summary")
                                 .and_then(|s| s.as_str())
                                 .unwrap_or("")
                                 .to_string();
 
-                            let created_at: String = note.get("created_at")
+                            let created_at: String = note
+                                .get("created_at")
                                 .and_then(|t| t.as_str())
                                 .unwrap_or("")
                                 .split(' ')
@@ -653,7 +682,12 @@ fn perform_search(data: &mut AppState) {
                                 .unwrap_or("")
                                 .to_string();
 
-                            let mut note_display = format!("🔍 {:.0}% similar\n{}\n[{}]", similarity * 100.0, txt, tags);
+                            let mut note_display = format!(
+                                "🔍 {:.0}% similar\n{}\n[{}]",
+                                similarity * 100.0,
+                                txt,
+                                tags
+                            );
                             if !summary.is_empty() {
                                 note_display = format!("{}\n📝 Summary: {}", note_display, summary);
                             }
@@ -697,7 +731,11 @@ fn get_ai_tags(data: &mut AppState) {
                 .collect::<Vec<_>>()
                 .join(",");
             data.ai_suggested_tags = tag_str;
-            data.ai_status = if response.get("available").and_then(|a| a.as_bool()).unwrap_or(false) {
+            data.ai_status = if response
+                .get("available")
+                .and_then(|a| a.as_bool())
+                .unwrap_or(false)
+            {
                 "".to_string()
             } else {
                 "AI not available. Check Ollama is running.".to_string()
@@ -731,7 +769,11 @@ fn get_ai_summary(data: &mut AppState) {
     let result = fastxt_core::exe::run(&cmd.to_string());
 
     if let Ok(response) = serde_json::from_str::<serde_json::Value>(&result) {
-        if response.get("available").and_then(|a| a.as_bool()).unwrap_or(false) {
+        if response
+            .get("available")
+            .and_then(|a| a.as_bool())
+            .unwrap_or(false)
+        {
             if let Some(tags) = response.get("tags").and_then(|t| t.as_array()) {
                 // The "tags" are actually our summary sentences
                 if let Some(first) = tags.first().and_then(|t| t.as_str()) {
@@ -761,7 +803,11 @@ fn test_ai_connection(data: &mut AppState) {
     let result = fastxt_core::exe::run(&cmd.to_string());
 
     if let Ok(response) = serde_json::from_str::<serde_json::Value>(&result) {
-        if response.get("available").and_then(|a| a.as_bool()).unwrap_or(false) {
+        if response
+            .get("available")
+            .and_then(|a| a.as_bool())
+            .unwrap_or(false)
+        {
             data.ai_status = "✓ Connected to Ollama successfully!".to_string();
         } else {
             data.ai_status = "✗ Could not connect to Ollama. Make sure it's running.".to_string();
@@ -837,13 +883,20 @@ fn organize_notes(data: &mut AppState) {
     if let Ok(response) = serde_json::from_str::<serde_json::Value>(&result) {
         if let Some(processed) = response.get("processed").and_then(|p| p.as_u64()) {
             let errors = response.get("errors").and_then(|e| e.as_u64()).unwrap_or(0);
-            let categories = response.get("categories").and_then(|c| c.as_object()).map(|obj| {
-                obj.iter()
-                    .map(|(k, v)| format!("  {}: {} notes", k, v.as_u64().unwrap_or(0)))
-                    .collect::<Vec<_>>()
-                    .join("\n")
-            }).unwrap_or_default();
-            data.ai_status = format!("Organized {} notes ({} errors)\n{}", processed, errors, categories);
+            let categories = response
+                .get("categories")
+                .and_then(|c| c.as_object())
+                .map(|obj| {
+                    obj.iter()
+                        .map(|(k, v)| format!("  {}: {} notes", k, v.as_u64().unwrap_or(0)))
+                        .collect::<Vec<_>>()
+                        .join("\n")
+                })
+                .unwrap_or_default();
+            data.ai_status = format!(
+                "Organized {} notes ({} errors)\n{}",
+                processed, errors, categories
+            );
         } else if let Some(error) = response.get("error").and_then(|e| e.as_str()) {
             data.ai_status = format!("Error: {}", error);
         }
@@ -869,18 +922,21 @@ fn load_categories(data: &mut AppState) {
 
         if let Some(notes) = response.get("notes").and_then(|n| n.as_array()) {
             for note in notes {
-                let category = note.get("ai_category")
+                let category = note
+                    .get("ai_category")
                     .and_then(|c| c.as_str())
                     .unwrap_or("uncategorized");
 
-                let txt: String = note.get("txt")
+                let txt: String = note
+                    .get("txt")
                     .and_then(|t| t.as_str())
                     .unwrap_or("")
                     .chars()
                     .take(50)
                     .collect();
 
-                categories.entry(category.to_string())
+                categories
+                    .entry(category.to_string())
                     .or_default()
                     .push(txt);
             }

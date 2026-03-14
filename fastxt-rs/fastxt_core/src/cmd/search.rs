@@ -24,7 +24,7 @@ use rusqlite::Connection;
 
 pub fn search_count(conn: &Connection, query: &str) -> u32 {
     let words = make_words(query);
-    if words.len() == 1 && words.get(0).unwrap().is_empty() {
+    if words.len() == 1 && words.first().unwrap().is_empty() {
         return select_count(conn);
     }
     let num_words = words.len();
@@ -45,7 +45,7 @@ pub fn search_count(conn: &Connection, query: &str) -> u32 {
 
     let mut params: Vec<(&str, &dyn ToSql)> = vec![];
     for i in 0..num_words {
-        params.push((&keys.get(i).unwrap(), words.get(i).unwrap() as &dyn ToSql));
+        params.push((keys.get(i).unwrap(), words.get(i).unwrap() as &dyn ToSql));
     }
 
     eprintln!("params {:?}", params.len());
@@ -58,11 +58,9 @@ pub fn search_count(conn: &Connection, query: &str) -> u32 {
     c
 }
 
-
-
 pub fn search(conn: &Connection, query: &str, limit: &u32, offset: &u32) -> String {
     let words = make_words(query);
-    if words.len() == 1 && words.get(0).unwrap().is_empty() {
+    if words.len() == 1 && words.first().unwrap().is_empty() {
         return select(conn, limit, offset);
     }
     let num_words = words.len();
@@ -88,7 +86,7 @@ pub fn search(conn: &Connection, query: &str, limit: &u32, offset: &u32) -> Stri
     ];
 
     for i in 0..num_words {
-        params.push((&keys.get(i).unwrap(), words.get(i).unwrap() as &dyn ToSql));
+        params.push((keys.get(i).unwrap(), words.get(i).unwrap() as &dyn ToSql));
     }
 
     eprintln!("params {:?}", params.len());
@@ -114,10 +112,10 @@ pub fn search(conn: &Connection, query: &str, limit: &u32, offset: &u32) -> Stri
         note.tags = make_tags(&note.tags);
         //eprintln!("Found note {:?}", note);
         j.push_str(&serde_json::to_string(&note).unwrap());
-        j.push_str(",");
+        j.push(',');
     }
     j.pop();
-    j.push_str("]");
+    j.push(']');
     j
 }
 
@@ -131,9 +129,7 @@ fn make_words(query: &str) -> Vec<String> {
 }
 
 fn make_keys(num_words: usize) -> Vec<String> {
-    (0..num_words)
-        .map(|i| ":w".to_string() + &i.to_string())
-        .collect()
+    (0..num_words).map(|i| format!(":w{i}")).collect()
 }
 
 fn where_vec(num_words: usize) -> Vec<String> {
@@ -141,11 +137,9 @@ fn where_vec(num_words: usize) -> Vec<String> {
         .map(|i| {
             format!(
                 "(
-        txt like :w{}
-        or tags like :w{}
-        )",
-                i.to_string(),
-                i.to_string()
+        txt like :w{i}
+        or tags like :w{i}
+        )"
             )
         })
         .collect()

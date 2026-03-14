@@ -53,6 +53,7 @@ struct GenerateOptions {
 #[derive(Debug, Deserialize)]
 struct GenerateResponse {
     response: String,
+    #[allow(dead_code)]
     done: bool,
 }
 
@@ -152,9 +153,7 @@ impl OllamaBackend {
             .client
             .post(&url)
             .json(&request)
-            .timeout(Duration::from_secs(
-                config.timeout_secs.unwrap_or(30),
-            ))
+            .timeout(Duration::from_secs(config.timeout_secs.unwrap_or(30)))
             .send()
             .map_err(|e| {
                 if e.is_timeout() {
@@ -195,7 +194,7 @@ impl OllamaBackend {
 
         // Split by common delimiters
         let tags: Vec<String> = cleaned
-            .split(|c| c == ',' || c == '\n' || c == ';')
+            .split([',', '\n', ';'])
             .map(|s| s.trim().trim_matches('"').trim_matches('\'').to_string())
             .filter(|s| !s.is_empty() && s.len() < 50) // Filter out garbage
             .take(10) // Limit to 10 tags
@@ -286,9 +285,7 @@ Summary:"#,
             .client
             .post(&url)
             .json(&request)
-            .timeout(Duration::from_secs(
-                config.timeout_secs.unwrap_or(30),
-            ))
+            .timeout(Duration::from_secs(config.timeout_secs.unwrap_or(30)))
             .send()
             .map_err(|e| {
                 if e.is_timeout() {

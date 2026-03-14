@@ -18,7 +18,7 @@
 use clap::{App, Arg};
 use fastxt_core::exe::run;
 fn main() {
-    let addr = run(&(r#"{"action":"server-addr"}"#));
+    let addr = run(r#"{"action":"server-addr"}"#);
     eprintln!("server addr: {}", addr);
 
     let matches = App::new("fastxt-rpc-server")

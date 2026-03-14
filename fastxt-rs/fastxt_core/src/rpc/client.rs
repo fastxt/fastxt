@@ -17,12 +17,14 @@
 */
 
 use super::FastxtClient;
-use crate::cmd::insert;
 use crate::cmd::sync::get_note_by_uuid4;
 use crate::cmd::sync::next_uuid4_candidates;
+use crate::cmd::{
+    get_embedding_model_id, get_embedding_uuid4s_by_model, insert, store_embedding_by_uuid4,
+};
 use crate::exe::get_sqlite_connection;
 use crate::upgrade::get_meta_version;
-use std::io::{Error, ErrorKind};
+use std::io::Error;
 use std::{io, net::SocketAddr};
 use tarpc::{client, context, tokio_serde::formats::Bincode};
 use tokio::runtime::Runtime;
@@ -37,7 +39,7 @@ async fn run_sync_to_server(addr: &SocketAddr) -> io::Result<()> {
     let is_version_match = client.is_version_match(context::current(), version).await?;
     eprintln!("is_version_match: {}", is_version_match);
     if !is_version_match {
-        return Err(Error::new(ErrorKind::Other, "VERSION_NOT_MATCH"));
+        return Err(Error::other("VERSION_NOT_MATCH"));
     }
 
     // diff uuid4
@@ -67,7 +69,7 @@ async fn run_sync_from_server(addr: &SocketAddr) -> io::Result<()> {
     let is_version_match = client.is_version_match(context::current(), version).await?;
     eprintln!("is_version_match: {}", is_version_match);
     if !is_version_match {
-        return Err(Error::new(ErrorKind::Other, "VERSION_NOT_MATCH"));
+        return Err(Error::other("VERSION_NOT_MATCH"));
     }
 
     // diff uuid4
@@ -91,12 +93,12 @@ pub fn sync(addr: &str) -> Result<String, String> {
         Ok(server_addr) => {
             let rt = Runtime::new().unwrap();
             rt.block_on(async {
-                run_sync_to_server(&server_addr).await;
+                let _ = run_sync_to_server(&server_addr).await;
                 eprintln!("sync to server done");
             });
             let rt2 = Runtime::new().unwrap();
             rt2.block_on(async {
-                run_sync_from_server(&server_addr).await;
+                let _ = run_sync_from_server(&server_addr).await;
                 eprintln!("sync from server done");
             });
             Ok("sync ok".to_string())
@@ -115,7 +117,7 @@ async fn run_stop_server(addr: &SocketAddr) -> io::Result<()> {
     let is_version_match = client.is_version_match(context::current(), version).await?;
     eprintln!("is_version_match: {}", is_version_match);
     if !is_version_match {
-        return Err(Error::new(ErrorKind::Other, "VERSION_NOT_MATCH"));
+        return Err(Error::other("VERSION_NOT_MATCH"));
     }
 
     // diff uuid4
@@ -136,4 +138,115 @@ pub fn stop_server(addr: &str) -> Result<String, String> {
         }
     });
     Ok("stop ok".to_string())
+}
+
+/// Sync embeddings with the server.
+/// Only syncs if both client and server use the same embedding model.
+async fn run_sync_embeddings(addr: &SocketAddr) -> io::Result<()> {
+    let transport = tarpc::serde_transport::tcp::connect(addr, Bincode::default).await?;
+    let client = FastxtClient::new(client::Config::default(), transport).spawn();
+    let conn = get_sqlite_connection();
+
+    // Check version match
+    let version = get_meta_version(&conn);
+    let is_version_match = client.is_version_match(context::current(), version).await?;
+    eprintln!("is_version_match: {}", is_version_match);
+    if !is_version_match {
+        return Err(Error::other("VERSION_NOT_MATCH"));
+    }
+
+    // Get local embedding model ID
+    let local_model_id = get_embedding_model_id(&conn);
+    eprintln!("local_model_id: {:?}", local_model_id);
+
+    // Get remote embedding model ID
+    let remote_model_id = client.get_embedding_model_id(context::current()).await?;
+    eprintln!("remote_model_id: {:?}", remote_model_id);
+
+    // Only sync embeddings if model IDs match
+    match (local_model_id, remote_model_id) {
+        (Some(local_id), Some(remote_id)) if local_id == remote_id => {
+            eprintln!("Model IDs match, syncing embeddings...");
+
+            // Get local embedding UUIDs
+            let local_uuid4s = get_embedding_uuid4s_by_model(&conn, &local_id);
+
+            // Get remote embedding UUIDs
+            let remote_uuid4s = client
+                .get_embedding_uuid4s(context::current(), remote_id.clone())
+                .await?;
+
+            // Send embeddings that remote doesn't have
+            let uuid4s_to_send: Vec<String> = local_uuid4s
+                .iter()
+                .filter(|u| !remote_uuid4s.contains(u))
+                .cloned()
+                .collect();
+
+            eprintln!("Sending {} embeddings to server...", uuid4s_to_send.len());
+            for uuid4 in &uuid4s_to_send {
+                if let Some((embedding_bytes, model_id)) =
+                    crate::cmd::get_embedding_by_uuid4(&conn, uuid4)
+                {
+                    client
+                        .send_embedding(
+                            context::current(),
+                            uuid4.clone(),
+                            embedding_bytes,
+                            model_id,
+                        )
+                        .await?;
+                }
+            }
+            eprintln!("Sent {} embeddings to server", uuid4s_to_send.len());
+
+            // Receive embeddings that local doesn't have
+            let uuid4s_to_receive: Vec<String> = remote_uuid4s
+                .iter()
+                .filter(|u| !local_uuid4s.contains(u))
+                .cloned()
+                .collect();
+
+            eprintln!(
+                "Receiving {} embeddings from server...",
+                uuid4s_to_receive.len()
+            );
+            for uuid4 in &uuid4s_to_receive {
+                if let Some((embedding_bytes, model_id)) = client
+                    .receive_embedding(context::current(), uuid4.clone())
+                    .await?
+                {
+                    store_embedding_by_uuid4(&conn, uuid4, &embedding_bytes, &model_id);
+                }
+            }
+            eprintln!(
+                "Received {} embeddings from server",
+                uuid4s_to_receive.len()
+            );
+
+            Ok(())
+        }
+        _ => {
+            eprintln!("Model IDs don't match or no embeddings exist, skipping embedding sync");
+            Ok(())
+        }
+    }
+}
+
+/// Sync embeddings between client and server.
+/// Returns a status message indicating what was synced.
+pub fn sync_embeddings(addr: &str) -> Result<String, String> {
+    let server_addr: SocketAddr = addr
+        .parse()
+        .map_err(|e| format!("server_addr {} invalid: {}", addr, e))?;
+
+    let rt = Runtime::new().unwrap();
+    rt.block_on(async {
+        if let Err(e) = run_sync_embeddings(&server_addr).await {
+            eprintln!("sync_embeddings error: {}", e);
+            return Err(format!("sync_embeddings error: {}", e));
+        }
+        eprintln!("sync_embeddings done");
+        Ok("sync_embeddings ok".to_string())
+    })
 }

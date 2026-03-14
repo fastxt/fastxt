@@ -25,6 +25,11 @@ module.exports = {
           label: 'Docs',
           position: 'left',
         },
+        {
+          to: 'docs/ai-features',
+          label: 'AI Features',
+          position: 'left',
+        },
         {to: 'blog', label: 'Blog', position: 'left'},
         {to: 'privacy-policy', label: 'Privacy', position: 'left'},
         {
@@ -44,6 +49,10 @@ module.exports = {
             {
               label: 'Developer Setup',
               to: 'docs/developer-setup',
+            },
+            {
+              label: 'AI Features',
+              to: 'docs/ai-features',
             },
             {
               label: 'Privacy Policy',

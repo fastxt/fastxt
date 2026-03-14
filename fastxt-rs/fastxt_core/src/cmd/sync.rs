@@ -25,21 +25,19 @@ pub fn get_note_by_uuid4(conn: &Connection, uuid4: &str) -> Note {
     let mut stmt = conn
         .prepare("select uuid4, txt, tags, created_at, ai_tags, ai_summary, ai_category FROM note where uuid4 = ? ")
         .unwrap();
-    let note = stmt
-        .query_row(&[uuid4], |row| {
-            Ok(Note {
-                rowid: 0,
-                uuid4: row.get(0)?,
-                txt: row.get(1)?,
-                tags: row.get(2)?,
-                created_at: row.get(3)?,
-                ai_tags: row.get(4)?,
-                ai_summary: row.get(5)?,
-                ai_category: row.get(6)?,
-            })
+    stmt.query_row([uuid4], |row| {
+        Ok(Note {
+            rowid: 0,
+            uuid4: row.get(0)?,
+            txt: row.get(1)?,
+            tags: row.get(2)?,
+            created_at: row.get(3)?,
+            ai_tags: row.get(4)?,
+            ai_summary: row.get(5)?,
+            ai_category: row.get(6)?,
         })
-        .unwrap();
-    note
+    })
+    .unwrap()
 }
 
 pub fn next_uuid4_candidates(conn: &Connection) -> Vec<String> {
@@ -50,10 +48,8 @@ pub fn next_uuid4_candidates(conn: &Connection) -> Vec<String> {
     let iter = stmt
         .query_map([], |row| Ok(OneString { s: row.get(0)? }))
         .unwrap();
-    for i in iter {
-        if let Ok(uuid4) = i {
-            r.push(uuid4.s)
-        }
+    for uuid4 in iter.flatten() {
+        r.push(uuid4.s)
     }
     r
 }
@@ -63,7 +59,7 @@ pub fn diff_uuid4_to_server(conn: &Connection, candidates: Vec<String>) -> Vec<S
     let mut r = Vec::new();
     let mut stmt = conn.prepare("select 1 FROM note where uuid4 = ? ").unwrap();
     for uuid4 in candidates {
-        if !(stmt.exists(&[&uuid4]).unwrap()) {
+        if !(stmt.exists([&uuid4]).unwrap()) {
             r.push(uuid4);
         }
     }
@@ -79,11 +75,9 @@ pub fn diff_uuid4_from_server(conn: &Connection, candidates: Vec<String>) -> Vec
         .query_map([], |row| Ok(OneString { s: row.get(0)? }))
         .unwrap();
 
-    for i in iter {
-        if let Ok(uuid4) = i {
-            if !(candidates.contains(&uuid4.s)) {
-                r.push(uuid4.s);
-            }
+    for uuid4 in iter.flatten() {
+        if !(candidates.contains(&uuid4.s)) {
+            r.push(uuid4.s);
         }
     }
     r

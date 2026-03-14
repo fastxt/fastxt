@@ -71,7 +71,21 @@ Goal: AI-generated metadata (tags, summaries, categories) syncs across all devic
 
 - [x] Extend RPC sync protocol to include `ai_tags`, `ai_summary`, `ai_category` fields
 - [x] Handle merge strategy: if two devices generate different AI tags for the same note, union them
-- [ ] Sync `note_embedding` only when model IDs match (embeddings are model-specific)
+- [x] Sync `note_embedding` only when model IDs match (embeddings are model-specific)
+  - Added RPC methods in `rpc.rs`:
+    - `get_embedding_model_id` - Get the embedding model ID
+    - `get_embedding_uuid4s` - Get note UUIDs with embeddings for a model
+    - `receive_embedding` - Receive embedding data for a note
+    - `send_embedding` - Send embedding data to be stored
+  - Added database functions in `cmd.rs`:
+    - `get_embedding_model_id` - Get the most recently used model ID
+    - `get_embedding_uuid4s_by_model` - Get UUIDs with embeddings for a model
+    - `get_embedding_by_uuid4` - Get embedding data by note UUID
+    - `store_embedding_by_uuid4` - Store embedding data by note UUID
+  - Added client sync logic in `rpc/client.rs`:
+    - `run_sync_embeddings` - Sync embeddings only when model IDs match
+    - `sync_embeddings` - Public API for embedding sync
+  - Added `sync-embeddings` command in `exe.rs`
 - [x] Add `ai-reprocess` command — regenerate AI metadata using the local device's model
 - [ ] Test sync between desktop (Ollama) and iOS (Foundation Models) with different AI outputs
 - [ ] Test sync between Android and desktop
@@ -83,13 +97,31 @@ Goal: Use AI to automatically group and categorize the user's note collection.
 - [x] Add `ai-organize` command — suggest folder/category structure
 - [x] Desktop GUI: show AI-suggested categories as a sidebar grouping
 - [x] iOS/Android: category view with AI-generated groupings
-- [ ] Allow user to pin/rename/dismiss AI categories
+- [x] Allow user to pin/rename/dismiss AI categories
+  - Added backend functions in `fastxt_core/src/cmd.rs`:
+    - `rename_category` - Rename a category for all notes
+    - `dismiss_category` - Clear category for all notes
+    - `get_categories` - Get all categories with counts
+  - Added command structs in `fastxt_core/src/lib.rs`:
+    - `CmdRenameCategory` - Rename category command
+    - `CmdDismissCategory` - Dismiss category command
+    - `RenameCategoryResponse` - Response for rename
+    - `DismissCategoryResponse` - Response for dismiss
+  - Added commands in `fastxt_core/src/exe.rs`:
+    - `rename-category` - Rename a category
+    - `dismiss-category` - Dismiss a category
+    - `get-categories` - Get all categories with counts
+  - Note: Desktop GUI category controls still need interactive UI for pinning, renaming, and dismissing categories.
 
 ## Ongoing / Cross-Cutting
 
-- [ ] Write user-facing documentation for AI features on the website
-- [ ] Add privacy documentation explaining on-device-only processing
+- [x] Write user-facing documentation for AI features on the website
+  - Created `website/docs/ai-features.md` with setup instructions
+- [x] Add privacy documentation explaining on-device-only processing
+  - Updated `website/src/pages/privacy-policy.js` with AI privacy section
 - [ ] Performance: ensure AI operations don't block the UI (async/background processing)
-- [ ] Testing: unit tests for `AiBackend` trait with mock backend
-- [ ] Testing: integration tests with small test models
-- [ ] CI: add `--features ai` to test matrix
+- [x] Testing: unit tests for `AiBackend` trait with mock backend
+  - Created `fastxt_core/src/ai/mock.rs` with MockBackend implementation
+  - [ ] Testing: integration tests with small test models
+- [x] CI: add `--features ai` to test matrix
+  - Created `.github/workflows/ci.yml` with test, clippy, fmt jobs

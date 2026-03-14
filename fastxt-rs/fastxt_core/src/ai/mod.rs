@@ -25,6 +25,8 @@
 use serde::{Deserialize, Serialize};
 
 #[cfg(feature = "ai")]
+pub mod mock;
+#[cfg(feature = "ai")]
 pub mod ollama;
 
 /// Result type for AI operations.

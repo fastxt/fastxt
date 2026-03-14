@@ -57,7 +57,7 @@ pub fn create(conn: &Connection) {
 
 pub fn delete(conn: &Connection, rowid: i64) {
     eprintln!("delete rowid {}", rowid);
-    conn.execute("delete from note where rowid = ?1", &[&rowid])
+    conn.execute("delete from note where rowid = ?1", [&rowid])
         .unwrap();
 }
 
@@ -114,10 +114,7 @@ fn merge_ai_tags(existing: &str, incoming: &str) -> String {
         .filter(|s| !s.is_empty())
         .collect();
 
-    let merged: Vec<String> = existing_tags
-        .union(&incoming_tags)
-        .cloned()
-        .collect();
+    let merged: Vec<String> = existing_tags.union(&incoming_tags).cloned().collect();
 
     merged.join(",")
 }
@@ -133,7 +130,7 @@ pub fn make_tags(input: &str) -> String {
     let mut s = "".to_string();
     for e in h1 {
         s.push_str(e);
-        s.push_str(",")
+        s.push(',')
     }
     s.pop();
     s.to_string()
@@ -149,7 +146,9 @@ pub fn migrate_ai_columns(conn: &Connection) {
             "SELECT COUNT(*) FROM pragma_table_info('note') WHERE name='{}'",
             col
         );
-        let count: i32 = conn.query_row(&check_sql, [], |row| row.get(0)).unwrap_or(0);
+        let count: i32 = conn
+            .query_row(&check_sql, [], |row| row.get(0))
+            .unwrap_or(0);
         if count == 0 {
             let alter_sql = format!("ALTER TABLE note ADD COLUMN {} TEXT", col);
             if let Err(e) = conn.execute(&alter_sql, []) {
@@ -216,7 +215,7 @@ pub fn select_notes_without_ai_tags(conn: &Connection, limit: u32) -> Vec<crate:
         .unwrap();
 
     let notes = stmt
-        .query_map(&[&limit], |row| {
+        .query_map([&limit], |row| {
             Ok(crate::Note {
                 rowid: row.get(0)?,
                 uuid4: row.get(1)?,
@@ -238,10 +237,7 @@ pub fn select_notes_without_ai_tags(conn: &Connection, limit: u32) -> Vec<crate:
 /// Store embedding for a note.
 pub fn store_embedding(conn: &Connection, note_rowid: i64, embedding: &[f32], model_id: &str) {
     let created_at = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
-    let embedding_bytes: Vec<u8> = embedding
-        .iter()
-        .flat_map(|f| f.to_le_bytes())
-        .collect();
+    let embedding_bytes: Vec<u8> = embedding.iter().flat_map(|f| f.to_le_bytes()).collect();
 
     if let Err(e) = conn.execute(
         "INSERT OR REPLACE INTO note_embedding (note_rowid, embedding, model_id, created_at)
@@ -281,7 +277,7 @@ pub fn get_all_embeddings(conn: &Connection, model_id: Option<&str>) -> Vec<(i64
     let mut stmt = conn.prepare(sql).unwrap();
     let rows: Vec<(i64, Vec<u8>)> = match model_id {
         Some(mid) => stmt
-            .query_map(&[mid], |row| Ok((row.get(0)?, row.get(1)?)))
+            .query_map([mid], |row| Ok((row.get(0)?, row.get(1)?)))
             .unwrap()
             .filter_map(|r| r.ok())
             .collect(),
@@ -365,7 +361,8 @@ pub fn semantic_search(
     );
 
     let mut stmt = conn.prepare(&sql).unwrap();
-    let params: Vec<&dyn rusqlite::ToSql> = rowids.iter().map(|r| r as &dyn rusqlite::ToSql).collect();
+    let params: Vec<&dyn rusqlite::ToSql> =
+        rowids.iter().map(|r| r as &dyn rusqlite::ToSql).collect();
 
     let notes: std::collections::HashMap<i64, Note> = stmt
         .query_map(params.as_slice(), |row| {
@@ -423,7 +420,7 @@ pub fn select_notes_without_embeddings(conn: &Connection, limit: u32) -> Vec<cra
         .unwrap();
 
     let notes = stmt
-        .query_map(&[&limit], |row| {
+        .query_map([&limit], |row| {
             Ok(crate::Note {
                 rowid: row.get(0)?,
                 uuid4: row.get(1)?,
@@ -440,4 +437,131 @@ pub fn select_notes_without_embeddings(conn: &Connection, limit: u32) -> Vec<cra
         .collect();
 
     notes
+}
+
+/// Rename a category for all notes that have it.
+/// Returns the number of notes updated.
+pub fn rename_category(conn: &Connection, old_name: &str, new_name: &str) -> usize {
+    match conn.execute(
+        "UPDATE note SET ai_category = ?1 WHERE ai_category = ?2",
+        rusqlite::params![new_name, old_name],
+    ) {
+        Ok(rows_affected) => rows_affected,
+        Err(e) => {
+            eprintln!("Failed to rename category: {}", e);
+            0
+        }
+    }
+}
+
+/// Dismiss (clear) the category for all notes with the given category.
+/// Returns the number of notes updated.
+pub fn dismiss_category(conn: &Connection, category: &str) -> usize {
+    match conn.execute(
+        "UPDATE note SET ai_category = NULL WHERE ai_category = ?1",
+        rusqlite::params![category],
+    ) {
+        Ok(rows_affected) => rows_affected,
+        Err(e) => {
+            eprintln!("Failed to dismiss category: {}", e);
+            0
+        }
+    }
+}
+
+/// Get all categories with their note counts.
+pub fn get_categories(conn: &Connection) -> std::collections::HashMap<String, usize> {
+    let mut stmt = match conn.prepare(
+        "SELECT ai_category, COUNT(*) FROM note WHERE ai_category IS NOT NULL AND ai_category != '' GROUP BY ai_category"
+    ) {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("Failed to get categories: {}", e);
+            return std::collections::HashMap::new();
+        }
+    };
+
+    let rows = match stmt.query_map([], |row| {
+        Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+    }) {
+        Ok(r) => r,
+        Err(_) => return std::collections::HashMap::new(),
+    };
+
+    rows.filter_map(|r| r.ok())
+        .map(|(cat, count)| (cat, count as usize))
+        .collect()
+}
+
+/// Get the embedding model ID from the database.
+/// Returns the most recently used model ID, or None if no embeddings exist.
+pub fn get_embedding_model_id(conn: &Connection) -> Option<String> {
+    conn.query_row(
+        "SELECT model_id FROM note_embedding ORDER BY created_at DESC LIMIT 1",
+        [],
+        |row| row.get(0),
+    )
+    .ok()
+}
+
+/// Get all note UUID4s that have embeddings with a specific model ID.
+pub fn get_embedding_uuid4s_by_model(conn: &Connection, model_id: &str) -> Vec<String> {
+    let mut stmt = match conn.prepare(
+        "SELECT n.uuid4 FROM note n
+         INNER JOIN note_embedding e ON n.rowid = e.note_rowid
+         WHERE e.model_id = ?1",
+    ) {
+        Ok(s) => s,
+        Err(_) => return Vec::new(),
+    };
+
+    let rows = match stmt.query_map([model_id], |row| row.get::<_, String>(0)) {
+        Ok(r) => r,
+        Err(_) => return Vec::new(),
+    };
+
+    rows.filter_map(|r| r.ok()).collect()
+}
+
+/// Get embedding data by note UUID4.
+/// Returns (embedding_bytes, model_id) if found.
+pub fn get_embedding_by_uuid4(conn: &Connection, uuid4: &str) -> Option<(Vec<u8>, String)> {
+    conn.query_row(
+        "SELECT e.embedding, e.model_id FROM note_embedding e
+         INNER JOIN note n ON e.note_rowid = n.rowid
+         WHERE n.uuid4 = ?1",
+        [uuid4],
+        |row| Ok((row.get::<_, Vec<u8>>(0)?, row.get::<_, String>(1)?)),
+    )
+    .ok()
+}
+
+/// Store embedding data by note UUID4.
+pub fn store_embedding_by_uuid4(
+    conn: &Connection,
+    uuid4: &str,
+    embedding_bytes: &[u8],
+    model_id: &str,
+) {
+    // First get the note rowid from uuid4
+    let note_rowid: i64 =
+        match conn.query_row("SELECT rowid FROM note WHERE uuid4 = ?1", [uuid4], |row| {
+            row.get(0)
+        }) {
+            Ok(id) => id,
+            Err(e) => {
+                eprintln!("Failed to find note with uuid4 {}: {}", uuid4, e);
+                return;
+            }
+        };
+
+    // Then store the embedding
+    let created_at = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
+    if let Err(e) = conn.execute(
+        "INSERT OR REPLACE INTO note_embedding (note_rowid, embedding, model_id, created_at)
+         VALUES (?1, ?2, ?3, ?4)",
+        rusqlite::params![note_rowid, embedding_bytes, model_id, created_at],
+    ) {
+        eprintln!("Failed to store embedding: {}", e);
+    }
 }

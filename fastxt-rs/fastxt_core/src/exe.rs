@@ -23,29 +23,32 @@ use crate::cmd::search::{search, search_count};
 use crate::cmd::select::select;
 use crate::cmd::{
     select_notes_without_ai_tags, select_notes_without_embeddings, semantic_search,
-    store_embedding, update_ai_tags, update_ai_summary, update_ai_category,
+    store_embedding, update_ai_category, update_ai_summary, update_ai_tags,
 };
 use crate::upgrade;
 use crate::AiEmbedResponse;
-use crate::AiSummarizeResponse;
+use crate::AiOrganizeResponse;
 use crate::AiTagsResponse;
 use crate::Cmd;
-use crate::CmdAiReprocess;
-use crate::CmdAiOrganize;
-use crate::AiOrganizeResponse;
 use crate::CmdAiEmbed;
 use crate::CmdAiEmbedAll;
+use crate::CmdAiOrganize;
+use crate::CmdAiReprocess;
 use crate::CmdAiSummarize;
 use crate::CmdAiTag;
 use crate::CmdAiTagAll;
 use crate::CmdDelete;
+use crate::CmdDismissCategory;
 use crate::CmdInsert;
+use crate::CmdRenameCategory;
 use crate::CmdRpcClient;
 use crate::CmdRpcServer;
 use crate::CmdSearch;
 use crate::CmdSelect;
 use crate::CmdSemanticSearch;
+use crate::DismissCategoryResponse;
 use crate::Note;
+use crate::RenameCategoryResponse;
 use crate::SemanticSearchResponse;
 use crate::SemanticSearchResult;
 use chrono;
@@ -58,8 +61,7 @@ use uuid::Uuid;
 pub fn get_sqlite_connection() -> Connection {
     let p = sqlite3_db_location();
     let path = Path::new(&p);
-    let conn = Connection::open(path).unwrap();
-    conn
+    Connection::open(path).unwrap()
 }
 
 fn sqlite3_db_location() -> String {
@@ -111,8 +113,8 @@ fn process(cmd: Cmd, text: &str) -> String {
         "server" => {
             eprintln!(r#"{{"server": "starting"}}"#);
             if let Ok(s) = serde_json::from_str::<CmdRpcServer>(text) {
-                if let Ok(_) = crate::rpc::server::start(&s.addr) {
-                    format!(r#"{{"server": "started"}}"#)
+                if crate::rpc::server::start(&s.addr).is_ok() {
+                    r#"{"server": "started"}"#.to_string()
                 } else {
                     r#"{"error":"server error"}"#.to_string()
                 }
@@ -142,7 +144,7 @@ fn process(cmd: Cmd, text: &str) -> String {
                     uuid4: Uuid::new_v4().to_string(),
                     txt: i.txt,
                     tags: i.tags,
-                    created_at: created_at,
+                    created_at,
                     ai_tags: None,
                     ai_summary: None,
                     ai_category: None,
@@ -242,17 +244,49 @@ fn process(cmd: Cmd, text: &str) -> String {
                 r#"{"error":"cmd ai-organize json error"}"#.to_string()
             }
         }
+        "rename-category" => {
+            if let Ok(cmd) = serde_json::from_str::<CmdRenameCategory>(text) {
+                let updated = crate::cmd::rename_category(&conn, &cmd.old_name, &cmd.new_name);
+                let response = RenameCategoryResponse { updated };
+                serde_json::to_string(&response).unwrap()
+            } else {
+                r#"{"error":"cmd rename-category json error"}"#.to_string()
+            }
+        }
+        "dismiss-category" => {
+            if let Ok(cmd) = serde_json::from_str::<CmdDismissCategory>(text) {
+                let updated = crate::cmd::dismiss_category(&conn, &cmd.category);
+                let response = DismissCategoryResponse { updated };
+                serde_json::to_string(&response).unwrap()
+            } else {
+                r#"{"error":"cmd dismiss-category json error"}"#.to_string()
+            }
+        }
+        "get-categories" => {
+            let categories = crate::cmd::get_categories(&conn);
+            serde_json::to_string(&categories).unwrap()
+        }
+        "sync-embeddings" => {
+            if let Ok(cmd) = serde_json::from_str::<CmdRpcClient>(text) {
+                match crate::rpc::client::sync_embeddings(&cmd.addr) {
+                    Ok(msg) => format!(r#"{{"status": "{}"}}"#, msg),
+                    Err(e) => format!(r#"{{"error": "{}"}}"#, e),
+                }
+            } else {
+                r#"{"error":"cmd sync-embeddings json error"}"#.to_string()
+            }
+        }
         _ => r#"{"error": "cmd no match"}"#.to_string(),
     }
 }
 
 fn do_search(conn: &Connection, query: &str, limit: &u32, offset: &u32) -> String {
-    let c = search_count(&conn, query);
-    let j = search(&conn, query, limit, offset);
+    let c = search_count(conn, query);
+    let j = search(conn, query, limit, offset);
     // let d = search_by_day(&conn, query);
-    let d = "";
+    let _d = "";
     // let t = search_by_tag(&conn, query);
-    let t = "";
+    let _t = "";
     let msg = format!(
         r#"{{"count": {}, "notes":{}}}"#,
         // r#"{{"count": {}, "notes":{}, "days": {}, "tags": {} }}"#,
@@ -266,12 +300,12 @@ fn do_search(conn: &Connection, query: &str, limit: &u32, offset: &u32) -> Strin
 
 fn do_select(conn: &Connection, limit: &u32, offset: &u32) -> String {
     //    let c = select_count(&conn);
-    let c = "";
-    let j = select(&conn, limit, offset);
+    let _c = "";
+    let j = select(conn, limit, offset);
     //    let d = select_by_day(&conn);
-    let d = "";
+    let _d = "";
     //    let t = select_by_tag(&conn);
-    let t = "";
+    let _t = "";
     let msg = format!(
         r#"{{"notes":{}}}"#,
         //r#"{{"count": {}, "notes":{}, "days": {}, "tags": {} }}"#,
@@ -286,7 +320,7 @@ fn do_select(conn: &Connection, limit: &u32, offset: &u32) -> String {
 fn do_ai_tag(cmd: &CmdAiTag) -> String {
     #[cfg(feature = "ai")]
     {
-        use crate::ai::{get_default_backend, AiBackend, AiConfig};
+        use crate::ai::{get_default_backend, AiConfig};
 
         let config = AiConfig {
             endpoint: cmd.endpoint.clone(),
@@ -340,7 +374,7 @@ fn do_ai_tag(cmd: &CmdAiTag) -> String {
 fn do_ai_tag_all(conn: &Connection, cmd: &CmdAiTagAll) -> String {
     #[cfg(feature = "ai")]
     {
-        use crate::ai::{get_default_backend, AiBackend, AiConfig};
+        use crate::ai::{get_default_backend, AiConfig};
 
         let config = AiConfig {
             endpoint: cmd.endpoint.clone(),
@@ -395,7 +429,7 @@ fn do_ai_tag_all(conn: &Connection, cmd: &CmdAiTagAll) -> String {
 fn do_ai_summarize(conn: &Connection, cmd: &CmdAiSummarize) -> String {
     #[cfg(feature = "ai")]
     {
-        use crate::ai::{get_default_backend, AiBackend, AiConfig};
+        use crate::ai::{get_default_backend, AiConfig};
 
         let config = AiConfig {
             endpoint: cmd.endpoint.clone(),
@@ -418,7 +452,7 @@ fn do_ai_summarize(conn: &Connection, cmd: &CmdAiSummarize) -> String {
         let txt: Option<String> = conn
             .query_row(
                 "SELECT txt FROM note WHERE rowid = ?1",
-                &[&cmd.rowid],
+                [&cmd.rowid],
                 |row| row.get(0),
             )
             .ok();
@@ -469,7 +503,7 @@ fn do_ai_summarize(conn: &Connection, cmd: &CmdAiSummarize) -> String {
 fn do_ai_embed(conn: &Connection, cmd: &CmdAiEmbed) -> String {
     #[cfg(feature = "ai")]
     {
-        use crate::ai::{get_default_backend, AiBackend, AiConfig};
+        use crate::ai::{get_default_backend, AiConfig};
 
         let config = AiConfig {
             endpoint: cmd.endpoint.clone(),
@@ -492,7 +526,7 @@ fn do_ai_embed(conn: &Connection, cmd: &CmdAiEmbed) -> String {
         let txt: Option<String> = conn
             .query_row(
                 "SELECT txt FROM note WHERE rowid = ?1",
-                &[&cmd.rowid],
+                [&cmd.rowid],
                 |row| row.get(0),
             )
             .ok();
@@ -500,7 +534,10 @@ fn do_ai_embed(conn: &Connection, cmd: &CmdAiEmbed) -> String {
         match txt {
             Some(text) => match backend.embed(&text, &config) {
                 Ok(embedding) => {
-                    let model_id = config.model.clone().unwrap_or_else(|| "unknown".to_string());
+                    let model_id = config
+                        .model
+                        .clone()
+                        .unwrap_or_else(|| "unknown".to_string());
                     store_embedding(conn, cmd.rowid, &embedding, &model_id);
                     let response = AiEmbedResponse {
                         success: true,
@@ -544,7 +581,7 @@ fn do_ai_embed(conn: &Connection, cmd: &CmdAiEmbed) -> String {
 fn do_ai_embed_all(conn: &Connection, cmd: &CmdAiEmbedAll) -> String {
     #[cfg(feature = "ai")]
     {
-        use crate::ai::{get_default_backend, AiBackend, AiConfig};
+        use crate::ai::{get_default_backend, AiConfig};
 
         let config = AiConfig {
             endpoint: cmd.endpoint.clone(),
@@ -566,7 +603,10 @@ fn do_ai_embed_all(conn: &Connection, cmd: &CmdAiEmbedAll) -> String {
             return r#"{"processed":0,"message":"No notes without embeddings"}"#.to_string();
         }
 
-        let model_id = config.model.clone().unwrap_or_else(|| "unknown".to_string());
+        let model_id = config
+            .model
+            .clone()
+            .unwrap_or_else(|| "unknown".to_string());
         let mut processed = 0;
         let mut errors = 0;
 
@@ -599,7 +639,7 @@ fn do_ai_embed_all(conn: &Connection, cmd: &CmdAiEmbedAll) -> String {
 fn do_semantic_search(conn: &Connection, cmd: &CmdSemanticSearch) -> String {
     #[cfg(feature = "ai")]
     {
-        use crate::ai::{get_default_backend, AiBackend, AiConfig};
+        use crate::ai::{get_default_backend, AiConfig};
 
         let config = AiConfig {
             endpoint: cmd.endpoint.clone(),
@@ -621,7 +661,10 @@ fn do_semantic_search(conn: &Connection, cmd: &CmdSemanticSearch) -> String {
         // Generate embedding for query
         match backend.embed(&cmd.query, &config) {
             Ok(query_embedding) => {
-                let model_id = config.model.clone().unwrap_or_else(|| "unknown".to_string());
+                let model_id = config
+                    .model
+                    .clone()
+                    .unwrap_or_else(|| "unknown".to_string());
                 let limit = cmd.limit.unwrap_or(10);
                 let threshold = cmd.threshold.unwrap_or(0.5);
 
@@ -666,7 +709,7 @@ fn do_semantic_search(conn: &Connection, cmd: &CmdSemanticSearch) -> String {
 fn do_ai_reprocess(conn: &Connection, cmd: &CmdAiReprocess) -> String {
     #[cfg(feature = "ai")]
     {
-        use crate::ai::{get_default_backend, AiBackend, AiConfig};
+        use crate::ai::{get_default_backend, AiConfig};
 
         let config = AiConfig::default();
         let backend = get_default_backend();
@@ -753,7 +796,7 @@ fn do_ai_reprocess(conn: &Connection, cmd: &CmdAiReprocess) -> String {
 fn do_ai_organize(conn: &Connection, cmd: &CmdAiOrganize) -> String {
     #[cfg(feature = "ai")]
     {
-        use crate::ai::{get_default_backend, AiBackend, AiConfig};
+        use crate::ai::{get_default_backend, AiConfig};
         use std::collections::HashMap;
 
         let config = AiConfig {
@@ -787,7 +830,9 @@ fn do_ai_organize(conn: &Connection, cmd: &CmdAiOrganize) -> String {
             .unwrap();
 
         let notes: Vec<(i64, String)> = stmt
-            .query_map(rusqlite::params![limit], |row| Ok((row.get(0)?, row.get(1)?)))
+            .query_map(rusqlite::params![limit], |row| {
+                Ok((row.get(0)?, row.get(1)?))
+            })
             .unwrap()
             .filter_map(|r| r.ok())
             .collect();

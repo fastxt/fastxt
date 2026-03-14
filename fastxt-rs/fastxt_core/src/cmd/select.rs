@@ -21,8 +21,7 @@ use rusqlite::Connection;
 
 pub fn select_count(conn: &Connection) -> u32 {
     let mut stmt = conn.prepare("SELECT count(1) FROM note").unwrap();
-    let rs = stmt.query_row([], |row| row.get(0)).unwrap();
-    rs
+    stmt.query_row([], |row| row.get(0)).unwrap()
 }
 
 pub fn select(conn: &Connection, limit: &u32, offset: &u32) -> String {
@@ -30,10 +29,10 @@ pub fn select(conn: &Connection, limit: &u32, offset: &u32) -> String {
     let mut d = "[ ".to_owned();
     for r in result_iter {
         d.push_str(&serde_json::to_string(&r).unwrap());
-        d.push_str(",");
+        d.push(',');
     }
     d.pop();
-    d.push_str("]");
+    d.push(']');
     d
 }
 

@@ -24,6 +24,15 @@ pub trait Fastxt {
     async fn send_note(note: Note) -> bool;
     async fn receive_note(uuid4: String) -> Note;
     async fn stop() -> bool;
+    // Embedding sync methods
+    /// Get the embedding model ID used by this device
+    async fn get_embedding_model_id() -> Option<String>;
+    /// Get note UUIDs that have embeddings with a specific model ID
+    async fn get_embedding_uuid4s(model_id: String) -> Vec<String>;
+    /// Receive embedding data for a note (uuid4, embedding bytes, model_id)
+    async fn receive_embedding(uuid4: String) -> Option<(Vec<u8>, String)>;
+    /// Send embedding data to be stored on the server
+    async fn send_embedding(uuid4: String, embedding_bytes: Vec<u8>, model_id: String) -> bool;
 }
 
 pub mod client;

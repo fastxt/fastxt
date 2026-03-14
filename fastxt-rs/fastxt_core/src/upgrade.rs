@@ -23,7 +23,7 @@ extern crate uuid;
 use self::semver::Version;
 use rusqlite::Connection;
 // version to upgrade to
-const VERSION: &'static str = "0.2.0";
+const VERSION: &str = "0.2.0";
 use crate::OneString;
 
 fn set_meta_version(conn: &Connection, version: &str) {
@@ -31,7 +31,7 @@ fn set_meta_version(conn: &Connection, version: &str) {
         "
         UPDATE meta SET meta_value = ?1
         WHERE meta_key = 'version';",
-        &[version],
+        [version],
     )
     .unwrap();
 }
