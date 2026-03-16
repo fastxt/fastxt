@@ -68,7 +68,7 @@ pub fn search(conn: &Connection, query: &str, limit: &u32, offset: &u32) -> Stri
 
     let r: Vec<String> = where_vec(num_words);
     let sql = format!(
-        "SELECT rowid, uuid4, txt, tags, created_at
+        "SELECT rowid, uuid4, txt, tags, created_at, ai_tags, ai_summary, ai_category
         FROM note where
         {}
         order by created_at desc limit :limit offset :offset",
@@ -99,29 +99,29 @@ pub fn search(conn: &Connection, query: &str, limit: &u32, offset: &u32) -> Stri
                 txt: row.get(2)?,
                 tags: row.get(3)?,
                 created_at: row.get(4)?,
-                ai_tags: None,
-                ai_summary: None,
-                ai_category: None,
+                ai_tags: row.get(5)?,
+                ai_summary: row.get(6)?,
+                ai_category: row.get(7)?,
             })
         })
         .unwrap();
 
-    let mut j = "[ ".to_owned();
-    for note in note_iter {
-        let mut note = note.unwrap();
-        note.tags = make_tags(&note.tags);
-        //eprintln!("Found note {:?}", note);
-        j.push_str(&serde_json::to_string(&note).unwrap());
-        j.push(',');
-    }
-    j.pop();
-    j.push(']');
-    j
+    let notes: Vec<Note> = note_iter
+        .filter_map(|r| r.ok())
+        .map(|mut note| {
+            note.tags = make_tags(&note.tags);
+            note
+        })
+        .collect();
+
+    serde_json::to_string(&notes).unwrap_or_else(|_| "[]".to_string())
 }
 
 fn make_words(query: &str) -> Vec<String> {
-    let re1 = Regex::new(r"\s+").unwrap();
-    let s1 = re1.replace_all(query, " ");
+    use std::sync::LazyLock;
+    static RE_SPACES: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\s+").unwrap());
+
+    let s1 = RE_SPACES.replace_all(query, " ");
     s1.trim()
         .split(" ")
         .map(|w| format!("%{}%", w))

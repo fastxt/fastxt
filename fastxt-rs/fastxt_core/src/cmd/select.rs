@@ -25,15 +25,8 @@ pub fn select_count(conn: &Connection) -> u32 {
 }
 
 pub fn select(conn: &Connection, limit: &u32, offset: &u32) -> String {
-    let result_iter = select_imp(conn, limit, offset);
-    let mut d = "[ ".to_owned();
-    for r in result_iter {
-        d.push_str(&serde_json::to_string(&r).unwrap());
-        d.push(',');
-    }
-    d.pop();
-    d.push(']');
-    d
+    let notes = select_imp(conn, limit, offset);
+    serde_json::to_string(&notes).unwrap_or_else(|_| "[]".to_string())
 }
 
 pub fn select_imp(conn: &Connection, limit: &u32, offset: &u32) -> Vec<Note> {
@@ -66,10 +59,5 @@ pub fn select_imp(conn: &Connection, limit: &u32, offset: &u32) -> Vec<Note> {
         )
         .unwrap();
 
-    let mut result = Vec::new();
-    for name_result in note_iter {
-        result.push(name_result.unwrap());
-    }
-
-    result
+    note_iter.filter_map(|r| r.ok()).collect()
 }

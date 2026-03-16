@@ -44,7 +44,9 @@ pub extern "C" fn fastxt_run(json_input: *const c_char) -> *mut c_char {
         Ok(text) => exe::run(text),
     };
 
-    CString::new(json).unwrap().into_raw()
+    CString::new(json)
+        .unwrap_or_else(|_| CString::new(r#"{"error":"response contains null byte"}"#).unwrap())
+        .into_raw()
 }
 
 #[no_mangle]
@@ -189,21 +191,6 @@ pub struct AiSummarizeResponse {
     pub available: bool,
     /// Error message if any
     pub error: Option<String>,
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-pub struct NoteWithAi {
-    pub rowid: i64,
-    pub uuid4: String,
-    pub txt: String,
-    pub tags: String,
-    pub created_at: String,
-    /// AI-suggested tags (JSON array)
-    pub ai_tags: Option<String>,
-    /// AI-generated summary
-    pub ai_summary: Option<String>,
-    /// AI-assigned category
-    pub ai_category: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]

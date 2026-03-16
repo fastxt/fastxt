@@ -757,36 +757,47 @@ fn get_ai_summary(data: &mut AppState) {
 
     data.ai_status = "Generating summary...".to_string();
 
-    // First save the note to get a rowid, then summarize
-    // For now, we'll use the ai-tag command to test connectivity and show a placeholder
-    let cmd = serde_json::json!({
-        "action": "ai-tag",
-        "text": format!("Summarize this text in one sentence: {}", data.content),
-        "endpoint": data.ai_endpoint,
-        "model": data.ai_model
+    // Save the note first to get a rowid for the summarize command
+    let insert_cmd = serde_json::json!({
+        "action": "insert",
+        "txt": data.content,
+        "tags": data.tags,
+        "limit": 1,
+        "offset": 0
     });
+    let insert_result = fastxt_core::exe::run(&insert_cmd.to_string());
 
-    let result = fastxt_core::exe::run(&cmd.to_string());
+    // Get the rowid of the just-inserted note
+    if let Ok(response) = serde_json::from_str::<serde_json::Value>(&insert_result) {
+        if let Some(notes) = response.get("notes").and_then(|n| n.as_array()) {
+            if let Some(note) = notes.first() {
+                if let Some(rowid) = note.get("rowid").and_then(|r| r.as_i64()) {
+                    let cmd = serde_json::json!({
+                        "action": "ai-summarize",
+                        "rowid": rowid,
+                        "endpoint": data.ai_endpoint,
+                        "model": data.ai_model
+                    });
 
-    if let Ok(response) = serde_json::from_str::<serde_json::Value>(&result) {
-        if response
-            .get("available")
-            .and_then(|a| a.as_bool())
-            .unwrap_or(false)
-        {
-            if let Some(tags) = response.get("tags").and_then(|t| t.as_array()) {
-                // The "tags" are actually our summary sentences
-                if let Some(first) = tags.first().and_then(|t| t.as_str()) {
-                    data.ai_summary = first.to_string();
+                    let result = fastxt_core::exe::run(&cmd.to_string());
+
+                    if let Ok(resp) = serde_json::from_str::<serde_json::Value>(&result) {
+                        if let Some(summary) = resp.get("summary").and_then(|s| s.as_str()) {
+                            data.ai_summary = summary.to_string();
+                            data.ai_status = "".to_string();
+                            return;
+                        }
+                        if let Some(error) = resp.get("error").and_then(|e| e.as_str()) {
+                            data.ai_status = format!("Error: {}", error);
+                            return;
+                        }
+                    }
                 }
             }
-            data.ai_status = "".to_string();
-        } else {
-            data.ai_status = "AI not available. Check Ollama is running.".to_string();
         }
-    } else {
-        data.ai_status = "Failed to generate summary".to_string();
     }
+
+    data.ai_status = "Failed to generate summary".to_string();
 }
 
 /// Test AI connection.
