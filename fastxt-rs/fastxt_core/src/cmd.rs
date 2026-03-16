@@ -57,7 +57,9 @@ pub fn create(conn: &Connection) {
 
 pub fn delete(conn: &Connection, rowid: i64) {
     eprintln!("delete rowid {}", rowid);
-    conn.execute("delete from note where rowid = ?1", [&rowid])
+    // Delete associated embedding first to avoid orphaned data
+    let _ = conn.execute("DELETE FROM note_embedding WHERE note_rowid = ?1", [&rowid]);
+    conn.execute("DELETE FROM note WHERE rowid = ?1", [&rowid])
         .unwrap();
 }
 
@@ -99,32 +101,38 @@ pub fn insert(conn: &Connection, note: Note) {
 }
 
 /// Merge AI tags by unioning them (for sync).
+/// AI tags are stored as JSON arrays (e.g., `["rust","programming"]`).
 fn merge_ai_tags(existing: &str, incoming: &str) -> String {
     use std::collections::HashSet;
 
-    let existing_tags: HashSet<String> = existing
-        .split(',')
-        .map(|s| s.trim().to_lowercase())
-        .filter(|s| !s.is_empty())
-        .collect();
+    let parse_tags = |s: &str| -> HashSet<String> {
+        // Try JSON array first
+        if let Ok(tags) = serde_json::from_str::<Vec<String>>(s) {
+            return tags.into_iter().map(|t| t.to_lowercase()).collect();
+        }
+        // Fallback to comma-separated for backwards compatibility
+        s.split(',')
+            .map(|t| t.trim().trim_matches('"').to_lowercase())
+            .filter(|t| !t.is_empty())
+            .collect()
+    };
 
-    let incoming_tags: HashSet<String> = incoming
-        .split(',')
-        .map(|s| s.trim().to_lowercase())
-        .filter(|s| !s.is_empty())
-        .collect();
+    let existing_tags = parse_tags(existing);
+    let incoming_tags = parse_tags(incoming);
 
     let merged: Vec<String> = existing_tags.union(&incoming_tags).cloned().collect();
 
-    merged.join(",")
+    serde_json::to_string(&merged).unwrap_or_else(|_| incoming.to_string())
 }
 
 // format and dedup tags
 pub fn make_tags(input: &str) -> String {
-    let re1 = Regex::new(r",+").unwrap();
-    let re2 = Regex::new(r"\s+").unwrap();
-    let s1 = re1.replace_all(input, " ");
-    let s2 = re2.replace_all(s1.trim(), ",");
+    use std::sync::LazyLock;
+    static RE_COMMAS: LazyLock<Regex> = LazyLock::new(|| Regex::new(r",+").unwrap());
+    static RE_SPACES: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\s+").unwrap());
+
+    let s1 = RE_COMMAS.replace_all(input, " ");
+    let s2 = RE_SPACES.replace_all(s1.trim(), ",");
     let v1 = s2.split(",");
     let h1: LinkedHashSet<&str> = LinkedHashSet::from_iter(v1);
     let mut s = "".to_string();

@@ -89,21 +89,33 @@ async fn run_sync_from_server(addr: &SocketAddr) -> io::Result<()> {
 }
 
 pub fn sync(addr: &str) -> Result<String, String> {
-    match addr.parse() {
-        Ok(server_addr) => {
-            let rt = Runtime::new().unwrap();
-            rt.block_on(async {
-                let _ = run_sync_to_server(&server_addr).await;
-                eprintln!("sync to server done");
-            });
-            let rt2 = Runtime::new().unwrap();
-            rt2.block_on(async {
-                let _ = run_sync_from_server(&server_addr).await;
-                eprintln!("sync from server done");
-            });
-            Ok("sync ok".to_string())
+    let server_addr: SocketAddr = addr
+        .parse()
+        .map_err(|e| format!("server_addr {} invalid: {}", addr, e))?;
+
+    let rt = Runtime::new().unwrap();
+    let mut errors = Vec::new();
+
+    rt.block_on(async {
+        if let Err(e) = run_sync_to_server(&server_addr).await {
+            eprintln!("sync to server error: {}", e);
+            errors.push(format!("sync-to-server: {}", e));
+        } else {
+            eprintln!("sync to server done");
         }
-        Err(e) => Ok(format!(r#"server_addr {} invalid: {}"#, addr, e).to_string()),
+
+        if let Err(e) = run_sync_from_server(&server_addr).await {
+            eprintln!("sync from server error: {}", e);
+            errors.push(format!("sync-from-server: {}", e));
+        } else {
+            eprintln!("sync from server done");
+        }
+    });
+
+    if errors.is_empty() {
+        Ok("sync ok".to_string())
+    } else {
+        Err(errors.join("; "))
     }
 }
 

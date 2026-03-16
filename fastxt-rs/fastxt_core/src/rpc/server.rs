@@ -159,7 +159,7 @@ async fn start_server(addr: &SocketAddr) -> io::Result<()> {
         .buffer_unordered(10)
         .for_each(|_| async {});
     if let Err(Aborted) = Abortable::new(server, registration).await {
-        eprintln!("server stoped.");
+        eprintln!("server stopped.");
     }
     Ok(())
 }

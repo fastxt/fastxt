@@ -21,6 +21,7 @@ use crate::cmd::delete;
 use crate::cmd::insert;
 use crate::cmd::search::{search, search_count};
 use crate::cmd::select::select;
+#[cfg(feature = "ai")]
 use crate::cmd::{
     select_notes_without_ai_tags, select_notes_without_embeddings, semantic_search,
     store_embedding, update_ai_category, update_ai_summary, update_ai_tags,
@@ -50,6 +51,7 @@ use crate::DismissCategoryResponse;
 use crate::Note;
 use crate::RenameCategoryResponse;
 use crate::SemanticSearchResponse;
+#[cfg(feature = "ai")]
 use crate::SemanticSearchResult;
 use chrono;
 use chrono::prelude::Utc;
@@ -61,26 +63,23 @@ use uuid::Uuid;
 pub fn get_sqlite_connection() -> Connection {
     let p = sqlite3_db_location();
     let path = Path::new(&p);
-    Connection::open(path).unwrap()
+    Connection::open(path).expect("Failed to open SQLite database")
 }
 
 fn sqlite3_db_location() -> String {
     if cfg!(target_os = "android") {
-        fs::create_dir_all("/sdcard/Fastxt").unwrap();
+        fs::create_dir_all("/sdcard/Fastxt").expect("Failed to create /sdcard/Fastxt directory");
         return "/sdcard/Fastxt/fastxt.sqlite3".to_string();
     }
     let mut dir_name = "Fastxt";
     if cfg!(target_os = "ios") {
         dir_name = "Documents";
     }
-    let dir = format!(
-        "{}/{}",
-        dirs::home_dir().unwrap().to_str().unwrap(),
-        dir_name
-    );
+    let home = dirs::home_dir().expect("Failed to determine home directory");
+    let dir = format!("{}/{}", home.to_string_lossy(), dir_name);
     eprintln!("db dir location: {}", dir);
     if !Path::new(&dir).exists() {
-        fs::create_dir_all(&dir).unwrap();
+        fs::create_dir_all(&dir).expect("Failed to create database directory");
     }
     format!("{}/fastxt.sqlite3", dir)
 }
@@ -281,42 +280,18 @@ fn process(cmd: Cmd, text: &str) -> String {
 }
 
 fn do_search(conn: &Connection, query: &str, limit: &u32, offset: &u32) -> String {
-    let c = search_count(conn, query);
-    let j = search(conn, query, limit, offset);
-    // let d = search_by_day(&conn, query);
-    let _d = "";
-    // let t = search_by_tag(&conn, query);
-    let _t = "";
-    let msg = format!(
-        r#"{{"count": {}, "notes":{}}}"#,
-        // r#"{{"count": {}, "notes":{}, "days": {}, "tags": {} }}"#,
-        // c, j, d, t
-        c,
-        j
-    );
-    // eprintln!("msg {}", msg);
-    msg
+    let count = search_count(conn, query);
+    let notes = search(conn, query, limit, offset);
+    format!(r#"{{"count":{},"notes":{}}}"#, count, notes)
 }
 
 fn do_select(conn: &Connection, limit: &u32, offset: &u32) -> String {
-    //    let c = select_count(&conn);
-    let _c = "";
-    let j = select(conn, limit, offset);
-    //    let d = select_by_day(&conn);
-    let _d = "";
-    //    let t = select_by_tag(&conn);
-    let _t = "";
-    let msg = format!(
-        r#"{{"notes":{}}}"#,
-        //r#"{{"count": {}, "notes":{}, "days": {}, "tags": {} }}"#,
-        // c, j, d, t
-        j
-    );
-    // eprintln!("msg {}", msg);
-    msg
+    let notes = select(conn, limit, offset);
+    format!(r#"{{"notes":{}}}"#, notes)
 }
 
 /// Handle ai-tag command - suggest tags for given text.
+#[allow(unused_variables)]
 fn do_ai_tag(cmd: &CmdAiTag) -> String {
     #[cfg(feature = "ai")]
     {
@@ -371,6 +346,7 @@ fn do_ai_tag(cmd: &CmdAiTag) -> String {
 }
 
 /// Handle ai-tag-all command - batch tag all notes without AI tags.
+#[allow(unused_variables)]
 fn do_ai_tag_all(conn: &Connection, cmd: &CmdAiTagAll) -> String {
     #[cfg(feature = "ai")]
     {
@@ -426,6 +402,7 @@ fn do_ai_tag_all(conn: &Connection, cmd: &CmdAiTagAll) -> String {
 }
 
 /// Handle ai-summarize command - generate summary for a note.
+#[allow(unused_variables)]
 fn do_ai_summarize(conn: &Connection, cmd: &CmdAiSummarize) -> String {
     #[cfg(feature = "ai")]
     {
@@ -500,6 +477,7 @@ fn do_ai_summarize(conn: &Connection, cmd: &CmdAiSummarize) -> String {
 }
 
 /// Handle ai-embed command - generate embedding for a single note.
+#[allow(unused_variables)]
 fn do_ai_embed(conn: &Connection, cmd: &CmdAiEmbed) -> String {
     #[cfg(feature = "ai")]
     {
@@ -578,6 +556,7 @@ fn do_ai_embed(conn: &Connection, cmd: &CmdAiEmbed) -> String {
 }
 
 /// Handle ai-embed-all command - batch embed all notes without embeddings.
+#[allow(unused_variables)]
 fn do_ai_embed_all(conn: &Connection, cmd: &CmdAiEmbedAll) -> String {
     #[cfg(feature = "ai")]
     {
@@ -636,6 +615,7 @@ fn do_ai_embed_all(conn: &Connection, cmd: &CmdAiEmbedAll) -> String {
 }
 
 /// Handle semantic-search command - find notes by meaning.
+#[allow(unused_variables)]
 fn do_semantic_search(conn: &Connection, cmd: &CmdSemanticSearch) -> String {
     #[cfg(feature = "ai")]
     {
@@ -706,6 +686,7 @@ fn do_semantic_search(conn: &Connection, cmd: &CmdSemanticSearch) -> String {
 }
 
 /// Handle ai-reprocess command - regenerate AI metadata using local device's model.
+#[allow(unused_variables)]
 fn do_ai_reprocess(conn: &Connection, cmd: &CmdAiReprocess) -> String {
     #[cfg(feature = "ai")]
     {
@@ -793,6 +774,7 @@ fn do_ai_reprocess(conn: &Connection, cmd: &CmdAiReprocess) -> String {
 }
 
 /// Handle ai-organize command - categorize notes by topic.
+#[allow(unused_variables)]
 fn do_ai_organize(conn: &Connection, cmd: &CmdAiOrganize) -> String {
     #[cfg(feature = "ai")]
     {
