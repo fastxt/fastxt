@@ -29,7 +29,7 @@ fn set_meta_version(conn: &Connection, version: &str) {
         WHERE meta_key = 'version';",
         [version],
     )
-    .unwrap();
+    .expect("failed to update meta version");
 }
 
 pub fn upgrade(conn: &Connection) -> Result<&str, &str> {
@@ -61,9 +61,12 @@ pub fn upgrade(conn: &Connection) -> Result<&str, &str> {
 }
 
 fn get_meta_is_upgrading(conn: &Connection) -> bool {
-    let mut stmt = conn
+    let mut stmt = match conn
         .prepare("SELECT meta_value FROM meta where meta_key = 'is_upgrading' ")
-        .unwrap();
+    {
+        Ok(s) => s,
+        Err(_) => return false,
+    };
     match stmt.query_row([], |row| Ok(OneString { s: row.get(0)? })) {
         Ok(is_upgrading) => {
             if is_upgrading.s == "1" {
@@ -79,9 +82,12 @@ fn get_meta_is_upgrading(conn: &Connection) -> bool {
 }
 
 pub fn get_meta_version(conn: &Connection) -> String {
-    let mut stmt = conn
+    let mut stmt = match conn
         .prepare("SELECT meta_value FROM meta where meta_key = 'version' ")
-        .unwrap();
+    {
+        Ok(s) => s,
+        Err(_) => return "0.0.0".to_string(),
+    };
     match stmt.query_row([], |row| Ok(OneString { s: row.get(0)? })) {
         Ok(version) => {
             eprintln!("get_meta_version {}", version.s);
@@ -96,7 +102,7 @@ pub fn get_meta_version(conn: &Connection) -> String {
             ('version', '0.0.0')
             ;",
             )
-            .unwrap();
+            .expect("failed to initialize meta version");
             eprintln!("get_meta_version: version init to 0.0.0");
             "0.0.0".to_string()
         }

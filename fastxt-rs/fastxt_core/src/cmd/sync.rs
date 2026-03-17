@@ -22,63 +22,81 @@ use std::collections::HashSet;
 
 //client
 pub fn get_note_by_uuid4(conn: &Connection, uuid4: &str) -> Note {
-    let mut stmt = conn
-        .prepare("select uuid4, txt, tags, created_at, ai_tags, ai_summary, ai_category FROM note where uuid4 = ? ")
-        .unwrap();
-    stmt.query_row([uuid4], |row| {
-        Ok(Note {
-            rowid: 0,
-            uuid4: row.get(0)?,
-            txt: row.get(1)?,
-            tags: row.get(2)?,
-            created_at: row.get(3)?,
-            ai_tags: row.get(4)?,
-            ai_summary: row.get(5)?,
-            ai_category: row.get(6)?,
-        })
+    conn.query_row(
+        "select uuid4, txt, tags, created_at, ai_tags, ai_summary, ai_category FROM note where uuid4 = ? ",
+        [uuid4],
+        |row| {
+            Ok(Note {
+                rowid: 0,
+                uuid4: row.get(0)?,
+                txt: row.get(1)?,
+                tags: row.get(2)?,
+                created_at: row.get(3)?,
+                ai_tags: row.get(4)?,
+                ai_summary: row.get(5)?,
+                ai_category: row.get(6)?,
+            })
+        },
+    )
+    .unwrap_or_else(|e| {
+        eprintln!("Failed to get note by uuid4 {}: {}", uuid4, e);
+        Note::default()
     })
-    .unwrap()
 }
 
 pub fn next_uuid4_candidates(conn: &Connection) -> Vec<String> {
-    let mut r = Vec::new();
-    let mut stmt = conn
-        .prepare("select uuid4 FROM note order by rowid")
-        .unwrap();
-    let iter = stmt
-        .query_map([], |row| Ok(OneString { s: row.get(0)? }))
-        .unwrap();
-    for uuid4 in iter.flatten() {
-        r.push(uuid4.s)
-    }
-    r
+    let mut stmt = match conn.prepare("select uuid4 FROM note order by rowid") {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("Failed to prepare next_uuid4_candidates: {}", e);
+            return Vec::new();
+        }
+    };
+    let result = match stmt.query_map([], |row| Ok(OneString { s: row.get(0)? })) {
+        Ok(rows) => rows.flatten().map(|u| u.s).collect(),
+        Err(e) => {
+            eprintln!("Failed to query uuid4 candidates: {}", e);
+            Vec::new()
+        }
+    };
+    result
 }
 
 // to server
 pub fn diff_uuid4_to_server(conn: &Connection, candidates: Vec<String>) -> Vec<String> {
-    let mut r = Vec::new();
-    let mut stmt = conn.prepare("select 1 FROM note where uuid4 = ? ").unwrap();
-    for uuid4 in candidates {
-        if !(stmt.exists([&uuid4]).unwrap()) {
-            r.push(uuid4);
+    let mut stmt = match conn.prepare("select 1 FROM note where uuid4 = ? ") {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("Failed to prepare diff_uuid4_to_server: {}", e);
+            return Vec::new();
         }
-    }
-    r
+    };
+    candidates
+        .into_iter()
+        .filter(|uuid4| !stmt.exists([&uuid4]).unwrap_or(false))
+        .collect()
 }
 
 // from server
 pub fn diff_uuid4_from_server(conn: &Connection, candidates: Vec<String>) -> Vec<String> {
     let candidates: HashSet<_> = candidates.iter().collect();
-    let mut r = Vec::new();
-    let mut stmt = conn.prepare("select uuid4 FROM note").unwrap();
-    let iter = stmt
-        .query_map([], |row| Ok(OneString { s: row.get(0)? }))
-        .unwrap();
-
-    for uuid4 in iter.flatten() {
-        if !(candidates.contains(&uuid4.s)) {
-            r.push(uuid4.s);
+    let mut stmt = match conn.prepare("select uuid4 FROM note") {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("Failed to prepare diff_uuid4_from_server: {}", e);
+            return Vec::new();
         }
-    }
-    r
+    };
+    let result = match stmt.query_map([], |row| Ok(OneString { s: row.get(0)? })) {
+        Ok(rows) => rows
+            .flatten()
+            .filter(|u| !candidates.contains(&u.s))
+            .map(|u| u.s)
+            .collect(),
+        Err(e) => {
+            eprintln!("Failed to query uuid4 from server: {}", e);
+            Vec::new()
+        }
+    };
+    result
 }

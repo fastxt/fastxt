@@ -52,7 +52,7 @@ pub fn create(conn: &Connection) {
          );
          COMMIT;",
     )
-    .unwrap();
+    .expect("failed to create database schema");
 }
 
 pub fn delete(conn: &Connection, rowid: i64) {
@@ -60,7 +60,7 @@ pub fn delete(conn: &Connection, rowid: i64) {
     // Delete associated embedding first to avoid orphaned data
     let _ = conn.execute("DELETE FROM note_embedding WHERE note_rowid = ?1", [&rowid]);
     conn.execute("DELETE FROM note WHERE rowid = ?1", [&rowid])
-        .unwrap();
+        .expect("failed to delete note");
 }
 
 pub fn insert(conn: &Connection, note: Note) {
@@ -97,7 +97,7 @@ pub fn insert(conn: &Connection, note: Note) {
             ":ai_category": &note.ai_category,
         },
     )
-    .unwrap();
+    .expect("failed to insert/replace note");
 }
 
 /// Merge AI tags by unioning them (for sync).
@@ -212,34 +212,39 @@ pub fn update_ai_category(conn: &Connection, rowid: i64, ai_category: &str) {
 
 /// Get notes without AI tags (for batch processing).
 pub fn select_notes_without_ai_tags(conn: &Connection, limit: u32) -> Vec<crate::Note> {
-    let mut stmt = conn
-        .prepare(
-            "SELECT rowid, uuid4, txt, tags, created_at
-             FROM note
-             WHERE ai_tags IS NULL OR ai_tags = ''
-             ORDER BY created_at DESC
-             LIMIT ?1",
-        )
-        .unwrap();
+    let mut stmt = match conn.prepare(
+        "SELECT rowid, uuid4, txt, tags, created_at
+         FROM note
+         WHERE ai_tags IS NULL OR ai_tags = ''
+         ORDER BY created_at DESC
+         LIMIT ?1",
+    ) {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("Failed to prepare select_notes_without_ai_tags: {}", e);
+            return Vec::new();
+        }
+    };
 
-    let notes = stmt
-        .query_map([&limit], |row| {
-            Ok(crate::Note {
-                rowid: row.get(0)?,
-                uuid4: row.get(1)?,
-                txt: row.get(2)?,
-                tags: row.get(3)?,
-                created_at: row.get(4)?,
-                ai_tags: None,
-                ai_summary: None,
-                ai_category: None,
-            })
+    let result = match stmt.query_map([&limit], |row| {
+        Ok(crate::Note {
+            rowid: row.get(0)?,
+            uuid4: row.get(1)?,
+            txt: row.get(2)?,
+            tags: row.get(3)?,
+            created_at: row.get(4)?,
+            ai_tags: None,
+            ai_summary: None,
+            ai_category: None,
         })
-        .unwrap()
-        .filter_map(|n| n.ok())
-        .collect();
-
-    notes
+    }) {
+        Ok(rows) => rows.filter_map(|n| n.ok()).collect(),
+        Err(e) => {
+            eprintln!("Failed to query notes without AI tags: {}", e);
+            Vec::new()
+        }
+    };
+    result
 }
 
 /// Store embedding for a note.
@@ -282,18 +287,28 @@ pub fn get_all_embeddings(conn: &Connection, model_id: Option<&str>) -> Vec<(i64
         None => "SELECT note_rowid, embedding FROM note_embedding",
     };
 
-    let mut stmt = conn.prepare(sql).unwrap();
+    let mut stmt = match conn.prepare(sql) {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("Failed to prepare get_all_embeddings: {}", e);
+            return Vec::new();
+        }
+    };
     let rows: Vec<(i64, Vec<u8>)> = match model_id {
-        Some(mid) => stmt
-            .query_map([mid], |row| Ok((row.get(0)?, row.get(1)?)))
-            .unwrap()
-            .filter_map(|r| r.ok())
-            .collect(),
-        None => stmt
-            .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
-            .unwrap()
-            .filter_map(|r| r.ok())
-            .collect(),
+        Some(mid) => match stmt.query_map([mid], |row| Ok((row.get(0)?, row.get(1)?))) {
+            Ok(rows) => rows.filter_map(|r| r.ok()).collect(),
+            Err(e) => {
+                eprintln!("Failed to query embeddings: {}", e);
+                Vec::new()
+            }
+        },
+        None => match stmt.query_map([], |row| Ok((row.get(0)?, row.get(1)?))) {
+            Ok(rows) => rows.filter_map(|r| r.ok()).collect(),
+            Err(e) => {
+                eprintln!("Failed to query embeddings: {}", e);
+                Vec::new()
+            }
+        },
     };
 
     rows.into_iter()
@@ -368,12 +383,19 @@ pub fn semantic_search(
         placeholders
     );
 
-    let mut stmt = conn.prepare(&sql).unwrap();
+    let mut stmt = match conn.prepare(&sql) {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("Failed to prepare semantic_search note fetch: {}", e);
+            return vec![];
+        }
+    };
     let params: Vec<&dyn rusqlite::ToSql> =
         rowids.iter().map(|r| r as &dyn rusqlite::ToSql).collect();
 
-    let notes: std::collections::HashMap<i64, Note> = stmt
-        .query_map(params.as_slice(), |row| {
+    let notes: std::collections::HashMap<i64, Note> = match stmt.query_map(
+        params.as_slice(),
+        |row| {
             Ok((
                 row.get::<_, i64>(0)?,
                 Note {
@@ -387,10 +409,14 @@ pub fn semantic_search(
                     ai_category: None,
                 },
             ))
-        })
-        .unwrap()
-        .filter_map(|r| r.ok())
-        .collect();
+        },
+    ) {
+        Ok(rows) => rows.filter_map(|r| r.ok()).collect(),
+        Err(e) => {
+            eprintln!("Failed to query notes for semantic search: {}", e);
+            std::collections::HashMap::new()
+        }
+    };
 
     // Combine with scores in order
     scored
@@ -417,34 +443,39 @@ pub fn count_notes_without_embeddings(conn: &Connection) -> i64 {
 
 /// Get notes without embeddings (for batch embedding generation).
 pub fn select_notes_without_embeddings(conn: &Connection, limit: u32) -> Vec<crate::Note> {
-    let mut stmt = conn
-        .prepare(
-            "SELECT n.rowid, n.uuid4, n.txt, n.tags, n.created_at
-             FROM note n
-             WHERE NOT EXISTS (SELECT 1 FROM note_embedding e WHERE e.note_rowid = n.rowid)
-             ORDER BY n.created_at DESC
-             LIMIT ?1",
-        )
-        .unwrap();
+    let mut stmt = match conn.prepare(
+        "SELECT n.rowid, n.uuid4, n.txt, n.tags, n.created_at
+         FROM note n
+         WHERE NOT EXISTS (SELECT 1 FROM note_embedding e WHERE e.note_rowid = n.rowid)
+         ORDER BY n.created_at DESC
+         LIMIT ?1",
+    ) {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("Failed to prepare select_notes_without_embeddings: {}", e);
+            return Vec::new();
+        }
+    };
 
-    let notes = stmt
-        .query_map([&limit], |row| {
-            Ok(crate::Note {
-                rowid: row.get(0)?,
-                uuid4: row.get(1)?,
-                txt: row.get(2)?,
-                tags: row.get(3)?,
-                created_at: row.get(4)?,
-                ai_tags: None,
-                ai_summary: None,
-                ai_category: None,
-            })
+    let result = match stmt.query_map([&limit], |row| {
+        Ok(crate::Note {
+            rowid: row.get(0)?,
+            uuid4: row.get(1)?,
+            txt: row.get(2)?,
+            tags: row.get(3)?,
+            created_at: row.get(4)?,
+            ai_tags: None,
+            ai_summary: None,
+            ai_category: None,
         })
-        .unwrap()
-        .filter_map(|n| n.ok())
-        .collect();
-
-    notes
+    }) {
+        Ok(rows) => rows.filter_map(|n| n.ok()).collect(),
+        Err(e) => {
+            eprintln!("Failed to query notes without embeddings: {}", e);
+            Vec::new()
+        }
+    };
+    result
 }
 
 /// Rename a category for all notes that have it.
@@ -571,5 +602,250 @@ pub fn store_embedding_by_uuid4(
         rusqlite::params![note_rowid, embedding_bytes, model_id, created_at],
     ) {
         eprintln!("Failed to store embedding: {}", e);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::Note;
+
+    fn setup_test_db() -> Connection {
+        let conn = Connection::open_in_memory().unwrap();
+        create(&conn);
+        conn
+    }
+
+    fn make_test_note(txt: &str, tags: &str) -> Note {
+        Note {
+            rowid: 0,
+            uuid4: uuid::Uuid::new_v4().to_string(),
+            txt: txt.to_string(),
+            tags: tags.to_string(),
+            created_at: chrono::Utc::now()
+                .format("%Y-%m-%d %H:%M:%S")
+                .to_string(),
+            ai_tags: None,
+            ai_summary: None,
+            ai_category: None,
+        }
+    }
+
+    #[test]
+    fn test_create_schema() {
+        let conn = setup_test_db();
+        let count: i64 = conn
+            .query_row("SELECT count(1) FROM note", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(count, 0);
+        let count: i64 = conn
+            .query_row("SELECT count(1) FROM meta", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(count, 0);
+    }
+
+    #[test]
+    fn test_insert_and_select() {
+        let conn = setup_test_db();
+        let note = make_test_note("hello world", "test,rust");
+        let uuid = note.uuid4.clone();
+        insert(&conn, note);
+
+        let notes = select::select_imp(&conn, &10, &0);
+        assert_eq!(notes.len(), 1);
+        assert_eq!(notes[0].uuid4, uuid);
+        assert_eq!(notes[0].txt, "hello world");
+    }
+
+    #[test]
+    fn test_insert_multiple_and_count() {
+        let conn = setup_test_db();
+        insert(&conn, make_test_note("note 1", "a"));
+        insert(&conn, make_test_note("note 2", "b"));
+        insert(&conn, make_test_note("note 3", "c"));
+        assert_eq!(select::select_count(&conn), 3);
+    }
+
+    #[test]
+    fn test_delete() {
+        let conn = setup_test_db();
+        insert(&conn, make_test_note("to delete", "x"));
+        let notes = select::select_imp(&conn, &10, &0);
+        assert_eq!(notes.len(), 1);
+        delete(&conn, notes[0].rowid);
+        assert_eq!(select::select_count(&conn), 0);
+    }
+
+    #[test]
+    fn test_search() {
+        let conn = setup_test_db();
+        insert(&conn, make_test_note("rust programming", "code"));
+        insert(&conn, make_test_note("python scripting", "code"));
+        insert(&conn, make_test_note("cooking recipes", "food"));
+
+        let result = search::search(&conn, "rust", &10, &0);
+        let notes: Vec<Note> = serde_json::from_str(&result).unwrap();
+        assert_eq!(notes.len(), 1);
+        assert_eq!(notes[0].txt, "rust programming");
+    }
+
+    #[test]
+    fn test_search_count() {
+        let conn = setup_test_db();
+        insert(&conn, make_test_note("rust lang", "code"));
+        insert(&conn, make_test_note("rust book", "code"));
+        insert(&conn, make_test_note("python book", "code"));
+        assert_eq!(search::search_count(&conn, "rust"), 2);
+        assert_eq!(search::search_count(&conn, "python"), 1);
+        assert_eq!(search::search_count(&conn, "book"), 2);
+    }
+
+    #[test]
+    fn test_search_empty_query_returns_all() {
+        let conn = setup_test_db();
+        insert(&conn, make_test_note("note 1", "a"));
+        insert(&conn, make_test_note("note 2", "b"));
+        assert_eq!(search::search_count(&conn, ""), 2);
+    }
+
+    #[test]
+    fn test_make_tags_dedup() {
+        let result = make_tags("a,b,a");
+        let tags: Vec<&str> = result.split(',').collect();
+        assert_eq!(tags.len(), 2);
+        assert!(tags.contains(&"a"));
+        assert!(tags.contains(&"b"));
+
+        let result = make_tags("rust  code  rust");
+        let tags: Vec<&str> = result.split(',').collect();
+        assert_eq!(tags.len(), 2);
+        assert!(tags.contains(&"rust"));
+        assert!(tags.contains(&"code"));
+    }
+
+    #[test]
+    fn test_make_tags_whitespace() {
+        assert_eq!(make_tags("a  b  c"), "a,b,c");
+        assert_eq!(make_tags("a,,b,,c"), "a,b,c");
+    }
+
+    #[test]
+    fn test_insert_upsert_by_uuid4() {
+        let conn = setup_test_db();
+        let note = make_test_note("original", "v1");
+        let uuid = note.uuid4.clone();
+        let created_at = note.created_at.clone();
+        insert(&conn, note);
+
+        let updated = Note {
+            rowid: 0,
+            uuid4: uuid,
+            txt: "updated".to_string(),
+            tags: "v2".to_string(),
+            created_at,
+            ai_tags: None,
+            ai_summary: None,
+            ai_category: None,
+        };
+        insert(&conn, updated);
+        assert_eq!(select::select_count(&conn), 1);
+        let notes = select::select_imp(&conn, &10, &0);
+        assert_eq!(notes[0].txt, "updated");
+    }
+
+    #[test]
+    fn test_select_pagination() {
+        let conn = setup_test_db();
+        for i in 0..5 {
+            insert(&conn, make_test_note(&format!("note {}", i), "tag"));
+        }
+        assert_eq!(select::select_imp(&conn, &2, &0).len(), 2);
+        assert_eq!(select::select_imp(&conn, &2, &2).len(), 2);
+        assert_eq!(select::select_imp(&conn, &2, &4).len(), 1);
+    }
+
+    #[test]
+    fn test_sync_get_note_by_uuid4() {
+        let conn = setup_test_db();
+        let note = make_test_note("sync test", "sync");
+        let uuid = note.uuid4.clone();
+        insert(&conn, note);
+        let found = sync::get_note_by_uuid4(&conn, &uuid);
+        assert_eq!(found.txt, "sync test");
+    }
+
+    #[test]
+    fn test_sync_diff_uuid4() {
+        let conn = setup_test_db();
+        let n1 = make_test_note("one", "a");
+        let n2 = make_test_note("two", "b");
+        let uuid1 = n1.uuid4.clone();
+        let uuid2 = n2.uuid4.clone();
+        insert(&conn, n1);
+        insert(&conn, n2);
+
+        let uuid3 = uuid::Uuid::new_v4().to_string();
+        let missing =
+            sync::diff_uuid4_to_server(&conn, vec![uuid1.clone(), uuid3.clone()]);
+        assert_eq!(missing, vec![uuid3]);
+
+        let from = sync::diff_uuid4_from_server(&conn, vec![uuid1]);
+        assert_eq!(from, vec![uuid2]);
+    }
+
+    #[test]
+    fn test_store_and_get_embedding() {
+        let conn = setup_test_db();
+        insert(&conn, make_test_note("embed me", "test"));
+        let notes = select::select_imp(&conn, &1, &0);
+        let rowid = notes[0].rowid;
+
+        store_embedding(&conn, rowid, &[0.1f32, 0.2, 0.3, 0.4], "test-model");
+
+        let (retrieved, model) = get_embedding(&conn, rowid).unwrap();
+        assert_eq!(model, "test-model");
+        assert_eq!(retrieved.len(), 4);
+        assert!((retrieved[0] - 0.1).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn test_cosine_similarity() {
+        assert!((cosine_similarity(&[1.0, 0.0], &[1.0, 0.0]) - 1.0).abs() < f32::EPSILON);
+        assert!(cosine_similarity(&[1.0, 0.0], &[0.0, 1.0]).abs() < f32::EPSILON);
+        assert_eq!(cosine_similarity(&[], &[]), 0.0);
+        assert_eq!(cosine_similarity(&[1.0], &[1.0, 2.0]), 0.0);
+    }
+
+    #[test]
+    fn test_categories() {
+        let conn = setup_test_db();
+        insert(&conn, make_test_note("rust code", "code"));
+        insert(&conn, make_test_note("python code", "code"));
+        insert(&conn, make_test_note("recipe", "food"));
+
+        let notes = select::select_imp(&conn, &10, &0);
+        update_ai_category(&conn, notes[0].rowid, "programming");
+        update_ai_category(&conn, notes[1].rowid, "programming");
+        update_ai_category(&conn, notes[2].rowid, "cooking");
+
+        let cats = get_categories(&conn);
+        assert_eq!(*cats.get("programming").unwrap(), 2);
+        assert_eq!(*cats.get("cooking").unwrap(), 1);
+
+        assert_eq!(rename_category(&conn, "cooking", "culinary"), 1);
+        assert!(get_categories(&conn).get("cooking").is_none());
+        assert_eq!(*get_categories(&conn).get("culinary").unwrap(), 1);
+
+        assert_eq!(dismiss_category(&conn, "culinary"), 1);
+        assert!(get_categories(&conn).get("culinary").is_none());
+    }
+
+    #[test]
+    fn test_merge_ai_tags() {
+        let result = merge_ai_tags(r#"["rust","code"]"#, r#"["python","code"]"#);
+        let tags: Vec<String> = serde_json::from_str(&result).unwrap();
+        assert!(tags.contains(&"rust".to_string()));
+        assert!(tags.contains(&"python".to_string()));
+        assert!(tags.contains(&"code".to_string()));
     }
 }

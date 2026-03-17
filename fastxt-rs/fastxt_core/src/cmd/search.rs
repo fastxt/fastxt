@@ -24,7 +24,7 @@ use rusqlite::Connection;
 
 pub fn search_count(conn: &Connection, query: &str) -> u32 {
     let words = make_words(query);
-    if words.len() == 1 && words.first().unwrap().is_empty() {
+    if words.len() == 1 && words[0].is_empty() {
         return select_count(conn);
     }
     let num_words = words.len();
@@ -40,27 +40,39 @@ pub fn search_count(conn: &Connection, query: &str) -> u32 {
 
     eprintln!("sql {}", sql);
 
-    let mut stmt = conn.prepare(&sql).unwrap();
+    let mut stmt = match conn.prepare(&sql) {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("Failed to prepare search_count: {}", e);
+            return 0;
+        }
+    };
     let keys: Vec<String> = make_keys(num_words);
 
     let mut params: Vec<(&str, &dyn ToSql)> = vec![];
     for i in 0..num_words {
-        params.push((keys.get(i).unwrap(), words.get(i).unwrap() as &dyn ToSql));
+        params.push((&keys[i], &words[i] as &dyn ToSql));
     }
 
     eprintln!("params {:?}", params.len());
 
-    let rs = stmt.query_map(&*params, |row| row.get(0)).unwrap();
+    let rs = match stmt.query_map(&*params, |row| row.get(0)) {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("Failed to query search_count: {}", e);
+            return 0;
+        }
+    };
     let mut c: u32 = 0;
-    for r in rs {
-        c = r.unwrap();
+    for r in rs.flatten() {
+        c = r;
     }
     c
 }
 
 pub fn search(conn: &Connection, query: &str, limit: &u32, offset: &u32) -> String {
     let words = make_words(query);
-    if words.len() == 1 && words.first().unwrap().is_empty() {
+    if words.len() == 1 && words[0].is_empty() {
         return select(conn, limit, offset);
     }
     let num_words = words.len();
@@ -77,7 +89,13 @@ pub fn search(conn: &Connection, query: &str, limit: &u32, offset: &u32) -> Stri
 
     eprintln!("sql {}", sql);
 
-    let mut stmt = conn.prepare(&sql).unwrap();
+    let mut stmt = match conn.prepare(&sql) {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("Failed to prepare search: {}", e);
+            return "[]".to_string();
+        }
+    };
     let keys: Vec<String> = make_keys(num_words);
 
     let mut params: Vec<(&str, &dyn ToSql)> = vec![
@@ -86,25 +104,29 @@ pub fn search(conn: &Connection, query: &str, limit: &u32, offset: &u32) -> Stri
     ];
 
     for i in 0..num_words {
-        params.push((keys.get(i).unwrap(), words.get(i).unwrap() as &dyn ToSql));
+        params.push((&keys[i], &words[i] as &dyn ToSql));
     }
 
     eprintln!("params {:?}", params.len());
 
-    let note_iter = stmt
-        .query_map(&*params, |row| {
-            Ok(Note {
-                rowid: row.get(0)?,
-                uuid4: row.get(1)?,
-                txt: row.get(2)?,
-                tags: row.get(3)?,
-                created_at: row.get(4)?,
-                ai_tags: row.get(5)?,
-                ai_summary: row.get(6)?,
-                ai_category: row.get(7)?,
-            })
+    let note_iter = match stmt.query_map(&*params, |row| {
+        Ok(Note {
+            rowid: row.get(0)?,
+            uuid4: row.get(1)?,
+            txt: row.get(2)?,
+            tags: row.get(3)?,
+            created_at: row.get(4)?,
+            ai_tags: row.get(5)?,
+            ai_summary: row.get(6)?,
+            ai_category: row.get(7)?,
         })
-        .unwrap();
+    }) {
+        Ok(iter) => iter,
+        Err(e) => {
+            eprintln!("Failed to query search: {}", e);
+            return "[]".to_string();
+        }
+    };
 
     let notes: Vec<Note> = note_iter
         .filter_map(|r| r.ok())
