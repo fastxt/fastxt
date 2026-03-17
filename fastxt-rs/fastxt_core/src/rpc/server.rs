@@ -23,18 +23,15 @@ use crate::cmd::{
     get_embedding_by_uuid4, get_embedding_model_id, get_embedding_uuid4s_by_model,
     store_embedding_by_uuid4,
 };
-use crate::exe::get_sqlite_connection;
+use crate::exe::{ensure_db_initialized, get_sqlite_connection};
 use crate::upgrade::get_meta_version;
 use crate::Note;
 use futures::future::{AbortHandle, Abortable, Aborted};
-use futures::{
-    future::{self, Ready},
-    prelude::*,
-};
+use futures::prelude::*;
 use std::{io, net::SocketAddr};
 use tarpc::{
     context,
-    server::{self, Channel, Incoming},
+    server::{self, Channel},
     tokio_serde::formats::Bincode,
 };
 use tokio::runtime::Runtime;
@@ -47,117 +44,115 @@ struct FastxtServer {
 }
 
 impl Fastxt for FastxtServer {
-    type IsVersionMatchFut = Ready<bool>;
-    fn is_version_match(self, _: context::Context, version: String) -> Self::IsVersionMatchFut {
+    async fn is_version_match(self, _: context::Context, version: String) -> bool {
         let conn = get_sqlite_connection();
-        if version == get_meta_version(&conn) {
-            future::ready(true)
-        } else {
-            future::ready(false)
-        }
+        ensure_db_initialized(&conn);
+        version == get_meta_version(&conn)
     }
-    type DiffUuid4ToServerFut = Ready<Vec<String>>;
-    fn diff_uuid4_to_server(
+
+    async fn diff_uuid4_to_server(
         self,
         _: context::Context,
         candidates: Vec<String>,
-    ) -> Self::DiffUuid4ToServerFut {
+    ) -> Vec<String> {
         let conn = get_sqlite_connection();
-        let diff = diff_uuid4_to_server(&conn, candidates);
-        future::ready(diff)
+        ensure_db_initialized(&conn);
+        diff_uuid4_to_server(&conn, candidates)
     }
-    type DiffUuid4FromServerFut = Ready<Vec<String>>;
-    fn diff_uuid4_from_server(
+
+    async fn diff_uuid4_from_server(
         self,
         _: context::Context,
         candidates: Vec<String>,
-    ) -> Self::DiffUuid4FromServerFut {
+    ) -> Vec<String> {
         let conn = get_sqlite_connection();
-        let diff = diff_uuid4_from_server(&conn, candidates);
-        future::ready(diff)
+        ensure_db_initialized(&conn);
+        diff_uuid4_from_server(&conn, candidates)
     }
-    type SendNoteFut = Ready<bool>;
-    fn send_note(self, _: context::Context, note: Note) -> Self::SendNoteFut {
+
+    async fn send_note(self, _: context::Context, note: Note) -> bool {
         let conn = get_sqlite_connection();
+        ensure_db_initialized(&conn);
         eprintln!("upsert note {:?}", note);
         insert(&conn, note);
-        future::ready(true)
+        true
     }
-    type ReceiveNoteFut = Ready<Note>;
-    fn receive_note(self, _: context::Context, uuid4: String) -> Self::ReceiveNoteFut {
+
+    async fn receive_note(self, _: context::Context, uuid4: String) -> Note {
         eprintln!("receive note {:?}", uuid4);
         let conn = get_sqlite_connection();
-        let note = get_note_by_uuid4(&conn, &uuid4);
-        future::ready(note)
+        ensure_db_initialized(&conn);
+        get_note_by_uuid4(&conn, &uuid4)
     }
-    // https://gitter.im/tarpc/Lobby?at=5d465444d7fc954750f63a7b
-    // https://github.com/tikue/tarpc/blob/shutdown-example/example-service/src/server.rs#L43-L48
-    type StopFut = Ready<bool>;
-    fn stop(self, _: context::Context) -> Self::StopFut {
+
+    async fn stop(self, _: context::Context) -> bool {
         self.abort_handle.abort();
-        future::ready(true)
+        true
     }
 
-    // Embedding sync methods
-    type GetEmbeddingModelIdFut = Ready<Option<String>>;
-    fn get_embedding_model_id(self, _: context::Context) -> Self::GetEmbeddingModelIdFut {
+    async fn get_embedding_model_id(self, _: context::Context) -> Option<String> {
         let conn = get_sqlite_connection();
-        future::ready(get_embedding_model_id(&conn))
+        ensure_db_initialized(&conn);
+        get_embedding_model_id(&conn)
     }
 
-    type GetEmbeddingUuid4sFut = Ready<Vec<String>>;
-    fn get_embedding_uuid4s(
+    async fn get_embedding_uuid4s(
         self,
         _: context::Context,
         model_id: String,
-    ) -> Self::GetEmbeddingUuid4sFut {
+    ) -> Vec<String> {
         let conn = get_sqlite_connection();
-        let uuid4s = get_embedding_uuid4s_by_model(&conn, &model_id);
-        future::ready(uuid4s)
+        ensure_db_initialized(&conn);
+        get_embedding_uuid4s_by_model(&conn, &model_id)
     }
 
-    type ReceiveEmbeddingFut = Ready<Option<(Vec<u8>, String)>>;
-    fn receive_embedding(self, _: context::Context, uuid4: String) -> Self::ReceiveEmbeddingFut {
+    async fn receive_embedding(
+        self,
+        _: context::Context,
+        uuid4: String,
+    ) -> Option<(Vec<u8>, String)> {
         let conn = get_sqlite_connection();
-        let embedding = get_embedding_by_uuid4(&conn, &uuid4);
-        future::ready(embedding)
+        ensure_db_initialized(&conn);
+        get_embedding_by_uuid4(&conn, &uuid4)
     }
 
-    type SendEmbeddingFut = Ready<bool>;
-    fn send_embedding(
+    async fn send_embedding(
         self,
         _: context::Context,
         uuid4: String,
         embedding_bytes: Vec<u8>,
         model_id: String,
-    ) -> Self::SendEmbeddingFut {
+    ) -> bool {
         let conn = get_sqlite_connection();
+        ensure_db_initialized(&conn);
         store_embedding_by_uuid4(&conn, &uuid4, &embedding_bytes, &model_id);
-        future::ready(true)
+        true
     }
 }
 
 async fn start_server(addr: &SocketAddr) -> io::Result<()> {
     let (abort_handle, registration) = futures::future::AbortHandle::new_pair();
-    let server = tarpc::serde_transport::tcp::listen(addr, Bincode::default)
-        .await?
-        // Ignore accept errors.
+    let mut listener = tarpc::serde_transport::tcp::listen(addr, Bincode::default).await?;
+    listener.config_mut().max_frame_length(usize::MAX);
+
+    let server = listener
         .filter_map(|r| future::ready(r.ok()))
         .map(server::BaseChannel::with_defaults)
-        // Limit channels to 1 per IP.
-        .max_channels_per_key(1, |t| t.as_ref().peer_addr().unwrap().ip())
-        // serve is generated by the service attribute. It takes as input any type implementing
-        // the generated World trait.
-        .map(|channel| {
-            let server = FastxtServer {
-                client_addr: channel.as_ref().as_ref().peer_addr().unwrap(),
-                abort_handle: abort_handle.clone(),
-            };
-            channel.execute(server.serve())
-        })
-        // Max 10 channels.
-        .buffer_unordered(10)
-        .for_each(|_| async {});
+        .for_each(|channel| {
+            let abort_handle = abort_handle.clone();
+            async move {
+                let server = FastxtServer {
+                    client_addr: channel.transport().peer_addr().unwrap(),
+                    abort_handle,
+                };
+                tokio::spawn(
+                    channel
+                        .execute(server.serve())
+                        .for_each(|_| async {}),
+                );
+            }
+        });
+
     if let Err(Aborted) = Abortable::new(server, registration).await {
         eprintln!("server stopped.");
     }
@@ -176,7 +171,7 @@ pub fn start(addr: &str) -> Result<(), &'static str> {
 }
 
 pub fn get_server_addr() -> String {
-    for iface in get_if_addrs::get_if_addrs().unwrap() {
+    for iface in if_addrs::get_if_addrs().unwrap() {
         if !iface.is_loopback() {
             return format!("{}:3456", iface.addr.ip());
         }

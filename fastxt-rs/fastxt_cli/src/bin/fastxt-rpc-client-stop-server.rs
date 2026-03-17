@@ -16,19 +16,18 @@
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
 
-use clap::{App, Arg};
+use clap::{Arg, Command};
 use fastxt_core::exe::run;
 
 fn main() {
-    let matches = App::new("fastxt-rpc-client")
+    let matches = Command::new("fastxt-rpc-client")
         .arg(
-            Arg::with_name("addr")
-                .short("a")
-                .long("addr")
-                .takes_value(true),
+            Arg::new("addr")
+                .short('a')
+                .long("addr"),
         )
         .get_matches();
-    let addr = matches.value_of("addr").unwrap_or("0.0.0.0:3456");
+    let addr = matches.get_one::<String>("addr").map(|s| s.as_str()).unwrap_or("0.0.0.0:3456");
     eprintln!("addr: {}", addr);
     run(&(r#"{"action":"client-stop-server", "addr": ""#.to_string() + addr + r#""}"#));
 }

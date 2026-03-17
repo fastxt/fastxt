@@ -58,12 +58,27 @@ use chrono::prelude::Utc;
 use rusqlite::Connection;
 use std::fs;
 use std::path::Path;
+use std::sync::Once;
 use uuid::Uuid;
+
+static DB_INIT: Once = Once::new();
 
 pub fn get_sqlite_connection() -> Connection {
     let p = sqlite3_db_location();
     let path = Path::new(&p);
     Connection::open(path).expect("Failed to open SQLite database")
+}
+
+/// Ensure the database schema is created and upgraded.
+/// This runs only once per process, regardless of how many connections are opened.
+pub fn ensure_db_initialized(conn: &Connection) {
+    DB_INIT.call_once(|| {
+        create(conn);
+        if let Err(e) = upgrade::upgrade(conn) {
+            panic!("Database initialization failed during upgrade: {}", e);
+        }
+        eprintln!("database initialized and upgraded");
+    });
 }
 
 fn sqlite3_db_location() -> String {
@@ -95,14 +110,7 @@ pub fn run(text: &str) -> String {
 fn process(cmd: Cmd, text: &str) -> String {
     eprintln!("process cmd {:?}", cmd);
     let conn = get_sqlite_connection();
-    create(&conn);
-
-    // always run upgrade first
-    if let Ok(version) = upgrade::upgrade(&conn) {
-        eprintln!(r#"{{"upgrade-done": "{}"}}"#, version)
-    } else {
-        return r#"{"error":"upgrade error"}"#.to_string();
-    }
+    ensure_db_initialized(&conn);
 
     match cmd.action.as_ref() {
         "server-addr" => {

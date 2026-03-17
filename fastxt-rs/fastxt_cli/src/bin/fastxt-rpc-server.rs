@@ -15,21 +15,20 @@
     You should have received a copy of the GNU Affero General Public License
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
-use clap::{App, Arg};
+use clap::{Arg, Command};
 use fastxt_core::exe::run;
 fn main() {
     let addr = run(r#"{"action":"server-addr"}"#);
     eprintln!("server addr: {}", addr);
 
-    let matches = App::new("fastxt-rpc-server")
+    let matches = Command::new("fastxt-rpc-server")
         .arg(
-            Arg::with_name("addr")
-                .short("a")
-                .long("addr")
-                .takes_value(true),
+            Arg::new("addr")
+                .short('a')
+                .long("addr"),
         )
         .get_matches();
-    let addr = matches.value_of("addr").unwrap_or("0.0.0.0:3456");
+    let addr = matches.get_one::<String>("addr").map(|s| s.as_str()).unwrap_or("0.0.0.0:3456");
     eprintln!("addr: {}", addr);
     run(&(r#"{"action":"server", "addr": ""#.to_string() + addr + r#""}"#));
 }
