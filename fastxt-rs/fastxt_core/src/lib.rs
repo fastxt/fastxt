@@ -16,8 +16,7 @@
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
 
-#[macro_use]
-extern crate serde_derive;
+use serde_derive::{Deserialize, Serialize};
 
 pub mod cmd;
 pub mod exe;

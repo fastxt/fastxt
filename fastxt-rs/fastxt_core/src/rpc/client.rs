@@ -22,24 +22,26 @@ use crate::cmd::sync::next_uuid4_candidates;
 use crate::cmd::{
     get_embedding_model_id, get_embedding_uuid4s_by_model, insert, store_embedding_by_uuid4,
 };
-use crate::exe::get_sqlite_connection;
+use crate::exe::{ensure_db_initialized, get_sqlite_connection};
 use crate::upgrade::get_meta_version;
-use std::io::Error;
-use std::{io, net::SocketAddr};
+use std::net::SocketAddr;
 use tarpc::{client, context, tokio_serde::formats::Bincode};
 use tokio::runtime::Runtime;
 
-async fn run_sync_to_server(addr: &SocketAddr) -> io::Result<()> {
+type RpcResult<T> = Result<T, Box<dyn std::error::Error>>;
+
+async fn run_sync_to_server(addr: &SocketAddr) -> RpcResult<()> {
     let transport = tarpc::serde_transport::tcp::connect(addr, Bincode::default).await?;
     let client = FastxtClient::new(client::Config::default(), transport).spawn();
     let conn = get_sqlite_connection();
+    ensure_db_initialized(&conn);
 
     // check version
     let version = get_meta_version(&conn);
     let is_version_match = client.is_version_match(context::current(), version).await?;
     eprintln!("is_version_match: {}", is_version_match);
     if !is_version_match {
-        return Err(Error::other("VERSION_NOT_MATCH"));
+        return Err("VERSION_NOT_MATCH".into());
     }
 
     // diff uuid4
@@ -59,17 +61,18 @@ async fn run_sync_to_server(addr: &SocketAddr) -> io::Result<()> {
     Ok(())
 }
 
-async fn run_sync_from_server(addr: &SocketAddr) -> io::Result<()> {
+async fn run_sync_from_server(addr: &SocketAddr) -> RpcResult<()> {
     let transport = tarpc::serde_transport::tcp::connect(addr, Bincode::default).await?;
     let client = FastxtClient::new(client::Config::default(), transport).spawn();
     let conn = get_sqlite_connection();
+    ensure_db_initialized(&conn);
 
     // check version
     let version = get_meta_version(&conn);
     let is_version_match = client.is_version_match(context::current(), version).await?;
     eprintln!("is_version_match: {}", is_version_match);
     if !is_version_match {
-        return Err(Error::other("VERSION_NOT_MATCH"));
+        return Err("VERSION_NOT_MATCH".into());
     }
 
     // diff uuid4
@@ -119,20 +122,20 @@ pub fn sync(addr: &str) -> Result<String, String> {
     }
 }
 
-async fn run_stop_server(addr: &SocketAddr) -> io::Result<()> {
+async fn run_stop_server(addr: &SocketAddr) -> RpcResult<()> {
     let transport = tarpc::serde_transport::tcp::connect(addr, Bincode::default).await?;
     let client = FastxtClient::new(client::Config::default(), transport).spawn();
     let conn = get_sqlite_connection();
+    ensure_db_initialized(&conn);
 
     // check version
     let version = get_meta_version(&conn);
     let is_version_match = client.is_version_match(context::current(), version).await?;
     eprintln!("is_version_match: {}", is_version_match);
     if !is_version_match {
-        return Err(Error::other("VERSION_NOT_MATCH"));
+        return Err("VERSION_NOT_MATCH".into());
     }
 
-    // diff uuid4
     let is_stopped = client.stop(context::current()).await?;
     eprintln!("is_stopped: {}", is_stopped);
     Ok(())
@@ -154,17 +157,18 @@ pub fn stop_server(addr: &str) -> Result<String, String> {
 
 /// Sync embeddings with the server.
 /// Only syncs if both client and server use the same embedding model.
-async fn run_sync_embeddings(addr: &SocketAddr) -> io::Result<()> {
+async fn run_sync_embeddings(addr: &SocketAddr) -> RpcResult<()> {
     let transport = tarpc::serde_transport::tcp::connect(addr, Bincode::default).await?;
     let client = FastxtClient::new(client::Config::default(), transport).spawn();
     let conn = get_sqlite_connection();
+    ensure_db_initialized(&conn);
 
     // Check version match
     let version = get_meta_version(&conn);
     let is_version_match = client.is_version_match(context::current(), version).await?;
     eprintln!("is_version_match: {}", is_version_match);
     if !is_version_match {
-        return Err(Error::other("VERSION_NOT_MATCH"));
+        return Err("VERSION_NOT_MATCH".into());
     }
 
     // Get local embedding model ID
