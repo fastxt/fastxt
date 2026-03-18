@@ -141,8 +141,15 @@ async fn start_server(addr: &SocketAddr) -> io::Result<()> {
         .for_each(|channel| {
             let abort_handle = abort_handle.clone();
             async move {
+                let client_addr = match channel.transport().peer_addr() {
+                    Ok(addr) => addr,
+                    Err(e) => {
+                        eprintln!("Failed to get peer address: {}", e);
+                        return;
+                    }
+                };
                 let server = FastxtServer {
-                    client_addr: channel.transport().peer_addr().unwrap(),
+                    client_addr,
                     abort_handle,
                 };
                 tokio::spawn(
@@ -160,10 +167,14 @@ async fn start_server(addr: &SocketAddr) -> io::Result<()> {
 }
 
 pub fn start(addr: &str) -> Result<(), &'static str> {
-    let server_addr: SocketAddr = addr
-        .parse()
-        .unwrap_or_else(|e| panic!(r#"server_addr {} invalid: {}"#, addr, e));
-    let rt = Runtime::new().unwrap();
+    let server_addr: SocketAddr = addr.parse().map_err(|e| {
+        eprintln!("server_addr {} invalid: {}", addr, e);
+        "invalid server address"
+    })?;
+    let rt = Runtime::new().map_err(|e| {
+        eprintln!("Failed to create tokio runtime: {}", e);
+        "failed to create runtime"
+    })?;
     rt.block_on(async {
         let _ = start_server(&server_addr).await;
     });
@@ -171,10 +182,18 @@ pub fn start(addr: &str) -> Result<(), &'static str> {
 }
 
 pub fn get_server_addr() -> String {
-    for iface in if_addrs::get_if_addrs().unwrap() {
-        if !iface.is_loopback() {
-            return format!("{}:3456", iface.addr.ip());
+    match if_addrs::get_if_addrs() {
+        Ok(addrs) => {
+            for iface in addrs {
+                if !iface.is_loopback() {
+                    return format!("{}:3456", iface.addr.ip());
+                }
+            }
+            String::new()
+        }
+        Err(e) => {
+            eprintln!("Failed to get network interfaces: {}", e);
+            String::new()
         }
     }
-    String::new()
 }

@@ -44,7 +44,8 @@ pub extern "C" fn fastxt_run(json_input: *const c_char) -> *mut c_char {
     };
 
     CString::new(json)
-        .unwrap_or_else(|_| CString::new(r#"{"error":"response contains null byte"}"#).unwrap())
+        .or_else(|_| CString::new(r#"{"error":"response contains null byte"}"#))
+        .expect("static error string should never contain null bytes")
         .into_raw()
 }
 
