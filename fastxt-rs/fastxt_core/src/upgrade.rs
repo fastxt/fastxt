@@ -23,13 +23,14 @@ const VERSION: &str = "0.2.0";
 use crate::OneString;
 
 fn set_meta_version(conn: &Connection, version: &str) {
-    conn.execute(
+    if let Err(e) = conn.execute(
         "
         UPDATE meta SET meta_value = ?1
         WHERE meta_key = 'version';",
         [version],
-    )
-    .expect("failed to update meta version");
+    ) {
+        eprintln!("Failed to update meta version: {}", e);
+    }
 }
 
 pub fn upgrade(conn: &Connection) -> Result<&str, &str> {
@@ -37,22 +38,25 @@ pub fn upgrade(conn: &Connection) -> Result<&str, &str> {
         eprintln!("is_upgrading");
         Err("is_upgrading")
     } else {
-        let current_version = get_meta_version(conn);
+        let current = Version::parse(&get_meta_version(conn)).ok();
+        let v0_1_0 = Version::parse("0.1.0").ok();
+        let v0_2_0 = Version::parse("0.2.0").ok();
 
         // Migration to 0.1.0
-        if Version::parse(&current_version).ok() < Version::parse("0.1.0").ok() {
+        if current < v0_1_0 {
             set_meta_version(conn, "0.1.0");
             eprintln!("upgraded to 0.1.0")
         }
 
         // Migration to 0.2.0 - Add AI columns
-        if Version::parse(&current_version).ok() < Version::parse("0.2.0").ok() {
+        if current < v0_2_0 {
             crate::cmd::migrate_ai_columns(conn);
             set_meta_version(conn, "0.2.0");
             eprintln!("upgraded to 0.2.0 (added AI columns)")
         }
 
-        if Version::parse(&get_meta_version(conn)).ok() == Version::parse("0.2.0").ok() {
+        let updated = Version::parse(&get_meta_version(conn)).ok();
+        if updated == v0_2_0 {
             set_meta_version(conn, VERSION);
         }
         eprintln!("upgraded to {}", VERSION);
@@ -94,15 +98,16 @@ pub fn get_meta_version(conn: &Connection) -> String {
             version.s
         }
         Err(_) => {
-            conn.execute_batch(
+            if let Err(e) = conn.execute_batch(
                 "
             INSERT INTO meta
             (meta_key, meta_value)
             VALUES
             ('version', '0.0.0')
             ;",
-            )
-            .expect("failed to initialize meta version");
+            ) {
+                eprintln!("Failed to initialize meta version: {}", e);
+            }
             eprintln!("get_meta_version: version init to 0.0.0");
             "0.0.0".to_string()
         }

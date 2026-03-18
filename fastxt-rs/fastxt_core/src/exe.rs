@@ -63,6 +63,12 @@ use uuid::Uuid;
 
 static DB_INIT: Once = Once::new();
 
+/// Safely serialize a value to JSON, returning an error JSON string on failure.
+fn safe_serialize<T: serde::Serialize>(value: &T) -> String {
+    serde_json::to_string(value)
+        .unwrap_or_else(|_| r#"{"error":"serialization error"}"#.to_string())
+}
+
 pub fn get_sqlite_connection() -> Connection {
     let p = sqlite3_db_location();
     let path = Path::new(&p);
@@ -255,7 +261,7 @@ fn process(cmd: Cmd, text: &str) -> String {
             if let Ok(cmd) = serde_json::from_str::<CmdRenameCategory>(text) {
                 let updated = crate::cmd::rename_category(&conn, &cmd.old_name, &cmd.new_name);
                 let response = RenameCategoryResponse { updated };
-                serde_json::to_string(&response).expect("failed to serialize response")
+                safe_serialize(&response)
             } else {
                 r#"{"error":"cmd rename-category json error"}"#.to_string()
             }
@@ -264,14 +270,14 @@ fn process(cmd: Cmd, text: &str) -> String {
             if let Ok(cmd) = serde_json::from_str::<CmdDismissCategory>(text) {
                 let updated = crate::cmd::dismiss_category(&conn, &cmd.category);
                 let response = DismissCategoryResponse { updated };
-                serde_json::to_string(&response).expect("failed to serialize response")
+                safe_serialize(&response)
             } else {
                 r#"{"error":"cmd dismiss-category json error"}"#.to_string()
             }
         }
         "get-categories" => {
             let categories = crate::cmd::get_categories(&conn);
-            serde_json::to_string(&categories).expect("failed to serialize categories")
+            safe_serialize(&categories)
         }
         "sync-embeddings" => {
             if let Ok(cmd) = serde_json::from_str::<CmdRpcClient>(text) {
@@ -319,7 +325,7 @@ fn do_ai_tag(cmd: &CmdAiTag) -> String {
                 available: false,
                 error: Some("AI backend not available. Make sure Ollama is running.".to_string()),
             };
-            return serde_json::to_string(&response).expect("failed to serialize response");
+            return safe_serialize(&response);
         }
 
         match backend.suggest_tags(&cmd.text, &config) {
@@ -329,7 +335,7 @@ fn do_ai_tag(cmd: &CmdAiTag) -> String {
                     available: true,
                     error: None,
                 };
-                serde_json::to_string(&response).expect("failed to serialize response")
+                safe_serialize(&response)
             }
             Err(e) => {
                 let response = AiTagsResponse {
@@ -337,7 +343,7 @@ fn do_ai_tag(cmd: &CmdAiTag) -> String {
                     available: true,
                     error: Some(e.to_string()),
                 };
-                serde_json::to_string(&response).expect("failed to serialize response")
+                safe_serialize(&response)
             }
         }
     }
@@ -349,7 +355,7 @@ fn do_ai_tag(cmd: &CmdAiTag) -> String {
             available: false,
             error: Some("AI feature not enabled. Build with --features ai".to_string()),
         };
-        serde_json::to_string(&response).expect("failed to serialize response")
+        safe_serialize(&response)
     }
 }
 
@@ -386,7 +392,7 @@ fn do_ai_tag_all(conn: &Connection, cmd: &CmdAiTagAll) -> String {
         for note in notes {
             match backend.suggest_tags(&note.txt, &config) {
                 Ok(tags) => {
-                    let tags_json = serde_json::to_string(&tags).expect("failed to serialize tags");
+                    let tags_json = safe_serialize(&tags);
                     update_ai_tags(conn, note.rowid, &tags_json);
                     processed += 1;
                 }
@@ -430,7 +436,7 @@ fn do_ai_summarize(conn: &Connection, cmd: &CmdAiSummarize) -> String {
                 available: false,
                 error: Some("AI backend not available. Make sure Ollama is running.".to_string()),
             };
-            return serde_json::to_string(&response).expect("failed to serialize response");
+            return safe_serialize(&response);
         }
 
         // Fetch the note text
@@ -451,7 +457,7 @@ fn do_ai_summarize(conn: &Connection, cmd: &CmdAiSummarize) -> String {
                         available: true,
                         error: None,
                     };
-                    serde_json::to_string(&response).expect("failed to serialize response")
+                    safe_serialize(&response)
                 }
                 Err(e) => {
                     let response = crate::AiSummarizeResponse {
@@ -459,7 +465,7 @@ fn do_ai_summarize(conn: &Connection, cmd: &CmdAiSummarize) -> String {
                         available: true,
                         error: Some(e.to_string()),
                     };
-                    serde_json::to_string(&response).expect("failed to serialize response")
+                    safe_serialize(&response)
                 }
             },
             None => {
@@ -468,7 +474,7 @@ fn do_ai_summarize(conn: &Connection, cmd: &CmdAiSummarize) -> String {
                     available: true,
                     error: Some(format!("Note with rowid {} not found", cmd.rowid)),
                 };
-                serde_json::to_string(&response).expect("failed to serialize response")
+                safe_serialize(&response)
             }
         }
     }
@@ -480,7 +486,7 @@ fn do_ai_summarize(conn: &Connection, cmd: &CmdAiSummarize) -> String {
             available: false,
             error: Some("AI feature not enabled. Build with --features ai".to_string()),
         };
-        serde_json::to_string(&response).expect("failed to serialize response")
+        safe_serialize(&response)
     }
 }
 
@@ -505,7 +511,7 @@ fn do_ai_embed(conn: &Connection, cmd: &CmdAiEmbed) -> String {
                 available: false,
                 error: Some("AI backend not available. Make sure Ollama is running.".to_string()),
             };
-            return serde_json::to_string(&response).expect("failed to serialize response");
+            return safe_serialize(&response);
         }
 
         // Fetch the note text
@@ -530,7 +536,7 @@ fn do_ai_embed(conn: &Connection, cmd: &CmdAiEmbed) -> String {
                         available: true,
                         error: None,
                     };
-                    serde_json::to_string(&response).expect("failed to serialize response")
+                    safe_serialize(&response)
                 }
                 Err(e) => {
                     let response = AiEmbedResponse {
@@ -538,7 +544,7 @@ fn do_ai_embed(conn: &Connection, cmd: &CmdAiEmbed) -> String {
                         available: true,
                         error: Some(e.to_string()),
                     };
-                    serde_json::to_string(&response).expect("failed to serialize response")
+                    safe_serialize(&response)
                 }
             },
             None => {
@@ -547,7 +553,7 @@ fn do_ai_embed(conn: &Connection, cmd: &CmdAiEmbed) -> String {
                     available: true,
                     error: Some(format!("Note with rowid {} not found", cmd.rowid)),
                 };
-                serde_json::to_string(&response).expect("failed to serialize response")
+                safe_serialize(&response)
             }
         }
     }
@@ -559,7 +565,7 @@ fn do_ai_embed(conn: &Connection, cmd: &CmdAiEmbed) -> String {
             available: false,
             error: Some("AI feature not enabled. Build with --features ai".to_string()),
         };
-        serde_json::to_string(&response).expect("failed to serialize response")
+        safe_serialize(&response)
     }
 }
 
@@ -643,7 +649,7 @@ fn do_semantic_search(conn: &Connection, cmd: &CmdSemanticSearch) -> String {
                 available: false,
                 error: Some("AI backend not available. Make sure Ollama is running.".to_string()),
             };
-            return serde_json::to_string(&response).expect("failed to serialize response");
+            return safe_serialize(&response);
         }
 
         // Generate embedding for query
@@ -669,7 +675,7 @@ fn do_semantic_search(conn: &Connection, cmd: &CmdSemanticSearch) -> String {
                     available: true,
                     error: None,
                 };
-                serde_json::to_string(&response).expect("failed to serialize response")
+                safe_serialize(&response)
             }
             Err(e) => {
                 let response = SemanticSearchResponse {
@@ -677,7 +683,7 @@ fn do_semantic_search(conn: &Connection, cmd: &CmdSemanticSearch) -> String {
                     available: true,
                     error: Some(format!("Failed to generate query embedding: {}", e)),
                 };
-                serde_json::to_string(&response).expect("failed to serialize response")
+                safe_serialize(&response)
             }
         }
     }
@@ -689,7 +695,7 @@ fn do_semantic_search(conn: &Connection, cmd: &CmdSemanticSearch) -> String {
             available: false,
             error: Some("AI feature not enabled. Build with --features ai".to_string()),
         };
-        serde_json::to_string(&response).expect("failed to serialize response")
+        safe_serialize(&response)
     }
 }
 
@@ -756,7 +762,7 @@ fn do_ai_reprocess(conn: &Connection, cmd: &CmdAiReprocess) -> String {
             // Generate tags
             match backend.suggest_tags(&txt, &config) {
                 Ok(tags) => {
-                    let tags_json = serde_json::to_string(&tags).expect("failed to serialize tags");
+                    let tags_json = safe_serialize(&tags);
                     update_ai_tags(conn, rowid, &tags_json);
                 }
                 Err(e) => {
@@ -815,7 +821,7 @@ fn do_ai_organize(conn: &Connection, cmd: &CmdAiOrganize) -> String {
                 available: false,
                 error: Some("AI backend not available. Make sure Ollama is running.".to_string()),
             };
-            return serde_json::to_string(&response).expect("failed to serialize response");
+            return safe_serialize(&response);
         }
 
         // Get notes without categories (or all notes if re-categorizing)
@@ -835,7 +841,7 @@ fn do_ai_organize(conn: &Connection, cmd: &CmdAiOrganize) -> String {
                     available: true,
                     error: Some(format!("Failed to query notes: {}", e)),
                 };
-                return serde_json::to_string(&response).expect("failed to serialize response");
+                return safe_serialize(&response);
             }
         };
 
@@ -852,7 +858,7 @@ fn do_ai_organize(conn: &Connection, cmd: &CmdAiOrganize) -> String {
                     available: true,
                     error: Some(format!("Failed to query notes: {}", e)),
                 };
-                return serde_json::to_string(&response).expect("failed to serialize response");
+                return safe_serialize(&response);
             }
         };
 
@@ -864,7 +870,7 @@ fn do_ai_organize(conn: &Connection, cmd: &CmdAiOrganize) -> String {
                 available: true,
                 error: Some("No notes to categorize".to_string()),
             };
-            return serde_json::to_string(&response).expect("failed to serialize response");
+            return safe_serialize(&response);
         }
 
         // Extract texts for batch categorization
@@ -910,7 +916,7 @@ fn do_ai_organize(conn: &Connection, cmd: &CmdAiOrganize) -> String {
                 None
             },
         };
-        serde_json::to_string(&response).expect("failed to serialize response")
+        safe_serialize(&response)
     }
 
     #[cfg(not(feature = "ai"))]
@@ -922,6 +928,6 @@ fn do_ai_organize(conn: &Connection, cmd: &CmdAiOrganize) -> String {
             available: false,
             error: Some("AI feature not enabled. Build with --features ai".to_string()),
         };
-        serde_json::to_string(&response).expect("failed to serialize response")
+        safe_serialize(&response)
     }
 }

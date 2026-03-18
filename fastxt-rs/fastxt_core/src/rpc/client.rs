@@ -96,7 +96,8 @@ pub fn sync(addr: &str) -> Result<String, String> {
         .parse()
         .map_err(|e| format!("server_addr {} invalid: {}", addr, e))?;
 
-    let rt = Runtime::new().unwrap();
+    let rt = Runtime::new()
+        .map_err(|e| format!("Failed to create tokio runtime: {}", e))?;
     let mut errors = Vec::new();
 
     rt.block_on(async {
@@ -144,8 +145,9 @@ async fn run_stop_server(addr: &SocketAddr) -> RpcResult<()> {
 pub fn stop_server(addr: &str) -> Result<String, String> {
     let server_addr: SocketAddr = addr
         .parse()
-        .unwrap_or_else(|e| panic!(r#"server_addr {} invalid: {}"#, addr, e));
-    let rt = Runtime::new().unwrap();
+        .map_err(|e| format!("server_addr {} invalid: {}", addr, e))?;
+    let rt = Runtime::new()
+        .map_err(|e| format!("Failed to create tokio runtime: {}", e))?;
     rt.block_on(async {
         let resp = run_stop_server(&server_addr);
         if let Err(e) = resp.await {
@@ -256,7 +258,8 @@ pub fn sync_embeddings(addr: &str) -> Result<String, String> {
         .parse()
         .map_err(|e| format!("server_addr {} invalid: {}", addr, e))?;
 
-    let rt = Runtime::new().unwrap();
+    let rt = Runtime::new()
+        .map_err(|e| format!("Failed to create tokio runtime: {}", e))?;
     rt.block_on(async {
         if let Err(e) = run_sync_embeddings(&server_addr).await {
             eprintln!("sync_embeddings error: {}", e);
