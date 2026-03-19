@@ -18,6 +18,7 @@
 
 use semver::Version;
 use rusqlite::Connection;
+use tracing::{debug, info, warn};
 // version to upgrade to
 const VERSION: &str = "0.2.0";
 use crate::OneString;
@@ -29,13 +30,13 @@ fn set_meta_version(conn: &Connection, version: &str) {
         WHERE meta_key = 'version';",
         [version],
     ) {
-        eprintln!("Failed to update meta version: {}", e);
+        warn!(error = %e, "failed to update meta version");
     }
 }
 
 pub fn upgrade(conn: &Connection) -> Result<&str, &str> {
     if get_meta_is_upgrading(conn) {
-        eprintln!("is_upgrading");
+        warn!("database is currently upgrading");
         Err("is_upgrading")
     } else {
         let current = Version::parse(&get_meta_version(conn)).ok();
@@ -45,21 +46,21 @@ pub fn upgrade(conn: &Connection) -> Result<&str, &str> {
         // Migration to 0.1.0
         if current < v0_1_0 {
             set_meta_version(conn, "0.1.0");
-            eprintln!("upgraded to 0.1.0")
+            info!("upgraded to 0.1.0")
         }
 
         // Migration to 0.2.0 - Add AI columns
         if current < v0_2_0 {
             crate::cmd::migrate_ai_columns(conn);
             set_meta_version(conn, "0.2.0");
-            eprintln!("upgraded to 0.2.0 (added AI columns)")
+            info!("upgraded to 0.2.0 (added AI columns)")
         }
 
         let updated = Version::parse(&get_meta_version(conn)).ok();
         if updated == v0_2_0 {
             set_meta_version(conn, VERSION);
         }
-        eprintln!("upgraded to {}", VERSION);
+        info!(version = VERSION, "upgrade complete");
         Ok(VERSION)
     }
 }
@@ -74,10 +75,10 @@ fn get_meta_is_upgrading(conn: &Connection) -> bool {
     match stmt.query_row([], |row| Ok(OneString { s: row.get(0)? })) {
         Ok(is_upgrading) => {
             if is_upgrading.s == "1" {
-                eprintln!("get_meta_is_upgrading: true");
+                debug!("get_meta_is_upgrading: true");
                 true
             } else {
-                eprintln!("get_meta_is_upgrading: false");
+                debug!("get_meta_is_upgrading: false");
                 false
             }
         }
@@ -94,7 +95,7 @@ pub fn get_meta_version(conn: &Connection) -> String {
     };
     match stmt.query_row([], |row| Ok(OneString { s: row.get(0)? })) {
         Ok(version) => {
-            eprintln!("get_meta_version {}", version.s);
+            debug!(version = %version.s, "get_meta_version");
             version.s
         }
         Err(_) => {
@@ -106,9 +107,9 @@ pub fn get_meta_version(conn: &Connection) -> String {
             ('version', '0.0.0')
             ;",
             ) {
-                eprintln!("Failed to initialize meta version: {}", e);
+                warn!(error = %e, "failed to initialize meta version");
             }
-            eprintln!("get_meta_version: version init to 0.0.0");
+            info!("meta version initialized to 0.0.0");
             "0.0.0".to_string()
         }
     }

@@ -28,6 +28,7 @@ tokio = { version = "1", features = ["full"] }
 futures = "0.3"
 if-addrs = "0.13"
 tokio-serde = { version = "0.9", features = ["bincode"] }
+tracing = "0.1"
 
 # AI feature dependencies (optional)
 reqwest = { version = "0.12", features = ["blocking", "json"], optional = true }

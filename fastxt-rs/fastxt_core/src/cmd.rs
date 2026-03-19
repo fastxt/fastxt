@@ -20,6 +20,7 @@ use crate::Note;
 use linked_hash_set::LinkedHashSet;
 use regex::Regex;
 use std::iter::FromIterator;
+use tracing::{debug, info, warn};
 pub mod search;
 pub mod select;
 pub mod sync;
@@ -56,7 +57,7 @@ pub fn create(conn: &Connection) {
 }
 
 pub fn delete(conn: &Connection, rowid: i64) {
-    eprintln!("delete rowid {}", rowid);
+    debug!(rowid, "deleting note");
     // Delete associated embedding first to avoid orphaned data
     let _ = conn.execute("DELETE FROM note_embedding WHERE note_rowid = ?1", [&rowid]);
     conn.execute("DELETE FROM note WHERE rowid = ?1", [&rowid])
@@ -160,9 +161,9 @@ pub fn migrate_ai_columns(conn: &Connection) {
         if count == 0 {
             let alter_sql = format!("ALTER TABLE note ADD COLUMN {} TEXT", col);
             if let Err(e) = conn.execute(&alter_sql, []) {
-                eprintln!("Warning: Failed to add column {}: {}", col, e);
+                warn!(column = col, error = %e, "failed to add column");
             } else {
-                eprintln!("Added column {} to note table", col);
+                info!(column = col, "added column to note table");
             }
         }
     }
@@ -176,7 +177,7 @@ pub fn migrate_ai_columns(conn: &Connection) {
          created_at     TEXT NOT NULL
          );",
     ) {
-        eprintln!("Warning: Failed to create note_embedding table: {}", e);
+        warn!(error = %e, "failed to create note_embedding table");
     }
 }
 
@@ -186,7 +187,7 @@ pub fn update_ai_tags(conn: &Connection, rowid: i64, ai_tags: &str) {
         "UPDATE note SET ai_tags = ?1 WHERE rowid = ?2",
         rusqlite::params![ai_tags, rowid],
     ) {
-        eprintln!("Failed to update ai_tags: {}", e);
+        warn!(rowid, error = %e, "failed to update ai_tags");
     }
 }
 
@@ -196,7 +197,7 @@ pub fn update_ai_summary(conn: &Connection, rowid: i64, ai_summary: &str) {
         "UPDATE note SET ai_summary = ?1 WHERE rowid = ?2",
         rusqlite::params![ai_summary, rowid],
     ) {
-        eprintln!("Failed to update ai_summary: {}", e);
+        warn!(rowid, error = %e, "failed to update ai_summary");
     }
 }
 
@@ -206,7 +207,7 @@ pub fn update_ai_category(conn: &Connection, rowid: i64, ai_category: &str) {
         "UPDATE note SET ai_category = ?1 WHERE rowid = ?2",
         rusqlite::params![ai_category, rowid],
     ) {
-        eprintln!("Failed to update ai_category: {}", e);
+        warn!(rowid, error = %e, "failed to update ai_category");
     }
 }
 
@@ -221,7 +222,7 @@ pub fn select_notes_without_ai_tags(conn: &Connection, limit: u32) -> Vec<crate:
     ) {
         Ok(s) => s,
         Err(e) => {
-            eprintln!("Failed to prepare select_notes_without_ai_tags: {}", e);
+            warn!(error = %e, "failed to prepare select_notes_without_ai_tags");
             return Vec::new();
         }
     };
@@ -240,7 +241,7 @@ pub fn select_notes_without_ai_tags(conn: &Connection, limit: u32) -> Vec<crate:
     }) {
         Ok(rows) => rows.filter_map(|n| n.ok()).collect(),
         Err(e) => {
-            eprintln!("Failed to query notes without AI tags: {}", e);
+            warn!(error = %e, "failed to query notes without AI tags");
             Vec::new()
         }
     };
@@ -257,7 +258,7 @@ pub fn store_embedding(conn: &Connection, note_rowid: i64, embedding: &[f32], mo
          VALUES (?1, ?2, ?3, ?4)",
         rusqlite::params![note_rowid, embedding_bytes, model_id, created_at],
     ) {
-        eprintln!("Failed to store embedding: {}", e);
+        warn!(error = %e, "failed to store embedding");
     }
 }
 
@@ -290,7 +291,7 @@ pub fn get_all_embeddings(conn: &Connection, model_id: Option<&str>) -> Vec<(i64
     let mut stmt = match conn.prepare(sql) {
         Ok(s) => s,
         Err(e) => {
-            eprintln!("Failed to prepare get_all_embeddings: {}", e);
+            warn!(error = %e, "failed to prepare get_all_embeddings");
             return Vec::new();
         }
     };
@@ -298,14 +299,14 @@ pub fn get_all_embeddings(conn: &Connection, model_id: Option<&str>) -> Vec<(i64
         Some(mid) => match stmt.query_map([mid], |row| Ok((row.get(0)?, row.get(1)?))) {
             Ok(rows) => rows.filter_map(|r| r.ok()).collect(),
             Err(e) => {
-                eprintln!("Failed to query embeddings: {}", e);
+                warn!(error = %e, "failed to query embeddings");
                 Vec::new()
             }
         },
         None => match stmt.query_map([], |row| Ok((row.get(0)?, row.get(1)?))) {
             Ok(rows) => rows.filter_map(|r| r.ok()).collect(),
             Err(e) => {
-                eprintln!("Failed to query embeddings: {}", e);
+                warn!(error = %e, "failed to query embeddings");
                 Vec::new()
             }
         },
@@ -386,7 +387,7 @@ pub fn semantic_search(
     let mut stmt = match conn.prepare(&sql) {
         Ok(s) => s,
         Err(e) => {
-            eprintln!("Failed to prepare semantic_search note fetch: {}", e);
+            warn!(error = %e, "failed to prepare semantic_search note fetch");
             return vec![];
         }
     };
@@ -413,7 +414,7 @@ pub fn semantic_search(
     ) {
         Ok(rows) => rows.filter_map(|r| r.ok()).collect(),
         Err(e) => {
-            eprintln!("Failed to query notes for semantic search: {}", e);
+            warn!(error = %e, "failed to query notes for semantic search");
             std::collections::HashMap::new()
         }
     };
@@ -452,7 +453,7 @@ pub fn select_notes_without_embeddings(conn: &Connection, limit: u32) -> Vec<cra
     ) {
         Ok(s) => s,
         Err(e) => {
-            eprintln!("Failed to prepare select_notes_without_embeddings: {}", e);
+            warn!(error = %e, "failed to prepare select_notes_without_embeddings");
             return Vec::new();
         }
     };
@@ -471,7 +472,7 @@ pub fn select_notes_without_embeddings(conn: &Connection, limit: u32) -> Vec<cra
     }) {
         Ok(rows) => rows.filter_map(|n| n.ok()).collect(),
         Err(e) => {
-            eprintln!("Failed to query notes without embeddings: {}", e);
+            warn!(error = %e, "failed to query notes without embeddings");
             Vec::new()
         }
     };
@@ -487,7 +488,7 @@ pub fn rename_category(conn: &Connection, old_name: &str, new_name: &str) -> usi
     ) {
         Ok(rows_affected) => rows_affected,
         Err(e) => {
-            eprintln!("Failed to rename category: {}", e);
+            warn!(error = %e, "failed to rename category");
             0
         }
     }
@@ -502,7 +503,7 @@ pub fn dismiss_category(conn: &Connection, category: &str) -> usize {
     ) {
         Ok(rows_affected) => rows_affected,
         Err(e) => {
-            eprintln!("Failed to dismiss category: {}", e);
+            warn!(error = %e, "failed to dismiss category");
             0
         }
     }
@@ -515,7 +516,7 @@ pub fn get_categories(conn: &Connection) -> std::collections::HashMap<String, us
     ) {
         Ok(s) => s,
         Err(e) => {
-            eprintln!("Failed to get categories: {}", e);
+            warn!(error = %e, "failed to get categories");
             return std::collections::HashMap::new();
         }
     };
@@ -589,7 +590,7 @@ pub fn store_embedding_by_uuid4(
         }) {
             Ok(id) => id,
             Err(e) => {
-                eprintln!("Failed to find note with uuid4 {}: {}", uuid4, e);
+                warn!(uuid4, error = %e, "failed to find note by uuid4");
                 return;
             }
         };
@@ -601,7 +602,7 @@ pub fn store_embedding_by_uuid4(
          VALUES (?1, ?2, ?3, ?4)",
         rusqlite::params![note_rowid, embedding_bytes, model_id, created_at],
     ) {
-        eprintln!("Failed to store embedding: {}", e);
+        warn!(error = %e, "failed to store embedding");
     }
 }
 

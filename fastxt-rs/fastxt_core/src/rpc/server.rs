@@ -16,6 +16,8 @@
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
 
+use tracing::{debug, info, warn};
+
 use super::Fastxt;
 use crate::cmd::insert;
 use crate::cmd::sync::{diff_uuid4_from_server, diff_uuid4_to_server, get_note_by_uuid4};
@@ -73,13 +75,13 @@ impl Fastxt for FastxtServer {
     async fn send_note(self, _: context::Context, note: Note) -> bool {
         let conn = get_sqlite_connection();
         ensure_db_initialized(&conn);
-        eprintln!("upsert note {:?}", note);
+        debug!(?note, "upsert note");
         insert(&conn, note);
         true
     }
 
     async fn receive_note(self, _: context::Context, uuid4: String) -> Note {
-        eprintln!("receive note {:?}", uuid4);
+        debug!(?uuid4, "receive note");
         let conn = get_sqlite_connection();
         ensure_db_initialized(&conn);
         get_note_by_uuid4(&conn, &uuid4)
@@ -144,7 +146,7 @@ async fn start_server(addr: &SocketAddr) -> io::Result<()> {
                 let client_addr = match channel.transport().peer_addr() {
                     Ok(addr) => addr,
                     Err(e) => {
-                        eprintln!("Failed to get peer address: {}", e);
+                        warn!(error = %e, "failed to get peer address");
                         return;
                     }
                 };
@@ -161,18 +163,18 @@ async fn start_server(addr: &SocketAddr) -> io::Result<()> {
         });
 
     if let Err(Aborted) = Abortable::new(server, registration).await {
-        eprintln!("server stopped.");
+        info!("RPC server stopped");
     }
     Ok(())
 }
 
 pub fn start(addr: &str) -> Result<(), &'static str> {
     let server_addr: SocketAddr = addr.parse().map_err(|e| {
-        eprintln!("server_addr {} invalid: {}", addr, e);
+        warn!(addr, error = %e, "invalid server address");
         "invalid server address"
     })?;
     let rt = Runtime::new().map_err(|e| {
-        eprintln!("Failed to create tokio runtime: {}", e);
+        warn!(error = %e, "failed to create tokio runtime");
         "failed to create runtime"
     })?;
     rt.block_on(async {
@@ -192,7 +194,7 @@ pub fn get_server_addr() -> String {
             String::new()
         }
         Err(e) => {
-            eprintln!("Failed to get network interfaces: {}", e);
+            warn!(error = %e, "failed to get network interfaces");
             String::new()
         }
     }

@@ -21,6 +21,7 @@ use crate::Note;
 use regex::Regex;
 use rusqlite::types::ToSql;
 use rusqlite::Connection;
+use tracing::{debug, warn};
 
 pub fn search_count(conn: &Connection, query: &str) -> u32 {
     let words = make_words(query);
@@ -28,7 +29,7 @@ pub fn search_count(conn: &Connection, query: &str) -> u32 {
         return select_count(conn);
     }
     let num_words = words.len();
-    eprintln!("{} words {:?}", num_words, words);
+    debug!(num_words, ?words, "search_count");
 
     let r: Vec<String> = where_vec(num_words);
     let sql = format!(
@@ -38,12 +39,12 @@ pub fn search_count(conn: &Connection, query: &str) -> u32 {
         r.join(" and ")
     );
 
-    eprintln!("sql {}", sql);
+    debug!(sql = %sql, "search_count SQL");
 
     let mut stmt = match conn.prepare(&sql) {
         Ok(s) => s,
         Err(e) => {
-            eprintln!("Failed to prepare search_count: {}", e);
+            warn!(error = %e, "failed to prepare search_count");
             return 0;
         }
     };
@@ -54,12 +55,12 @@ pub fn search_count(conn: &Connection, query: &str) -> u32 {
         params.push((&keys[i], &words[i] as &dyn ToSql));
     }
 
-    eprintln!("params {:?}", params.len());
+    debug!(num_params = params.len(), "search_count params");
 
     let rs = match stmt.query_map(&*params, |row| row.get(0)) {
         Ok(r) => r,
         Err(e) => {
-            eprintln!("Failed to query search_count: {}", e);
+            warn!(error = %e, "failed to query search_count");
             return 0;
         }
     };
@@ -76,7 +77,7 @@ pub fn search(conn: &Connection, query: &str, limit: &u32, offset: &u32) -> Stri
         return select(conn, limit, offset);
     }
     let num_words = words.len();
-    eprintln!("{} words {:?}", num_words, words);
+    debug!(num_words, ?words, "search");
 
     let r: Vec<String> = where_vec(num_words);
     let sql = format!(
@@ -87,12 +88,12 @@ pub fn search(conn: &Connection, query: &str, limit: &u32, offset: &u32) -> Stri
         r.join(" and ")
     );
 
-    eprintln!("sql {}", sql);
+    debug!(sql = %sql, "search SQL");
 
     let mut stmt = match conn.prepare(&sql) {
         Ok(s) => s,
         Err(e) => {
-            eprintln!("Failed to prepare search: {}", e);
+            warn!(error = %e, "failed to prepare search");
             return "[]".to_string();
         }
     };
@@ -107,7 +108,7 @@ pub fn search(conn: &Connection, query: &str, limit: &u32, offset: &u32) -> Stri
         params.push((&keys[i], &words[i] as &dyn ToSql));
     }
 
-    eprintln!("params {:?}", params.len());
+    debug!(num_params = params.len(), "search params");
 
     let note_iter = match stmt.query_map(&*params, |row| {
         Ok(Note {
@@ -123,7 +124,7 @@ pub fn search(conn: &Connection, query: &str, limit: &u32, offset: &u32) -> Stri
     }) {
         Ok(iter) => iter,
         Err(e) => {
-            eprintln!("Failed to query search: {}", e);
+            warn!(error = %e, "failed to query search");
             return "[]".to_string();
         }
     };

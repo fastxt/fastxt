@@ -19,6 +19,7 @@
 use crate::{Note, OneString};
 use rusqlite::Connection;
 use std::collections::HashSet;
+use tracing::warn;
 
 //client
 pub fn get_note_by_uuid4(conn: &Connection, uuid4: &str) -> Note {
@@ -39,7 +40,7 @@ pub fn get_note_by_uuid4(conn: &Connection, uuid4: &str) -> Note {
         },
     )
     .unwrap_or_else(|e| {
-        eprintln!("Failed to get note by uuid4 {}: {}", uuid4, e);
+        warn!(uuid4, error = %e, "failed to get note by uuid4");
         Note::default()
     })
 }
@@ -48,14 +49,14 @@ pub fn next_uuid4_candidates(conn: &Connection) -> Vec<String> {
     let mut stmt = match conn.prepare("select uuid4 FROM note order by rowid") {
         Ok(s) => s,
         Err(e) => {
-            eprintln!("Failed to prepare next_uuid4_candidates: {}", e);
+            warn!(error = %e, "failed to prepare next_uuid4_candidates");
             return Vec::new();
         }
     };
     let result = match stmt.query_map([], |row| Ok(OneString { s: row.get(0)? })) {
         Ok(rows) => rows.flatten().map(|u| u.s).collect(),
         Err(e) => {
-            eprintln!("Failed to query uuid4 candidates: {}", e);
+            warn!(error = %e, "failed to query uuid4 candidates");
             Vec::new()
         }
     };
@@ -67,7 +68,7 @@ pub fn diff_uuid4_to_server(conn: &Connection, candidates: Vec<String>) -> Vec<S
     let mut stmt = match conn.prepare("select 1 FROM note where uuid4 = ? ") {
         Ok(s) => s,
         Err(e) => {
-            eprintln!("Failed to prepare diff_uuid4_to_server: {}", e);
+            warn!(error = %e, "failed to prepare diff_uuid4_to_server");
             return Vec::new();
         }
     };
@@ -83,7 +84,7 @@ pub fn diff_uuid4_from_server(conn: &Connection, candidates: Vec<String>) -> Vec
     let mut stmt = match conn.prepare("select uuid4 FROM note") {
         Ok(s) => s,
         Err(e) => {
-            eprintln!("Failed to prepare diff_uuid4_from_server: {}", e);
+            warn!(error = %e, "failed to prepare diff_uuid4_from_server");
             return Vec::new();
         }
     };
@@ -94,7 +95,7 @@ pub fn diff_uuid4_from_server(conn: &Connection, candidates: Vec<String>) -> Vec
             .map(|u| u.s)
             .collect(),
         Err(e) => {
-            eprintln!("Failed to query uuid4 from server: {}", e);
+            warn!(error = %e, "failed to query uuid4 from server");
             Vec::new()
         }
     };

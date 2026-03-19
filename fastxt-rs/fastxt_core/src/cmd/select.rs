@@ -18,6 +18,7 @@
 use crate::Note;
 use rusqlite::types::ToSql;
 use rusqlite::Connection;
+use tracing::warn;
 
 pub fn select_count(conn: &Connection) -> u32 {
     conn.query_row("SELECT count(1) FROM note", [], |row| row.get(0))
@@ -37,7 +38,7 @@ pub fn select_imp(conn: &Connection, limit: &u32, offset: &u32) -> Vec<Note> {
     ) {
         Ok(s) => s,
         Err(e) => {
-            eprintln!("Failed to prepare select: {}", e);
+            warn!(error = %e, "failed to prepare select");
             return Vec::new();
         }
     };
@@ -62,7 +63,7 @@ pub fn select_imp(conn: &Connection, limit: &u32, offset: &u32) -> Vec<Note> {
     ) {
         Ok(rows) => rows.filter_map(|r| r.ok()).collect(),
         Err(e) => {
-            eprintln!("Failed to query notes: {}", e);
+            warn!(error = %e, "failed to query notes");
             Vec::new()
         }
     };

@@ -16,6 +16,8 @@
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
 
+use tracing::{debug, info, warn};
+
 use crate::cmd::create;
 use crate::cmd::delete;
 use crate::cmd::insert;
@@ -83,7 +85,7 @@ pub fn ensure_db_initialized(conn: &Connection) {
         if let Err(e) = upgrade::upgrade(conn) {
             panic!("Database initialization failed during upgrade: {}", e);
         }
-        eprintln!("database initialized and upgraded");
+        info!("database initialized and upgraded");
     });
 }
 
@@ -98,7 +100,7 @@ fn sqlite3_db_location() -> String {
     }
     let home = dirs::home_dir().expect("Failed to determine home directory");
     let dir = format!("{}/{}", home.to_string_lossy(), dir_name);
-    eprintln!("db dir location: {}", dir);
+    debug!(dir = %dir, "database directory location");
     if !Path::new(&dir).exists() {
         fs::create_dir_all(&dir).expect("Failed to create database directory");
     }
@@ -114,7 +116,7 @@ pub fn run(text: &str) -> String {
 }
 
 fn process(cmd: Cmd, text: &str) -> String {
-    eprintln!("process cmd {:?}", cmd);
+    debug!(?cmd, "processing command");
     let conn = get_sqlite_connection();
     ensure_db_initialized(&conn);
 
@@ -124,7 +126,7 @@ fn process(cmd: Cmd, text: &str) -> String {
             crate::rpc::server::get_server_addr()
         }
         "server" => {
-            eprintln!(r#"{{"server": "starting"}}"#);
+            info!("RPC server starting");
             if let Ok(s) = serde_json::from_str::<CmdRpcServer>(text) {
                 if crate::rpc::server::start(&s.addr).is_ok() {
                     r#"{"server": "started"}"#.to_string()
@@ -162,7 +164,7 @@ fn process(cmd: Cmd, text: &str) -> String {
                     ai_summary: None,
                     ai_category: None,
                 };
-                eprint!("{:?}", note);
+                debug!(?note, "inserting note");
                 insert(&conn, note);
                 do_select(&conn, &i.limit, &i.offset)
             } else {
@@ -178,7 +180,7 @@ fn process(cmd: Cmd, text: &str) -> String {
             }
         }
         "client-sync" => {
-            eprintln!(r#"{{"client": "starting"}}"#);
+            info!("RPC client starting");
             if let Ok(s) = serde_json::from_str::<CmdRpcClient>(text) {
                 if let Ok(resp) = crate::rpc::client::sync(&s.addr) {
                     format!(r#"{{"client-sync": "{}"}}"#, resp)
@@ -190,7 +192,7 @@ fn process(cmd: Cmd, text: &str) -> String {
             }
         }
         "client-stop-server" => {
-            eprintln!(r#"{{"client": "starting"}}"#);
+            info!("RPC client starting");
             if let Ok(s) = serde_json::from_str::<CmdRpcClient>(text) {
                 if let Ok(resp) = crate::rpc::client::stop_server(&s.addr) {
                     format!(r#"{{"client-stop-server": "{}"}}"#, resp)
@@ -397,7 +399,7 @@ fn do_ai_tag_all(conn: &Connection, cmd: &CmdAiTagAll) -> String {
                     processed += 1;
                 }
                 Err(e) => {
-                    eprintln!("Failed to tag note {}: {}", note.rowid, e);
+                    warn!(rowid = note.rowid, error = %e, "failed to tag note");
                     errors += 1;
                 }
             }
@@ -610,7 +612,7 @@ fn do_ai_embed_all(conn: &Connection, cmd: &CmdAiEmbedAll) -> String {
                     processed += 1;
                 }
                 Err(e) => {
-                    eprintln!("Failed to embed note {}: {}", note.rowid, e);
+                    warn!(rowid = note.rowid, error = %e, "failed to embed note");
                     errors += 1;
                 }
             }
@@ -766,7 +768,7 @@ fn do_ai_reprocess(conn: &Connection, cmd: &CmdAiReprocess) -> String {
                     update_ai_tags(conn, rowid, &tags_json);
                 }
                 Err(e) => {
-                    eprintln!("Failed to generate tags for note {}: {}", rowid, e);
+                    warn!(rowid, error = %e, "failed to generate tags for note");
                     errors += 1;
                     continue;
                 }
@@ -778,7 +780,7 @@ fn do_ai_reprocess(conn: &Connection, cmd: &CmdAiReprocess) -> String {
                     update_ai_summary(conn, rowid, &summary);
                 }
                 Err(e) => {
-                    eprintln!("Failed to generate summary for note {}: {}", rowid, e);
+                    warn!(rowid, error = %e, "failed to generate summary for note");
                 }
             }
 
@@ -899,7 +901,7 @@ fn do_ai_organize(conn: &Connection, cmd: &CmdAiOrganize) -> String {
                     }
                 }
                 Err(e) => {
-                    eprintln!("Failed to categorize batch: {}", e);
+                    warn!(error = %e, "failed to categorize batch");
                     errors += chunk.len() as u32;
                 }
             }

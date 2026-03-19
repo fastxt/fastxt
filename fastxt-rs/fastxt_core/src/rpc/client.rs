@@ -16,6 +16,8 @@
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
 
+use tracing::{debug, info, warn};
+
 use super::FastxtClient;
 use crate::cmd::sync::get_note_by_uuid4;
 use crate::cmd::sync::next_uuid4_candidates;
@@ -39,7 +41,7 @@ async fn run_sync_to_server(addr: &SocketAddr) -> RpcResult<()> {
     // check version
     let version = get_meta_version(&conn);
     let is_version_match = client.is_version_match(context::current(), version).await?;
-    eprintln!("is_version_match: {}", is_version_match);
+    debug!(is_version_match, "version check");
     if !is_version_match {
         return Err("VERSION_NOT_MATCH".into());
     }
@@ -48,7 +50,7 @@ async fn run_sync_to_server(addr: &SocketAddr) -> RpcResult<()> {
     let diff_uuid4 = client
         .diff_uuid4_to_server(context::current(), next_uuid4_candidates(&conn))
         .await?;
-    eprintln!("diff_uuid4_to_server len: {:?}", diff_uuid4.len());
+    debug!(count = diff_uuid4.len(), "diff_uuid4_to_server");
 
     // send one by one
     for u in diff_uuid4 {
@@ -56,7 +58,7 @@ async fn run_sync_to_server(addr: &SocketAddr) -> RpcResult<()> {
             .send_note(context::current(), get_note_by_uuid4(&conn, &u))
             .await?;
     }
-    eprintln!("send_note done");
+    debug!("send_note done");
 
     Ok(())
 }
@@ -70,7 +72,7 @@ async fn run_sync_from_server(addr: &SocketAddr) -> RpcResult<()> {
     // check version
     let version = get_meta_version(&conn);
     let is_version_match = client.is_version_match(context::current(), version).await?;
-    eprintln!("is_version_match: {}", is_version_match);
+    debug!(is_version_match, "version check");
     if !is_version_match {
         return Err("VERSION_NOT_MATCH".into());
     }
@@ -79,14 +81,14 @@ async fn run_sync_from_server(addr: &SocketAddr) -> RpcResult<()> {
     let diff_uuid4 = client
         .diff_uuid4_from_server(context::current(), next_uuid4_candidates(&conn))
         .await?;
-    eprintln!("diff_uuid4_from_server len: {:?}", diff_uuid4.len());
+    debug!(count = diff_uuid4.len(), "diff_uuid4_from_server");
 
     // send one by one
     for u in diff_uuid4 {
         let note = client.receive_note(context::current(), u).await?;
         insert(&conn, note);
     }
-    eprintln!("receive_note done");
+    debug!("receive_note done");
 
     Ok(())
 }
@@ -102,17 +104,17 @@ pub fn sync(addr: &str) -> Result<String, String> {
 
     rt.block_on(async {
         if let Err(e) = run_sync_to_server(&server_addr).await {
-            eprintln!("sync to server error: {}", e);
+            warn!(error = %e, "sync to server error");
             errors.push(format!("sync-to-server: {}", e));
         } else {
-            eprintln!("sync to server done");
+            info!("sync to server done");
         }
 
         if let Err(e) = run_sync_from_server(&server_addr).await {
-            eprintln!("sync from server error: {}", e);
+            warn!(error = %e, "sync from server error");
             errors.push(format!("sync-from-server: {}", e));
         } else {
-            eprintln!("sync from server done");
+            info!("sync from server done");
         }
     });
 
@@ -132,13 +134,13 @@ async fn run_stop_server(addr: &SocketAddr) -> RpcResult<()> {
     // check version
     let version = get_meta_version(&conn);
     let is_version_match = client.is_version_match(context::current(), version).await?;
-    eprintln!("is_version_match: {}", is_version_match);
+    debug!(is_version_match, "version check");
     if !is_version_match {
         return Err("VERSION_NOT_MATCH".into());
     }
 
     let is_stopped = client.stop(context::current()).await?;
-    eprintln!("is_stopped: {}", is_stopped);
+    debug!(is_stopped, "stop server result");
     Ok(())
 }
 
@@ -151,7 +153,7 @@ pub fn stop_server(addr: &str) -> Result<String, String> {
     rt.block_on(async {
         let resp = run_stop_server(&server_addr);
         if let Err(e) = resp.await {
-            eprintln!("stop_server: {}.", e);
+            warn!(error = %e, "stop_server failed");
         }
     });
     Ok("stop ok".to_string())
@@ -168,23 +170,23 @@ async fn run_sync_embeddings(addr: &SocketAddr) -> RpcResult<()> {
     // Check version match
     let version = get_meta_version(&conn);
     let is_version_match = client.is_version_match(context::current(), version).await?;
-    eprintln!("is_version_match: {}", is_version_match);
+    debug!(is_version_match, "version check");
     if !is_version_match {
         return Err("VERSION_NOT_MATCH".into());
     }
 
     // Get local embedding model ID
     let local_model_id = get_embedding_model_id(&conn);
-    eprintln!("local_model_id: {:?}", local_model_id);
+    debug!(?local_model_id, "local embedding model");
 
     // Get remote embedding model ID
     let remote_model_id = client.get_embedding_model_id(context::current()).await?;
-    eprintln!("remote_model_id: {:?}", remote_model_id);
+    debug!(?remote_model_id, "remote embedding model");
 
     // Only sync embeddings if model IDs match
     match (local_model_id, remote_model_id) {
         (Some(local_id), Some(remote_id)) if local_id == remote_id => {
-            eprintln!("Model IDs match, syncing embeddings...");
+            info!("model IDs match, syncing embeddings");
 
             // Get local embedding UUIDs
             let local_uuid4s = get_embedding_uuid4s_by_model(&conn, &local_id);
@@ -201,7 +203,7 @@ async fn run_sync_embeddings(addr: &SocketAddr) -> RpcResult<()> {
                 .cloned()
                 .collect();
 
-            eprintln!("Sending {} embeddings to server...", uuid4s_to_send.len());
+            info!(count = uuid4s_to_send.len(), "sending embeddings to server");
             for uuid4 in &uuid4s_to_send {
                 if let Some((embedding_bytes, model_id)) =
                     crate::cmd::get_embedding_by_uuid4(&conn, uuid4)
@@ -216,7 +218,7 @@ async fn run_sync_embeddings(addr: &SocketAddr) -> RpcResult<()> {
                         .await?;
                 }
             }
-            eprintln!("Sent {} embeddings to server", uuid4s_to_send.len());
+            info!(count = uuid4s_to_send.len(), "sent embeddings to server");
 
             // Receive embeddings that local doesn't have
             let uuid4s_to_receive: Vec<String> = remote_uuid4s
@@ -225,10 +227,7 @@ async fn run_sync_embeddings(addr: &SocketAddr) -> RpcResult<()> {
                 .cloned()
                 .collect();
 
-            eprintln!(
-                "Receiving {} embeddings from server...",
-                uuid4s_to_receive.len()
-            );
+            info!(count = uuid4s_to_receive.len(), "receiving embeddings from server");
             for uuid4 in &uuid4s_to_receive {
                 if let Some((embedding_bytes, model_id)) = client
                     .receive_embedding(context::current(), uuid4.clone())
@@ -237,15 +236,12 @@ async fn run_sync_embeddings(addr: &SocketAddr) -> RpcResult<()> {
                     store_embedding_by_uuid4(&conn, uuid4, &embedding_bytes, &model_id);
                 }
             }
-            eprintln!(
-                "Received {} embeddings from server",
-                uuid4s_to_receive.len()
-            );
+            info!(count = uuid4s_to_receive.len(), "received embeddings from server");
 
             Ok(())
         }
         _ => {
-            eprintln!("Model IDs don't match or no embeddings exist, skipping embedding sync");
+            info!("model IDs don't match or no embeddings exist, skipping embedding sync");
             Ok(())
         }
     }
@@ -262,10 +258,10 @@ pub fn sync_embeddings(addr: &str) -> Result<String, String> {
         .map_err(|e| format!("Failed to create tokio runtime: {}", e))?;
     rt.block_on(async {
         if let Err(e) = run_sync_embeddings(&server_addr).await {
-            eprintln!("sync_embeddings error: {}", e);
+            warn!(error = %e, "sync_embeddings error");
             return Err(format!("sync_embeddings error: {}", e));
         }
-        eprintln!("sync_embeddings done");
+        info!("sync_embeddings done");
         Ok("sync_embeddings ok".to_string())
     })
 }
