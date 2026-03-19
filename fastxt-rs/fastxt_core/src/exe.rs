@@ -71,10 +71,22 @@ fn safe_serialize<T: serde::Serialize>(value: &T) -> String {
         .unwrap_or_else(|_| r#"{"error":"serialization error"}"#.to_string())
 }
 
+/// Open a connection to the Fastxt SQLite database.
+///
+/// # Panics
+///
+/// Panics if the database directory cannot be resolved or the connection fails.
+/// Prefer [`try_get_sqlite_connection`] for contexts that can handle errors gracefully.
 pub fn get_sqlite_connection() -> Connection {
-    let p = sqlite3_db_location();
+    try_get_sqlite_connection().expect("Failed to open SQLite database")
+}
+
+/// Try to open a connection to the Fastxt SQLite database, returning an error
+/// instead of panicking on failure.
+pub fn try_get_sqlite_connection() -> Result<Connection, String> {
+    let p = sqlite3_db_location().map_err(|e| format!("Failed to resolve database path: {}", e))?;
     let path = Path::new(&p);
-    Connection::open(path).expect("Failed to open SQLite database")
+    Connection::open(path).map_err(|e| format!("Failed to open SQLite database: {}", e))
 }
 
 /// Ensure the database schema is created and upgraded.
@@ -89,22 +101,25 @@ pub fn ensure_db_initialized(conn: &Connection) {
     });
 }
 
-fn sqlite3_db_location() -> String {
+fn sqlite3_db_location() -> Result<String, String> {
     if cfg!(target_os = "android") {
-        fs::create_dir_all("/sdcard/Fastxt").expect("Failed to create /sdcard/Fastxt directory");
-        return "/sdcard/Fastxt/fastxt.sqlite3".to_string();
+        fs::create_dir_all("/sdcard/Fastxt")
+            .map_err(|e| format!("Failed to create /sdcard/Fastxt directory: {}", e))?;
+        return Ok("/sdcard/Fastxt/fastxt.sqlite3".to_string());
     }
     let mut dir_name = "Fastxt";
     if cfg!(target_os = "ios") {
         dir_name = "Documents";
     }
-    let home = dirs::home_dir().expect("Failed to determine home directory");
+    let home = dirs::home_dir()
+        .ok_or_else(|| "Failed to determine home directory".to_string())?;
     let dir = format!("{}/{}", home.to_string_lossy(), dir_name);
     debug!(dir = %dir, "database directory location");
     if !Path::new(&dir).exists() {
-        fs::create_dir_all(&dir).expect("Failed to create database directory");
+        fs::create_dir_all(&dir)
+            .map_err(|e| format!("Failed to create database directory '{}': {}", dir, e))?;
     }
-    format!("{}/fastxt.sqlite3", dir)
+    Ok(format!("{}/fastxt.sqlite3", dir))
 }
 
 pub fn run(text: &str) -> String {
