@@ -30,6 +30,20 @@ use super::{AiBackend, AiConfig, AiError, AiResult};
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
+/// Truncate a string to at most `max_chars` bytes, ensuring the cut
+/// falls on a valid UTF-8 character boundary to prevent panics.
+fn truncate_str(s: &str, max_chars: usize) -> &str {
+    if s.len() <= max_chars {
+        return s;
+    }
+    // Walk backwards from max_chars to find a char boundary
+    let mut end = max_chars;
+    while end > 0 && !s.is_char_boundary(end) {
+        end -= 1;
+    }
+    &s[..end]
+}
+
 /// Ollama API request for generating text.
 #[derive(Debug, Serialize)]
 struct GenerateRequest {
@@ -218,12 +232,7 @@ impl AiBackend for OllamaBackend {
 
     fn suggest_tags(&self, text: &str, config: &AiConfig) -> AiResult<Vec<String>> {
         // Truncate text if too long (rough token estimate: ~4 chars per token)
-        let max_chars = 8000;
-        let truncated = if text.len() > max_chars {
-            &text[..max_chars]
-        } else {
-            text
-        };
+        let truncated = truncate_str(text, 8000);
 
         let prompt = format!(
             r#"Analyze the following text and suggest relevant tags.
@@ -243,12 +252,7 @@ Tags:"#,
 
     fn summarize(&self, text: &str, config: &AiConfig) -> AiResult<String> {
         // Truncate text if too long
-        let max_chars = 12000;
-        let truncated = if text.len() > max_chars {
-            &text[..max_chars]
-        } else {
-            text
-        };
+        let truncated = truncate_str(text, 12000);
 
         let prompt = format!(
             r#"Summarize the following text in 1-2 sentences.
@@ -269,12 +273,7 @@ Summary:"#,
         let url = format!("{}/api/embeddings", base_url);
 
         // Truncate text if too long
-        let max_chars = 8000;
-        let truncated = if text.len() > max_chars {
-            &text[..max_chars]
-        } else {
-            text
-        };
+        let truncated = truncate_str(text, 8000);
 
         let request = EmbeddingRequest {
             model: Self::get_model(config),
