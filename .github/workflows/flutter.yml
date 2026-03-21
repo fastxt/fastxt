@@ -1,0 +1,43 @@
+name: Flutter CI
+
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - 'fastxt-flutter/**'
+      - '.github/workflows/flutter.yml'
+  pull_request:
+    branches: [main, master]
+    paths:
+      - 'fastxt-flutter/**'
+      - '.github/workflows/flutter.yml'
+
+jobs:
+  build-and-test:
+    name: Build & Test
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Get dependencies
+        working-directory: fastxt-flutter
+        run: flutter pub get
+
+      - name: Analyze
+        working-directory: fastxt-flutter
+        run: flutter analyze
+
+      - name: Run tests
+        working-directory: fastxt-flutter
+        run: flutter test
+
+      - name: Build APK (debug)
+        working-directory: fastxt-flutter
+        run: flutter build apk --debug
