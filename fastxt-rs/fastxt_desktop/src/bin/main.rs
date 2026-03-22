@@ -1,3 +1,4 @@
+#![allow(clippy::too_many_lines)]
 use anyhow::Result;
 use druid::widget::{
     Button, CrossAxisAlignment, Either, Flex, Label, LineBreaking, MainAxisAlignment, Scroll,
@@ -45,19 +46,19 @@ enum SearchMode {
 impl Default for AppState {
     fn default() -> Self {
         AppState {
-            content: "".to_string(),
-            tags: "".to_string(),
-            query: "".to_string(),
+            content: String::new(),
+            tags: String::new(),
+            query: String::new(),
             current_view: RightPanel::FormPage,
             server_switch: "Start Server".to_string(),
             server_is_on: false,
-            remote_addr: "".to_string(),
-            sync_status: "".to_string(),
-            ai_suggested_tags: "".to_string(),
-            ai_status: "".to_string(),
+            remote_addr: String::new(),
+            sync_status: String::new(),
+            ai_suggested_tags: String::new(),
+            ai_status: String::new(),
             ai_endpoint: "http://localhost:11434".to_string(),
             ai_model: "llama3.2".to_string(),
-            ai_summary: "".to_string(),
+            ai_summary: String::new(),
             search_mode: SearchMode::Text,
             notes_count: "0 notes".to_string(),
             notes_display: "Search to display notes".to_string(),
@@ -117,7 +118,7 @@ fn build_left_header() -> impl Widget<AppState> {
         .with_child(Label::new("Fastxt").with_text_size(16.0))
         .with_flex_spacer(1.0)
         .with_child(Button::new("AI").on_click(|_, data: &mut AppState, _: &_| {
-            data.current_view = RightPanel::AiSettingsPage
+            data.current_view = RightPanel::AiSettingsPage;
         }))
         .with_default_spacer()
         .with_child(
@@ -262,11 +263,11 @@ fn build_form_page() -> impl Widget<AppState> {
             Flex::row()
                 .cross_axis_alignment(CrossAxisAlignment::Baseline)
                 .with_child(Button::new("Clear").on_click(|_, data: &mut AppState, _| {
-                    data.content = "".into();
-                    data.tags = "".into();
-                    data.ai_suggested_tags = "".into();
-                    data.ai_status = "".into();
-                    data.ai_summary = "".into();
+                    data.content = String::new();
+                    data.tags = String::new();
+                    data.ai_suggested_tags = String::new();
+                    data.ai_status = String::new();
+                    data.ai_summary = String::new();
                 }))
                 .with_default_spacer()
                 .with_child(Button::new("Save"))
@@ -297,7 +298,7 @@ fn build_form_page() -> impl Widget<AppState> {
                         .with_flex_spacer(1.0)
                         .with_child(Label::new("×").with_text_color(Color::GRAY).on_click(
                             |_, data: &mut AppState, _| {
-                                data.ai_summary = "".into();
+                                data.ai_summary = String::new();
                             },
                         )),
                 )
@@ -323,12 +324,12 @@ fn build_form_page() -> impl Widget<AppState> {
                             } else {
                                 data.tags = format!("{},{}", data.tags, data.ai_suggested_tags);
                             }
-                            data.ai_suggested_tags = "".into();
+                            data.ai_suggested_tags = String::new();
                         }))
                         .with_child(Button::new("Replace").on_click(
                             |_, data: &mut AppState, _| {
                                 data.tags = data.ai_suggested_tags.clone();
-                                data.ai_suggested_tags = "".into();
+                                data.ai_suggested_tags = String::new();
                             },
                         )),
                 )
@@ -572,8 +573,8 @@ fn perform_search(data: &mut AppState) {
             let result = fastxt_core::exe::run(&cmd.to_string());
             // Parse and update notes list
             if let Ok(response) = serde_json::from_str::<serde_json::Value>(&result) {
-                if let Some(count) = response.get("count").and_then(|c| c.as_u64()) {
-                    data.notes_count = format!("{} notes found", count);
+                if let Some(count) = response.get("count").and_then(serde_json::Value::as_u64) {
+                    data.notes_count = format!("{count} notes found");
                 }
 
                 // Parse notes array and build display string
@@ -610,11 +611,11 @@ fn perform_search(data: &mut AppState) {
                             .unwrap_or("")
                             .to_string();
 
-                        let mut note_display = format!("{}\n[{}]", txt, tags);
+                        let mut note_display = format!("{txt}\n[{tags}]");
                         if !summary.is_empty() {
-                            note_display = format!("{}\n📝 Summary: {}", note_display, summary);
+                            note_display = format!("{note_display}\n📝 Summary: {summary}");
                         }
-                        note_display = format!("{}\n📅 {}\n---", note_display, created_at);
+                        note_display = format!("{note_display}\n📅 {created_at}\n---");
                         display_parts.push(note_display);
                     }
 
@@ -638,10 +639,10 @@ fn perform_search(data: &mut AppState) {
                     data.notes_count = format!("{} similar notes", results.len());
                     data.ai_status = if response
                         .get("available")
-                        .and_then(|a| a.as_bool())
+                        .and_then(serde_json::Value::as_bool)
                         .unwrap_or(false)
                     {
-                        "".to_string()
+                        String::new()
                     } else {
                         "AI not available for semantic search".to_string()
                     };
@@ -651,7 +652,7 @@ fn perform_search(data: &mut AppState) {
                     for r in results {
                         if let Some(note) = r.get("note") {
                             let similarity =
-                                r.get("similarity").and_then(|s| s.as_f64()).unwrap_or(0.0);
+                                r.get("similarity").and_then(serde_json::Value::as_f64).unwrap_or(0.0);
 
                             let txt: String = note
                                 .get("txt")
@@ -689,16 +690,16 @@ fn perform_search(data: &mut AppState) {
                                 tags
                             );
                             if !summary.is_empty() {
-                                note_display = format!("{}\n📝 Summary: {}", note_display, summary);
+                                note_display = format!("{note_display}\n📝 Summary: {summary}");
                             }
-                            note_display = format!("{}\n📅 {}\n---", note_display, created_at);
+                            note_display = format!("{note_display}\n📅 {created_at}\n---");
                             display_parts.push(note_display);
                         }
                     }
 
                     data.notes_display = display_parts.join("\n\n");
                 } else if let Some(error) = response.get("error").and_then(|e| e.as_str()) {
-                    data.ai_status = format!("Error: {}", error);
+                    data.ai_status = format!("Error: {error}");
                 }
             }
         }
@@ -733,15 +734,15 @@ fn get_ai_tags(data: &mut AppState) {
             data.ai_suggested_tags = tag_str;
             data.ai_status = if response
                 .get("available")
-                .and_then(|a| a.as_bool())
+                .and_then(serde_json::Value::as_bool)
                 .unwrap_or(false)
             {
-                "".to_string()
+                String::new()
             } else {
                 "AI not available. Check Ollama is running.".to_string()
             };
         } else if let Some(error) = response.get("error").and_then(|e| e.as_str()) {
-            data.ai_status = format!("Error: {}", error);
+            data.ai_status = format!("Error: {error}");
         }
     } else {
         data.ai_status = "Failed to parse AI response".to_string();
@@ -771,7 +772,7 @@ fn get_ai_summary(data: &mut AppState) {
     if let Ok(response) = serde_json::from_str::<serde_json::Value>(&insert_result) {
         if let Some(notes) = response.get("notes").and_then(|n| n.as_array()) {
             if let Some(note) = notes.first() {
-                if let Some(rowid) = note.get("rowid").and_then(|r| r.as_i64()) {
+                if let Some(rowid) = note.get("rowid").and_then(serde_json::Value::as_i64) {
                     let cmd = serde_json::json!({
                         "action": "ai-summarize",
                         "rowid": rowid,
@@ -784,11 +785,11 @@ fn get_ai_summary(data: &mut AppState) {
                     if let Ok(resp) = serde_json::from_str::<serde_json::Value>(&result) {
                         if let Some(summary) = resp.get("summary").and_then(|s| s.as_str()) {
                             data.ai_summary = summary.to_string();
-                            data.ai_status = "".to_string();
+                            data.ai_status = String::new();
                             return;
                         }
                         if let Some(error) = resp.get("error").and_then(|e| e.as_str()) {
-                            data.ai_status = format!("Error: {}", error);
+                            data.ai_status = format!("Error: {error}");
                             return;
                         }
                     }
@@ -816,7 +817,7 @@ fn test_ai_connection(data: &mut AppState) {
     if let Ok(response) = serde_json::from_str::<serde_json::Value>(&result) {
         if response
             .get("available")
-            .and_then(|a| a.as_bool())
+            .and_then(serde_json::Value::as_bool)
             .unwrap_or(false)
         {
             data.ai_status = "✓ Connected to Ollama successfully!".to_string();
@@ -842,11 +843,11 @@ fn batch_tag_all(data: &mut AppState) {
     let result = fastxt_core::exe::run(&cmd.to_string());
 
     if let Ok(response) = serde_json::from_str::<serde_json::Value>(&result) {
-        if let Some(processed) = response.get("processed").and_then(|p| p.as_u64()) {
-            let errors = response.get("errors").and_then(|e| e.as_u64()).unwrap_or(0);
-            data.ai_status = format!("Tagged {} notes ({} errors)", processed, errors);
+        if let Some(processed) = response.get("processed").and_then(serde_json::Value::as_u64) {
+            let errors = response.get("errors").and_then(serde_json::Value::as_u64).unwrap_or(0);
+            data.ai_status = format!("Tagged {processed} notes ({errors} errors)");
         } else if let Some(error) = response.get("error").and_then(|e| e.as_str()) {
-            data.ai_status = format!("Error: {}", error);
+            data.ai_status = format!("Error: {error}");
         }
     } else {
         data.ai_status = "Failed to batch tag".to_string();
@@ -867,11 +868,11 @@ fn batch_embed_all(data: &mut AppState) {
     let result = fastxt_core::exe::run(&cmd.to_string());
 
     if let Ok(response) = serde_json::from_str::<serde_json::Value>(&result) {
-        if let Some(processed) = response.get("processed").and_then(|p| p.as_u64()) {
-            let errors = response.get("errors").and_then(|e| e.as_u64()).unwrap_or(0);
-            data.ai_status = format!("Embedded {} notes ({} errors)", processed, errors);
+        if let Some(processed) = response.get("processed").and_then(serde_json::Value::as_u64) {
+            let errors = response.get("errors").and_then(serde_json::Value::as_u64).unwrap_or(0);
+            data.ai_status = format!("Embedded {processed} notes ({errors} errors)");
         } else if let Some(error) = response.get("error").and_then(|e| e.as_str()) {
-            data.ai_status = format!("Error: {}", error);
+            data.ai_status = format!("Error: {error}");
         }
     } else {
         data.ai_status = "Failed to batch embed".to_string();
@@ -892,8 +893,8 @@ fn organize_notes(data: &mut AppState) {
     let result = fastxt_core::exe::run(&cmd.to_string());
 
     if let Ok(response) = serde_json::from_str::<serde_json::Value>(&result) {
-        if let Some(processed) = response.get("processed").and_then(|p| p.as_u64()) {
-            let errors = response.get("errors").and_then(|e| e.as_u64()).unwrap_or(0);
+        if let Some(processed) = response.get("processed").and_then(serde_json::Value::as_u64) {
+            let errors = response.get("errors").and_then(serde_json::Value::as_u64).unwrap_or(0);
             let categories = response
                 .get("categories")
                 .and_then(|c| c.as_object())
@@ -905,11 +906,10 @@ fn organize_notes(data: &mut AppState) {
                 })
                 .unwrap_or_default();
             data.ai_status = format!(
-                "Organized {} notes ({} errors)\n{}",
-                processed, errors, categories
+                "Organized {processed} notes ({errors} errors)\n{categories}"
             );
         } else if let Some(error) = response.get("error").and_then(|e| e.as_str()) {
-            data.ai_status = format!("Error: {}", error);
+            data.ai_status = format!("Error: {error}");
         }
     } else {
         data.ai_status = "Failed to organize notes".to_string();
@@ -955,15 +955,15 @@ fn load_categories(data: &mut AppState) {
 
         // Build display string
         let mut display_parts = Vec::new();
-        for (category, notes) in categories.iter() {
+        for (category, notes) in &categories {
             display_parts.push(format!("📁 {} ({} notes)", category, notes.len()));
             for note in notes.iter().take(5) {
-                display_parts.push(format!("  • {}", note));
+                display_parts.push(format!("  • {note}"));
             }
             if notes.len() > 5 {
                 display_parts.push(format!("  ... and {} more", notes.len() - 5));
             }
-            display_parts.push("".to_string());
+            display_parts.push(String::new());
         }
 
         data.categories_display = if display_parts.is_empty() {

@@ -18,5 +18,11 @@
 
 use fastxt_core::exe::run;
 fn main() {
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::from_default_env()
+                .add_directive(tracing::Level::INFO.into()),
+        )
+        .init();
     run(r#"{"action":"upgrade"}"#);
 }

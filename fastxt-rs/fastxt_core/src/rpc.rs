@@ -15,7 +15,14 @@
     You should have received a copy of the GNU Affero General Public License
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
+//! tarpc-based P2P RPC protocol for syncing notes between Fastxt instances.
+
 use crate::Note;
+
+/// The Fastxt RPC service definition.
+///
+/// Both the client (`FastxtClient`) and server (`FastxtServer`) are generated
+/// from this trait by the `#[tarpc::service]` macro. Default port: **3456**.
 #[tarpc::service]
 pub trait Fastxt {
     async fn is_version_match(version: String) -> bool;
@@ -29,7 +36,7 @@ pub trait Fastxt {
     async fn get_embedding_model_id() -> Option<String>;
     /// Get note UUIDs that have embeddings with a specific model ID
     async fn get_embedding_uuid4s(model_id: String) -> Vec<String>;
-    /// Receive embedding data for a note (uuid4, embedding bytes, model_id)
+    /// Receive embedding data for a note (uuid4, embedding bytes, `model_id`)
     async fn receive_embedding(uuid4: String) -> Option<(Vec<u8>, String)>;
     /// Send embedding data to be stored on the server
     async fn send_embedding(uuid4: String, embedding_bytes: Vec<u8>, model_id: String) -> bool;

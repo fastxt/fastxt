@@ -18,8 +18,14 @@
 use clap::{Arg, Command};
 use fastxt_core::exe::run;
 fn main() {
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::from_default_env()
+                .add_directive(tracing::Level::INFO.into()),
+        )
+        .init();
     let addr = run(r#"{"action":"server-addr"}"#);
-    eprintln!("server addr: {}", addr);
+    eprintln!("server addr: {addr}");
 
     let matches = Command::new("fastxt-rpc-server")
         .arg(
@@ -28,7 +34,7 @@ fn main() {
                 .long("addr"),
         )
         .get_matches();
-    let addr = matches.get_one::<String>("addr").map(|s| s.as_str()).unwrap_or("0.0.0.0:3456");
-    eprintln!("addr: {}", addr);
+    let addr = matches.get_one::<String>("addr").map_or("0.0.0.0:3456", std::string::String::as_str);
+    eprintln!("addr: {addr}");
     run(&(r#"{"action":"server", "addr": ""#.to_string() + addr + r#""}"#));
 }

@@ -86,33 +86,38 @@ async fn run_sync_from_server(addr: &SocketAddr) -> RpcResult<()> {
     // send one by one
     for u in diff_uuid4 {
         let note = client.receive_note(context::current(), u).await?;
-        insert(&conn, note);
+        insert(&conn, &note);
     }
     debug!("receive_note done");
 
     Ok(())
 }
 
+/// Bidirectionally sync notes with the server at `addr`.
+///
+/// # Errors
+/// Returns `Err` if the address is invalid, a Tokio runtime cannot be created,
+/// or any partial sync failure occurs (individual sync errors are also reported in the string).
 pub fn sync(addr: &str) -> Result<String, String> {
     let server_addr: SocketAddr = addr
         .parse()
-        .map_err(|e| format!("server_addr {} invalid: {}", addr, e))?;
+        .map_err(|e| format!("server_addr {addr} invalid: {e}"))?;
 
     let rt = Runtime::new()
-        .map_err(|e| format!("Failed to create tokio runtime: {}", e))?;
+        .map_err(|e| format!("Failed to create tokio runtime: {e}"))?;
     let mut errors = Vec::new();
 
     rt.block_on(async {
         if let Err(e) = run_sync_to_server(&server_addr).await {
             warn!(error = %e, "sync to server error");
-            errors.push(format!("sync-to-server: {}", e));
+            errors.push(format!("sync-to-server: {e}"));
         } else {
             info!("sync to server done");
         }
 
         if let Err(e) = run_sync_from_server(&server_addr).await {
             warn!(error = %e, "sync from server error");
-            errors.push(format!("sync-from-server: {}", e));
+            errors.push(format!("sync-from-server: {e}"));
         } else {
             info!("sync from server done");
         }
@@ -144,12 +149,16 @@ async fn run_stop_server(addr: &SocketAddr) -> RpcResult<()> {
     Ok(())
 }
 
+/// Send a stop signal to the RPC server at `addr`.
+///
+/// # Errors
+/// Returns `Err` if the address is invalid or a Tokio runtime cannot be created.
 pub fn stop_server(addr: &str) -> Result<String, String> {
     let server_addr: SocketAddr = addr
         .parse()
-        .map_err(|e| format!("server_addr {} invalid: {}", addr, e))?;
+        .map_err(|e| format!("server_addr {addr} invalid: {e}"))?;
     let rt = Runtime::new()
-        .map_err(|e| format!("Failed to create tokio runtime: {}", e))?;
+        .map_err(|e| format!("Failed to create tokio runtime: {e}"))?;
     rt.block_on(async {
         let resp = run_stop_server(&server_addr);
         if let Err(e) = resp.await {
@@ -248,18 +257,23 @@ async fn run_sync_embeddings(addr: &SocketAddr) -> RpcResult<()> {
 }
 
 /// Sync embeddings between client and server.
-/// Returns a status message indicating what was synced.
+///
+/// Only syncs if both sides use the same embedding model.
+///
+/// # Errors
+/// Returns `Err` if the address is invalid, a Tokio runtime cannot be created,
+/// or the embedding sync RPC fails.
 pub fn sync_embeddings(addr: &str) -> Result<String, String> {
     let server_addr: SocketAddr = addr
         .parse()
-        .map_err(|e| format!("server_addr {} invalid: {}", addr, e))?;
+        .map_err(|e| format!("server_addr {addr} invalid: {e}"))?;
 
     let rt = Runtime::new()
-        .map_err(|e| format!("Failed to create tokio runtime: {}", e))?;
+        .map_err(|e| format!("Failed to create tokio runtime: {e}"))?;
     rt.block_on(async {
         if let Err(e) = run_sync_embeddings(&server_addr).await {
             warn!(error = %e, "sync_embeddings error");
-            return Err(format!("sync_embeddings error: {}", e));
+            return Err(format!("sync_embeddings error: {e}"));
         }
         info!("sync_embeddings done");
         Ok("sync_embeddings ok".to_string())

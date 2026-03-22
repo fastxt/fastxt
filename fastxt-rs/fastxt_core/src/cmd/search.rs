@@ -23,6 +23,8 @@ use rusqlite::types::ToSql;
 use rusqlite::Connection;
 use tracing::{debug, warn};
 
+/// Count notes matching `query` (space-separated keywords, all must match).
+/// An empty query returns the total note count.
 pub fn search_count(conn: &Connection, query: &str) -> u32 {
     let words = make_words(query);
     if words.len() == 1 && words[0].is_empty() {
@@ -71,6 +73,9 @@ pub fn search_count(conn: &Connection, query: &str) -> u32 {
     c
 }
 
+/// Search notes by keyword and return a JSON array of matching [`Note`]s.
+/// Each word in `query` must appear in `txt` or `tags` (LIKE match).
+/// An empty query falls back to a paginated `select`.
 pub fn search(conn: &Connection, query: &str, limit: &u32, offset: &u32) -> String {
     let words = make_words(query);
     if words.len() == 1 && words[0].is_empty() {
@@ -130,7 +135,7 @@ pub fn search(conn: &Connection, query: &str, limit: &u32, offset: &u32) -> Stri
     };
 
     let notes: Vec<Note> = note_iter
-        .filter_map(|r| r.ok())
+        .filter_map(std::result::Result::ok)
         .map(|mut note| {
             note.tags = make_tags(&note.tags);
             note
@@ -146,8 +151,8 @@ fn make_words(query: &str) -> Vec<String> {
 
     let s1 = RE_SPACES.replace_all(query, " ");
     s1.trim()
-        .split(" ")
-        .map(|w| format!("%{}%", w))
+        .split(' ')
+        .map(|w| format!("%{w}%"))
         .collect::<Vec<String>>()
 }
 

@@ -16,7 +16,9 @@
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
 
-use tracing::{debug, info, warn};
+use tracing::{debug, info};
+#[cfg(feature = "ai")]
+use tracing::warn;
 
 use crate::cmd::create;
 use crate::cmd::delete;
@@ -71,31 +73,40 @@ fn safe_serialize<T: serde::Serialize>(value: &T) -> String {
         .unwrap_or_else(|_| r#"{"error":"serialization error"}"#.to_string())
 }
 
-/// Open a connection to the Fastxt SQLite database.
+/// Open a connection to the Fastxt `SQLite` database.
 ///
 /// # Panics
 ///
 /// Panics if the database directory cannot be resolved or the connection fails.
 /// Prefer [`try_get_sqlite_connection`] for contexts that can handle errors gracefully.
+#[must_use]
 pub fn get_sqlite_connection() -> Connection {
     try_get_sqlite_connection().expect("Failed to open SQLite database")
 }
 
-/// Try to open a connection to the Fastxt SQLite database, returning an error
+/// Try to open a connection to the Fastxt `SQLite` database, returning an error
 /// instead of panicking on failure.
+///
+/// # Errors
+/// Returns `Err` if the database directory cannot be resolved or the `SQLite` connection fails.
+#[must_use = "connection should be used or the error handled"]
 pub fn try_get_sqlite_connection() -> Result<Connection, String> {
-    let p = sqlite3_db_location().map_err(|e| format!("Failed to resolve database path: {}", e))?;
+    let p = sqlite3_db_location().map_err(|e| format!("Failed to resolve database path: {e}"))?;
     let path = Path::new(&p);
-    Connection::open(path).map_err(|e| format!("Failed to open SQLite database: {}", e))
+    Connection::open(path).map_err(|e| format!("Failed to open SQLite database: {e}"))
 }
 
 /// Ensure the database schema is created and upgraded.
+///
 /// This runs only once per process, regardless of how many connections are opened.
+///
+/// # Panics
+/// Panics if the database schema upgrade fails.
 pub fn ensure_db_initialized(conn: &Connection) {
     DB_INIT.call_once(|| {
         create(conn);
         if let Err(e) = upgrade::upgrade(conn) {
-            panic!("Database initialization failed during upgrade: {}", e);
+            panic!("Database initialization failed during upgrade: {e}");
         }
         info!("database initialized and upgraded");
     });
@@ -104,7 +115,7 @@ pub fn ensure_db_initialized(conn: &Connection) {
 fn sqlite3_db_location() -> Result<String, String> {
     if cfg!(target_os = "android") {
         fs::create_dir_all("/sdcard/Fastxt")
-            .map_err(|e| format!("Failed to create /sdcard/Fastxt directory: {}", e))?;
+            .map_err(|e| format!("Failed to create /sdcard/Fastxt directory: {e}"))?;
         return Ok("/sdcard/Fastxt/fastxt.sqlite3".to_string());
     }
     let mut dir_name = "Fastxt";
@@ -117,11 +128,17 @@ fn sqlite3_db_location() -> Result<String, String> {
     debug!(dir = %dir, "database directory location");
     if !Path::new(&dir).exists() {
         fs::create_dir_all(&dir)
-            .map_err(|e| format!("Failed to create database directory '{}': {}", dir, e))?;
+            .map_err(|e| format!("Failed to create database directory '{dir}': {e}"))?;
     }
-    Ok(format!("{}/fastxt.sqlite3", dir))
+    Ok(format!("{dir}/fastxt.sqlite3"))
 }
 
+/// Dispatch a JSON-encoded command and return a JSON-encoded response.
+///
+/// The input must be a JSON object with at least an `"action"` field.
+/// Returns a JSON string; on parse failure returns `{"error": "cmd json error"}`.
+/// The return value may be discarded when called for side effects only.
+#[allow(clippy::must_use_candidate)]
 pub fn run(text: &str) -> String {
     if let Ok(cmd) = serde_json::from_str::<Cmd>(text) {
         process(cmd, text)
@@ -130,6 +147,7 @@ pub fn run(text: &str) -> String {
     }
 }
 
+#[allow(clippy::too_many_lines, clippy::needless_pass_by_value)]
 fn process(cmd: Cmd, text: &str) -> String {
     debug!(?cmd, "processing command");
     let conn = get_sqlite_connection();
@@ -154,14 +172,14 @@ fn process(cmd: Cmd, text: &str) -> String {
         }
         "search" => {
             if let Ok(s) = serde_json::from_str::<CmdSearch>(text) {
-                do_search(&conn, &s.query, &s.limit, &s.offset)
+                do_search(&conn, &s.query, s.limit, s.offset)
             } else {
                 r#"{"error":"cmd search json error"}"#.to_string()
             }
         }
         "select" => {
             if let Ok(s) = serde_json::from_str::<CmdSelect>(text) {
-                do_select(&conn, &s.limit, &s.offset)
+                do_select(&conn, s.limit, s.offset)
             } else {
                 r#"{"error":"cmd select json error"}"#.to_string()
             }
@@ -180,8 +198,8 @@ fn process(cmd: Cmd, text: &str) -> String {
                     ai_category: None,
                 };
                 debug!(?note, "inserting note");
-                insert(&conn, note);
-                do_select(&conn, &i.limit, &i.offset)
+                insert(&conn, &note);
+                do_select(&conn, i.limit, i.offset)
             } else {
                 r#"{"error":"cmd insert json error"}"#.to_string()
             }
@@ -189,7 +207,7 @@ fn process(cmd: Cmd, text: &str) -> String {
         "delete" => {
             if let Ok(s) = serde_json::from_str::<CmdDelete>(text) {
                 delete(&conn, s.rowid);
-                do_search(&conn, &s.query, &s.limit, &s.offset)
+                do_search(&conn, &s.query, s.limit, s.offset)
             } else {
                 r#"{"error":"cmd delete json error"}"#.to_string()
             }
@@ -198,7 +216,7 @@ fn process(cmd: Cmd, text: &str) -> String {
             info!("RPC client starting");
             if let Ok(s) = serde_json::from_str::<CmdRpcClient>(text) {
                 if let Ok(resp) = crate::rpc::client::sync(&s.addr) {
-                    format!(r#"{{"client-sync": "{}"}}"#, resp)
+                    format!(r#"{{"client-sync": "{resp}"}}"#)
                 } else {
                     r#"{"error":"client-sync error"}"#.to_string()
                 }
@@ -210,7 +228,7 @@ fn process(cmd: Cmd, text: &str) -> String {
             info!("RPC client starting");
             if let Ok(s) = serde_json::from_str::<CmdRpcClient>(text) {
                 if let Ok(resp) = crate::rpc::client::stop_server(&s.addr) {
-                    format!(r#"{{"client-stop-server": "{}"}}"#, resp)
+                    format!(r#"{{"client-stop-server": "{resp}"}}"#)
                 } else {
                     r#"{"error":"client-stop-server error"}"#.to_string()
                 }
@@ -299,8 +317,8 @@ fn process(cmd: Cmd, text: &str) -> String {
         "sync-embeddings" => {
             if let Ok(cmd) = serde_json::from_str::<CmdRpcClient>(text) {
                 match crate::rpc::client::sync_embeddings(&cmd.addr) {
-                    Ok(msg) => format!(r#"{{"status": "{}"}}"#, msg),
-                    Err(e) => format!(r#"{{"error": "{}"}}"#, e),
+                    Ok(msg) => format!(r#"{{"status": "{msg}"}}"#),
+                    Err(e) => format!(r#"{{"error": "{e}"}}"#),
                 }
             } else {
                 r#"{"error":"cmd sync-embeddings json error"}"#.to_string()
@@ -310,15 +328,15 @@ fn process(cmd: Cmd, text: &str) -> String {
     }
 }
 
-fn do_search(conn: &Connection, query: &str, limit: &u32, offset: &u32) -> String {
+fn do_search(conn: &Connection, query: &str, limit: u32, offset: u32) -> String {
     let count = search_count(conn, query);
-    let notes = search(conn, query, limit, offset);
-    format!(r#"{{"count":{},"notes":{}}}"#, count, notes)
+    let notes = search(conn, query, &limit, &offset);
+    format!(r#"{{"count":{count},"notes":{notes}}}"#)
 }
 
-fn do_select(conn: &Connection, limit: &u32, offset: &u32) -> String {
-    let notes = select(conn, limit, offset);
-    format!(r#"{{"notes":{}}}"#, notes)
+fn do_select(conn: &Connection, limit: u32, offset: u32) -> String {
+    let notes = select(conn, &limit, &offset);
+    format!(r#"{{"notes":{notes}}}"#)
 }
 
 /// Handle ai-tag command - suggest tags for given text.
@@ -815,7 +833,7 @@ fn do_ai_reprocess(conn: &Connection, cmd: &CmdAiReprocess) -> String {
 }
 
 /// Handle ai-organize command - categorize notes by topic.
-#[allow(unused_variables)]
+#[allow(unused_variables, clippy::too_many_lines)]
 fn do_ai_organize(conn: &Connection, cmd: &CmdAiOrganize) -> String {
     #[cfg(feature = "ai")]
     {

@@ -3,5 +3,6 @@ external-libs/*
 .idea/*
 .*
 !.gitignore
+!.gitattributes
 !.mrconfig-template
 !.github

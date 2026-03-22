@@ -19,6 +19,12 @@
 use clap::{Arg, Command};
 use fastxt_core::exe::run;
 fn main() {
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::from_default_env()
+                .add_directive(tracing::Level::INFO.into()),
+        )
+        .init();
     let matches = Command::new("fastxt-rpc-client")
         .arg(
             Arg::new("addr")
@@ -26,7 +32,7 @@ fn main() {
                 .long("addr"),
         )
         .get_matches();
-    let addr = matches.get_one::<String>("addr").map(|s| s.as_str()).unwrap_or("127.0.0.1:3456");
-    eprintln!("addr: {}", addr);
+    let addr = matches.get_one::<String>("addr").map_or("127.0.0.1:3456", std::string::String::as_str);
+    eprintln!("addr: {addr}");
     run(&(r#"{"action":"client-sync", "addr": ""#.to_string() + addr + r#""}"#));
 }

@@ -107,8 +107,9 @@ impl AiBackend for MockBackend {
         // Return first sentence or first 100 chars
         let first_sentence = text.split(['.', '!', '?']).next().unwrap_or(text);
 
-        if first_sentence.len() > 100 {
-            Ok(format!("{}...", &first_sentence[..100]))
+        if first_sentence.chars().count() > 100 {
+            let truncated: String = first_sentence.chars().take(100).collect();
+            Ok(format!("{}...", truncated))
         } else {
             Ok(first_sentence.to_string())
         }

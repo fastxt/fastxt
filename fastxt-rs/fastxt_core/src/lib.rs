@@ -16,6 +16,15 @@
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
 
+//! `fastxt_core` — shared library for Fastxt.
+//!
+//! Provides the `SQLite` database layer, JSON command dispatcher ([`exe::run`]),
+//! P2P RPC sync protocol ([`rpc`]), database upgrade logic ([`upgrade`]), and
+//! optional on-device AI features ([`ai`], enabled with `--features ai`).
+//!
+//! The FFI entry points ([`fastxt_run`] / [`fastxt_free`]) expose the command
+//! dispatcher to mobile platforms via a C-compatible interface.
+
 use serde_derive::{Deserialize, Serialize};
 
 pub mod cmd;
@@ -26,6 +35,8 @@ pub mod upgrade;
 #[cfg(feature = "ai")]
 pub mod ai;
 
+/// Top-level command envelope sent to [`exe::run`].
+/// The `action` field selects which command to execute.
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Cmd {
     pub action: String,
@@ -34,6 +45,16 @@ pub struct Cmd {
 use std::ffi::{CStr, CString};
 use std::os::raw::c_char;
 
+/// FFI entry point: execute a JSON command and return a JSON response.
+///
+/// # Safety
+/// `json_input` must be a valid, non-null, null-terminated C string for the
+/// duration of this call. The returned pointer is heap-allocated and **must**
+/// be freed by calling [`fastxt_free`].
+///
+/// # Panics
+/// Panics if the hardcoded fallback error JSON string contains an internal null byte
+/// (which should be impossible in practice).
 #[no_mangle]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 pub extern "C" fn fastxt_run(json_input: *const c_char) -> *mut c_char {
@@ -49,6 +70,11 @@ pub extern "C" fn fastxt_run(json_input: *const c_char) -> *mut c_char {
         .into_raw()
 }
 
+/// FFI entry point: free a string previously returned by [`fastxt_run`].
+///
+/// # Safety
+/// `s` must be a pointer originally returned by `fastxt_run`, or null.
+/// Passing any other pointer is undefined behaviour.
 #[no_mangle]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 pub extern "C" fn fastxt_free(s: *mut c_char) {
@@ -60,12 +86,14 @@ pub extern "C" fn fastxt_free(s: *mut c_char) {
     };
 }
 
+/// A generic key/value pair with a string key and 64-bit integer value.
 #[derive(Serialize, Deserialize, Debug)]
 pub struct KVStringI64 {
     pub k: String,
     pub v: i64,
 }
 
+/// Wrapper for a comma-separated tags string.
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Tags {
     pub tags: String,
@@ -94,12 +122,15 @@ pub struct Note {
     pub ai_category: Option<String>,
 }
 
+/// Parameters for the `select` command (paginated listing of all notes).
 #[derive(Serialize, Deserialize, Debug)]
 pub struct CmdSelect {
     pub limit: u32,
     pub offset: u32,
 }
 
+/// Parameters for the `insert` command.
+/// After inserting, returns a paginated list of notes at the given offset.
 #[derive(Serialize, Deserialize, Debug)]
 pub struct CmdInsert {
     pub txt: String,
@@ -109,6 +140,8 @@ pub struct CmdInsert {
     pub offset: u32,
 }
 
+/// Parameters for the `delete` command.
+/// After deleting, re-runs the given search query and returns results.
 #[derive(Serialize, Deserialize, Debug)]
 pub struct CmdDelete {
     pub query: String,
@@ -118,6 +151,7 @@ pub struct CmdDelete {
     pub offset: u32,
 }
 
+/// Parameters for the `search` command (keyword search over txt and tags).
 #[derive(Serialize, Deserialize, Debug)]
 pub struct CmdSearch {
     pub query: String,
@@ -126,16 +160,19 @@ pub struct CmdSearch {
     pub offset: u32,
 }
 
+/// Parameters for RPC client commands (`client-sync`, `client-stop-server`, `sync-embeddings`).
 #[derive(Serialize, Deserialize, Debug)]
 pub struct CmdRpcClient {
     pub addr: String,
 }
 
+/// Parameters for the `server` command (start the RPC sync server).
 #[derive(Serialize, Deserialize, Debug)]
 pub struct CmdRpcServer {
     pub addr: String,
 }
 
+/// Wrapper used internally to deserialize a single string column from `SQLite`.
 #[derive(Serialize, Deserialize, Debug)]
 pub struct OneString {
     pub s: String,

@@ -20,16 +20,19 @@ use rusqlite::types::ToSql;
 use rusqlite::Connection;
 use tracing::warn;
 
+/// Return the total number of notes in the database.
 pub fn select_count(conn: &Connection) -> u32 {
     conn.query_row("SELECT count(1) FROM note", [], |row| row.get(0))
         .unwrap_or(0)
 }
 
+/// Return a JSON array of notes ordered by `created_at` descending.
 pub fn select(conn: &Connection, limit: &u32, offset: &u32) -> String {
     let notes = select_imp(conn, limit, offset);
     serde_json::to_string(&notes).unwrap_or_else(|_| "[]".to_string())
 }
 
+/// Return a page of notes as a `Vec<Note>` (internal helper used by tests and search fallback).
 pub fn select_imp(conn: &Connection, limit: &u32, offset: &u32) -> Vec<Note> {
     let mut stmt = match conn.prepare(
         "SELECT rowid, uuid4, txt, tags, created_at, ai_tags, ai_summary, ai_category
@@ -61,7 +64,7 @@ pub fn select_imp(conn: &Connection, limit: &u32, offset: &u32) -> Vec<Note> {
             })
         },
     ) {
-        Ok(rows) => rows.filter_map(|r| r.ok()).collect(),
+        Ok(rows) => rows.filter_map(std::result::Result::ok).collect(),
         Err(e) => {
             warn!(error = %e, "failed to query notes");
             Vec::new()

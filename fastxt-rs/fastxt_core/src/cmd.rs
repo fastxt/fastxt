@@ -19,13 +19,16 @@
 use crate::Note;
 use linked_hash_set::LinkedHashSet;
 use regex::Regex;
-use std::iter::FromIterator;
 use tracing::{debug, info, warn};
 pub mod search;
 pub mod select;
 pub mod sync;
 use rusqlite::Connection;
 
+/// Create the database schema (tables and indices) if they do not already exist.
+///
+/// # Panics
+/// Panics if the database schema cannot be created (e.g., disk full or corrupt database).
 pub fn create(conn: &Connection) {
     conn.execute_batch(
         "BEGIN;
@@ -56,6 +59,10 @@ pub fn create(conn: &Connection) {
     .expect("failed to create database schema");
 }
 
+/// Delete a note and its associated embedding by rowid.
+///
+/// # Panics
+/// Panics if the DELETE statement fails (e.g., database is read-only or locked).
 pub fn delete(conn: &Connection, rowid: i64) {
     debug!(rowid, "deleting note");
     // Delete associated embedding first to avoid orphaned data
@@ -64,7 +71,14 @@ pub fn delete(conn: &Connection, rowid: i64) {
         .expect("failed to delete note");
 }
 
-pub fn insert(conn: &Connection, note: Note) {
+/// Insert or replace a note, merging AI tags when both sides have them.
+///
+/// Uses `INSERT OR REPLACE` keyed on `uuid4`, so syncing the same note
+/// from another device is idempotent. AI tags from both sides are unioned.
+///
+/// # Panics
+/// Panics if the INSERT statement fails (e.g., database is read-only or locked).
+pub fn insert(conn: &Connection, note: &Note) {
     // Handle AI tags merge: if both local and incoming have AI tags, union them
     let ai_tags = note.ai_tags.as_ref().map(|incoming| {
         // Check if there's an existing note with AI tags
@@ -126,7 +140,11 @@ fn merge_ai_tags(existing: &str, incoming: &str) -> String {
     serde_json::to_string(&merged).unwrap_or_else(|_| incoming.to_string())
 }
 
-// format and dedup tags
+/// Normalise a raw tags string: collapse separators, deduplicate, and return
+/// a comma-separated list with no trailing comma.
+///
+/// Both spaces and commas are treated as tag delimiters; duplicate tags are
+/// removed while preserving insertion order.
 pub fn make_tags(input: &str) -> String {
     use std::sync::LazyLock;
     static RE_COMMAS: LazyLock<Regex> = LazyLock::new(|| Regex::new(r",+").unwrap());
@@ -134,15 +152,15 @@ pub fn make_tags(input: &str) -> String {
 
     let s1 = RE_COMMAS.replace_all(input, " ");
     let s2 = RE_SPACES.replace_all(s1.trim(), ",");
-    let v1 = s2.split(",");
-    let h1: LinkedHashSet<&str> = LinkedHashSet::from_iter(v1);
-    let mut s = "".to_string();
+    let v1 = s2.split(',');
+    let h1: LinkedHashSet<&str> = v1.collect();
+    let mut s = String::new();
     for e in h1 {
         s.push_str(e);
-        s.push(',')
+        s.push(',');
     }
     s.pop();
-    s.to_string()
+    s
 }
 
 /// Migrate database to add AI columns if they don't exist.
@@ -152,14 +170,13 @@ pub fn migrate_ai_columns(conn: &Connection) {
     let columns = ["ai_tags", "ai_summary", "ai_category"];
     for col in &columns {
         let check_sql = format!(
-            "SELECT COUNT(*) FROM pragma_table_info('note') WHERE name='{}'",
-            col
+            "SELECT COUNT(*) FROM pragma_table_info('note') WHERE name='{col}'"
         );
         let count: i32 = conn
             .query_row(&check_sql, [], |row| row.get(0))
             .unwrap_or(0);
         if count == 0 {
-            let alter_sql = format!("ALTER TABLE note ADD COLUMN {} TEXT", col);
+            let alter_sql = format!("ALTER TABLE note ADD COLUMN {col} TEXT");
             if let Err(e) = conn.execute(&alter_sql, []) {
                 warn!(column = col, error = %e, "failed to add column");
             } else {
@@ -239,7 +256,7 @@ pub fn select_notes_without_ai_tags(conn: &Connection, limit: u32) -> Vec<crate:
             ai_category: None,
         })
     }) {
-        Ok(rows) => rows.filter_map(|n| n.ok()).collect(),
+        Ok(rows) => rows.filter_map(std::result::Result::ok).collect(),
         Err(e) => {
             warn!(error = %e, "failed to query notes without AI tags");
             Vec::new()
@@ -297,14 +314,14 @@ pub fn get_all_embeddings(conn: &Connection, model_id: Option<&str>) -> Vec<(i64
     };
     let rows: Vec<(i64, Vec<u8>)> = match model_id {
         Some(mid) => match stmt.query_map([mid], |row| Ok((row.get(0)?, row.get(1)?))) {
-            Ok(rows) => rows.filter_map(|r| r.ok()).collect(),
+            Ok(rows) => rows.filter_map(std::result::Result::ok).collect(),
             Err(e) => {
                 warn!(error = %e, "failed to query embeddings");
                 Vec::new()
             }
         },
         None => match stmt.query_map([], |row| Ok((row.get(0)?, row.get(1)?))) {
-            Ok(rows) => rows.filter_map(|r| r.ok()).collect(),
+            Ok(rows) => rows.filter_map(std::result::Result::ok).collect(),
             Err(e) => {
                 warn!(error = %e, "failed to query embeddings");
                 Vec::new()
@@ -324,6 +341,7 @@ pub fn get_all_embeddings(conn: &Connection, model_id: Option<&str>) -> Vec<(i64
 }
 
 /// Compute cosine similarity between two vectors.
+#[must_use]
 pub fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
     if a.len() != b.len() || a.is_empty() {
         return 0.0;
@@ -380,8 +398,7 @@ pub fn semantic_search(
 
     let placeholders: String = rowids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
     let sql = format!(
-        "SELECT rowid, uuid4, txt, tags, created_at FROM note WHERE rowid IN ({})",
-        placeholders
+        "SELECT rowid, uuid4, txt, tags, created_at FROM note WHERE rowid IN ({placeholders})"
     );
 
     let mut stmt = match conn.prepare(&sql) {
@@ -412,7 +429,7 @@ pub fn semantic_search(
             ))
         },
     ) {
-        Ok(rows) => rows.filter_map(|r| r.ok()).collect(),
+        Ok(rows) => rows.filter_map(std::result::Result::ok).collect(),
         Err(e) => {
             warn!(error = %e, "failed to query notes for semantic search");
             std::collections::HashMap::new()
@@ -470,7 +487,7 @@ pub fn select_notes_without_embeddings(conn: &Connection, limit: u32) -> Vec<cra
             ai_category: None,
         })
     }) {
-        Ok(rows) => rows.filter_map(|n| n.ok()).collect(),
+        Ok(rows) => rows.filter_map(std::result::Result::ok).collect(),
         Err(e) => {
             warn!(error = %e, "failed to query notes without embeddings");
             Vec::new()
@@ -521,14 +538,13 @@ pub fn get_categories(conn: &Connection) -> std::collections::HashMap<String, us
         }
     };
 
-    let rows = match stmt.query_map([], |row| {
-        Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
-    }) {
-        Ok(r) => r,
-        Err(_) => return std::collections::HashMap::new(),
+    let Ok(rows) = stmt.query_map([], |row| {
+        Ok((row.get::<_, String>(0)?, row.get::<_, u32>(1)?))
+    }) else {
+        return std::collections::HashMap::new();
     };
 
-    rows.filter_map(|r| r.ok())
+    rows.filter_map(std::result::Result::ok)
         .map(|(cat, count)| (cat, count as usize))
         .collect()
 }
@@ -546,25 +562,23 @@ pub fn get_embedding_model_id(conn: &Connection) -> Option<String> {
 
 /// Get all note UUID4s that have embeddings with a specific model ID.
 pub fn get_embedding_uuid4s_by_model(conn: &Connection, model_id: &str) -> Vec<String> {
-    let mut stmt = match conn.prepare(
+    let Ok(mut stmt) = conn.prepare(
         "SELECT n.uuid4 FROM note n
          INNER JOIN note_embedding e ON n.rowid = e.note_rowid
          WHERE e.model_id = ?1",
-    ) {
-        Ok(s) => s,
-        Err(_) => return Vec::new(),
+    ) else {
+        return Vec::new();
     };
 
-    let rows = match stmt.query_map([model_id], |row| row.get::<_, String>(0)) {
-        Ok(r) => r,
-        Err(_) => return Vec::new(),
+    let Ok(rows) = stmt.query_map([model_id], |row| row.get::<_, String>(0)) else {
+        return Vec::new();
     };
 
-    rows.filter_map(|r| r.ok()).collect()
+    rows.filter_map(std::result::Result::ok).collect()
 }
 
 /// Get embedding data by note UUID4.
-/// Returns (embedding_bytes, model_id) if found.
+/// Returns (`embedding_bytes`, `model_id`) if found.
 pub fn get_embedding_by_uuid4(conn: &Connection, uuid4: &str) -> Option<(Vec<u8>, String)> {
     conn.query_row(
         "SELECT e.embedding, e.model_id FROM note_embedding e
@@ -650,7 +664,7 @@ mod tests {
         let conn = setup_test_db();
         let note = make_test_note("hello world", "test,rust");
         let uuid = note.uuid4.clone();
-        insert(&conn, note);
+        insert(&conn, &note);
 
         let notes = select::select_imp(&conn, &10, &0);
         assert_eq!(notes.len(), 1);
@@ -661,16 +675,16 @@ mod tests {
     #[test]
     fn test_insert_multiple_and_count() {
         let conn = setup_test_db();
-        insert(&conn, make_test_note("note 1", "a"));
-        insert(&conn, make_test_note("note 2", "b"));
-        insert(&conn, make_test_note("note 3", "c"));
+        insert(&conn, &make_test_note("note 1", "a"));
+        insert(&conn, &make_test_note("note 2", "b"));
+        insert(&conn, &make_test_note("note 3", "c"));
         assert_eq!(select::select_count(&conn), 3);
     }
 
     #[test]
     fn test_delete() {
         let conn = setup_test_db();
-        insert(&conn, make_test_note("to delete", "x"));
+        insert(&conn, &make_test_note("to delete", "x"));
         let notes = select::select_imp(&conn, &10, &0);
         assert_eq!(notes.len(), 1);
         delete(&conn, notes[0].rowid);
@@ -680,9 +694,9 @@ mod tests {
     #[test]
     fn test_search() {
         let conn = setup_test_db();
-        insert(&conn, make_test_note("rust programming", "code"));
-        insert(&conn, make_test_note("python scripting", "code"));
-        insert(&conn, make_test_note("cooking recipes", "food"));
+        insert(&conn, &make_test_note("rust programming", "code"));
+        insert(&conn, &make_test_note("python scripting", "code"));
+        insert(&conn, &make_test_note("cooking recipes", "food"));
 
         let result = search::search(&conn, "rust", &10, &0);
         let notes: Vec<Note> = serde_json::from_str(&result).unwrap();
@@ -693,9 +707,9 @@ mod tests {
     #[test]
     fn test_search_count() {
         let conn = setup_test_db();
-        insert(&conn, make_test_note("rust lang", "code"));
-        insert(&conn, make_test_note("rust book", "code"));
-        insert(&conn, make_test_note("python book", "code"));
+        insert(&conn, &make_test_note("rust lang", "code"));
+        insert(&conn, &make_test_note("rust book", "code"));
+        insert(&conn, &make_test_note("python book", "code"));
         assert_eq!(search::search_count(&conn, "rust"), 2);
         assert_eq!(search::search_count(&conn, "python"), 1);
         assert_eq!(search::search_count(&conn, "book"), 2);
@@ -704,8 +718,8 @@ mod tests {
     #[test]
     fn test_search_empty_query_returns_all() {
         let conn = setup_test_db();
-        insert(&conn, make_test_note("note 1", "a"));
-        insert(&conn, make_test_note("note 2", "b"));
+        insert(&conn, &make_test_note("note 1", "a"));
+        insert(&conn, &make_test_note("note 2", "b"));
         assert_eq!(search::search_count(&conn, ""), 2);
     }
 
@@ -736,7 +750,7 @@ mod tests {
         let note = make_test_note("original", "v1");
         let uuid = note.uuid4.clone();
         let created_at = note.created_at.clone();
-        insert(&conn, note);
+        insert(&conn, &note);
 
         let updated = Note {
             rowid: 0,
@@ -748,7 +762,7 @@ mod tests {
             ai_summary: None,
             ai_category: None,
         };
-        insert(&conn, updated);
+        insert(&conn, &updated);
         assert_eq!(select::select_count(&conn), 1);
         let notes = select::select_imp(&conn, &10, &0);
         assert_eq!(notes[0].txt, "updated");
@@ -758,7 +772,7 @@ mod tests {
     fn test_select_pagination() {
         let conn = setup_test_db();
         for i in 0..5 {
-            insert(&conn, make_test_note(&format!("note {}", i), "tag"));
+            insert(&conn, &make_test_note(&format!("note {}", i), "tag"));
         }
         assert_eq!(select::select_imp(&conn, &2, &0).len(), 2);
         assert_eq!(select::select_imp(&conn, &2, &2).len(), 2);
@@ -770,7 +784,7 @@ mod tests {
         let conn = setup_test_db();
         let note = make_test_note("sync test", "sync");
         let uuid = note.uuid4.clone();
-        insert(&conn, note);
+        insert(&conn, &note);
         let found = sync::get_note_by_uuid4(&conn, &uuid);
         assert_eq!(found.txt, "sync test");
     }
@@ -782,22 +796,22 @@ mod tests {
         let n2 = make_test_note("two", "b");
         let uuid1 = n1.uuid4.clone();
         let uuid2 = n2.uuid4.clone();
-        insert(&conn, n1);
-        insert(&conn, n2);
+        insert(&conn, &n1);
+        insert(&conn, &n2);
 
         let uuid3 = uuid::Uuid::new_v4().to_string();
         let missing =
             sync::diff_uuid4_to_server(&conn, vec![uuid1.clone(), uuid3.clone()]);
         assert_eq!(missing, vec![uuid3]);
 
-        let from = sync::diff_uuid4_from_server(&conn, vec![uuid1]);
+        let from = sync::diff_uuid4_from_server(&conn, &[uuid1]);
         assert_eq!(from, vec![uuid2]);
     }
 
     #[test]
     fn test_store_and_get_embedding() {
         let conn = setup_test_db();
-        insert(&conn, make_test_note("embed me", "test"));
+        insert(&conn, &make_test_note("embed me", "test"));
         let notes = select::select_imp(&conn, &1, &0);
         let rowid = notes[0].rowid;
 
@@ -820,9 +834,9 @@ mod tests {
     #[test]
     fn test_categories() {
         let conn = setup_test_db();
-        insert(&conn, make_test_note("rust code", "code"));
-        insert(&conn, make_test_note("python code", "code"));
-        insert(&conn, make_test_note("recipe", "food"));
+        insert(&conn, &make_test_note("rust code", "code"));
+        insert(&conn, &make_test_note("python code", "code"));
+        insert(&conn, &make_test_note("recipe", "food"));
 
         let notes = select::select_imp(&conn, &10, &0);
         update_ai_category(&conn, notes[0].rowid, "programming");
@@ -848,5 +862,150 @@ mod tests {
         assert!(tags.contains(&"rust".to_string()));
         assert!(tags.contains(&"python".to_string()));
         assert!(tags.contains(&"code".to_string()));
+    }
+
+    // ---- Sync edge-case tests ----
+
+    #[test]
+    fn test_sync_next_uuid4_candidates_order() {
+        let conn = setup_test_db();
+        let n1 = make_test_note("first", "a");
+        let n2 = make_test_note("second", "b");
+        let n3 = make_test_note("third", "c");
+        let uuid1 = n1.uuid4.clone();
+        let uuid2 = n2.uuid4.clone();
+        let uuid3 = n3.uuid4.clone();
+        insert(&conn, &n1);
+        insert(&conn, &n2);
+        insert(&conn, &n3);
+
+        let candidates = sync::next_uuid4_candidates(&conn);
+        assert_eq!(candidates.len(), 3);
+        // Returned in rowid order (insertion order for this test)
+        assert_eq!(candidates[0], uuid1);
+        assert_eq!(candidates[1], uuid2);
+        assert_eq!(candidates[2], uuid3);
+    }
+
+    #[test]
+    fn test_sync_diff_to_server_all_known() {
+        // If the server already has all UUIDs, nothing is missing.
+        let conn = setup_test_db();
+        let n = make_test_note("exists", "x");
+        let uuid = n.uuid4.clone();
+        insert(&conn, &n);
+        let missing = sync::diff_uuid4_to_server(&conn, vec![uuid]);
+        assert!(missing.is_empty());
+    }
+
+    #[test]
+    fn test_sync_diff_to_server_empty_candidates() {
+        let conn = setup_test_db();
+        insert(&conn, &make_test_note("local only", "tag"));
+        // Server sends empty candidate list — local note is not "missing" from server
+        let missing = sync::diff_uuid4_to_server(&conn, vec![]);
+        assert!(missing.is_empty());
+    }
+
+    #[test]
+    fn test_sync_diff_from_server_all_present() {
+        // If every server UUID is also local, nothing to pull.
+        let conn = setup_test_db();
+        let n = make_test_note("shared", "s");
+        let uuid = n.uuid4.clone();
+        insert(&conn, &n);
+        let to_pull = sync::diff_uuid4_from_server(&conn, &[uuid]);
+        assert!(to_pull.is_empty());
+    }
+
+    #[test]
+    fn test_sync_diff_from_server_empty_server_list() {
+        // Server has nothing; client should return all local UUIDs as "to pull from server"
+        // Note: diff_uuid4_from_server returns local UUIDs NOT in the server list.
+        let conn = setup_test_db();
+        let n = make_test_note("local", "tag");
+        let uuid = n.uuid4.clone();
+        insert(&conn, &n);
+        let to_pull = sync::diff_uuid4_from_server(&conn, &[]);
+        assert_eq!(to_pull, vec![uuid]);
+    }
+
+    #[test]
+    fn test_sync_upsert_idempotent() {
+        // Inserting the same UUID twice should not duplicate the row.
+        let conn = setup_test_db();
+        let note = make_test_note("original", "v1");
+        insert(&conn, &note);
+        insert(&conn, &note); // same UUID
+        assert_eq!(select::select_count(&conn), 1);
+    }
+
+    #[test]
+    fn test_make_tags_empty_string() {
+        // An empty input should produce an empty string, not panic.
+        let result = make_tags("");
+        assert_eq!(result, "");
+    }
+
+    #[test]
+    fn test_make_tags_whitespace_only() {
+        let result = make_tags("   ");
+        // Trimming + dedup; exact output may be empty or whitespace-collapsed
+        assert!(!result.contains("  "));
+    }
+
+    #[test]
+    fn test_make_tags_trailing_comma() {
+        let result = make_tags("a,b,");
+        let tags: Vec<&str> = result.split(',').filter(|s| !s.is_empty()).collect();
+        assert_eq!(tags.len(), 2);
+    }
+
+    #[test]
+    fn test_cosine_similarity_identical() {
+        let v = vec![1.0f32, 2.0, 3.0];
+        let sim = cosine_similarity(&v, &v);
+        assert!((sim - 1.0).abs() < 1e-5);
+    }
+
+    #[test]
+    fn test_cosine_similarity_mismatched_len() {
+        let sim = cosine_similarity(&[1.0, 2.0], &[1.0]);
+        assert_eq!(sim, 0.0);
+    }
+
+    #[test]
+    fn test_update_ai_fields() {
+        let conn = setup_test_db();
+        insert(&conn, &make_test_note("ai test", "tag"));
+        let notes = select::select_imp(&conn, &1, &0);
+        let rowid = notes[0].rowid;
+
+        update_ai_tags(&conn, rowid, r#"["ai","test"]"#);
+        update_ai_summary(&conn, rowid, "a short summary");
+        update_ai_category(&conn, rowid, "science");
+
+        let note = sync::get_note_by_uuid4(&conn, &notes[0].uuid4);
+        assert_eq!(note.ai_tags.as_deref(), Some(r#"["ai","test"]"#));
+        assert_eq!(note.ai_summary.as_deref(), Some("a short summary"));
+        assert_eq!(note.ai_category.as_deref(), Some("science"));
+    }
+
+    #[test]
+    fn test_merge_ai_tags_union_dedup() {
+        // Duplicate tags across both sides should be deduplicated.
+        let result = merge_ai_tags(r#"["a","b"]"#, r#"["b","c"]"#);
+        let tags: Vec<String> = serde_json::from_str(&result).unwrap();
+        let unique: std::collections::HashSet<_> = tags.iter().collect();
+        assert_eq!(tags.len(), unique.len(), "tags should be deduplicated");
+    }
+
+    #[test]
+    fn test_merge_ai_tags_comma_separated_fallback() {
+        // Fallback: if existing tags are comma-separated (legacy format), they should be unioned.
+        let result = merge_ai_tags("rust,code", r#"["python","code"]"#);
+        let tags: Vec<String> = serde_json::from_str(&result).unwrap();
+        assert!(tags.contains(&"rust".to_string()));
+        assert!(tags.contains(&"python".to_string()));
     }
 }

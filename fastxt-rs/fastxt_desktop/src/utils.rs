@@ -3,7 +3,13 @@ use druid::widget::{Svg, SvgData};
 use qrcode::render::svg;
 use qrcode::{EcLevel, QrCode, Version};
 
-#[inline(always)]
+/// Build an SVG QR code widget from raw data.
+///
+/// # Errors
+/// Returns an error if the QR code cannot be encoded with the given version and error-correction level.
+///
+/// # Panics
+/// Panics if the rendered SVG string fails to parse (should not happen with well-formed output).
 pub fn qrcode_builder<D: AsRef<[u8]>>(
     data: D,
     version: Version,

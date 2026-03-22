@@ -34,6 +34,12 @@ fn set_meta_version(conn: &Connection, version: &str) {
     }
 }
 
+/// Run all pending database migrations and update the stored schema version.
+///
+/// Returns `Ok(VERSION)` on success.
+///
+/// # Errors
+/// Returns `Err("is_upgrading")` if another upgrade is already in progress.
 pub fn upgrade(conn: &Connection) -> Result<&str, &str> {
     if get_meta_is_upgrading(conn) {
         warn!("database is currently upgrading");
@@ -46,14 +52,14 @@ pub fn upgrade(conn: &Connection) -> Result<&str, &str> {
         // Migration to 0.1.0
         if current < v0_1_0 {
             set_meta_version(conn, "0.1.0");
-            info!("upgraded to 0.1.0")
+            info!("upgraded to 0.1.0");
         }
 
         // Migration to 0.2.0 - Add AI columns
         if current < v0_2_0 {
             crate::cmd::migrate_ai_columns(conn);
             set_meta_version(conn, "0.2.0");
-            info!("upgraded to 0.2.0 (added AI columns)")
+            info!("upgraded to 0.2.0 (added AI columns)");
         }
 
         let updated = Version::parse(&get_meta_version(conn)).ok();
@@ -66,51 +72,45 @@ pub fn upgrade(conn: &Connection) -> Result<&str, &str> {
 }
 
 fn get_meta_is_upgrading(conn: &Connection) -> bool {
-    let mut stmt = match conn
+    let Ok(mut stmt) = conn
         .prepare("SELECT meta_value FROM meta where meta_key = 'is_upgrading' ")
-    {
-        Ok(s) => s,
-        Err(_) => return false,
+    else {
+        return false;
     };
-    match stmt.query_row([], |row| Ok(OneString { s: row.get(0)? })) {
-        Ok(is_upgrading) => {
-            if is_upgrading.s == "1" {
-                debug!("get_meta_is_upgrading: true");
-                true
-            } else {
-                debug!("get_meta_is_upgrading: false");
-                false
-            }
-        }
-        Err(_) => false,
+    let Ok(is_upgrading) = stmt.query_row([], |row| Ok(OneString { s: row.get(0)? })) else {
+        return false;
+    };
+    if is_upgrading.s == "1" {
+        debug!("get_meta_is_upgrading: true");
+        true
+    } else {
+        debug!("get_meta_is_upgrading: false");
+        false
     }
 }
 
+/// Read the current schema version from the `meta` table.
+/// Inserts a `"0.0.0"` row if no version entry exists yet.
 pub fn get_meta_version(conn: &Connection) -> String {
-    let mut stmt = match conn
+    let Ok(mut stmt) = conn
         .prepare("SELECT meta_value FROM meta where meta_key = 'version' ")
-    {
-        Ok(s) => s,
-        Err(_) => return "0.0.0".to_string(),
+    else {
+        return "0.0.0".to_string();
     };
-    match stmt.query_row([], |row| Ok(OneString { s: row.get(0)? })) {
-        Ok(version) => {
-            debug!(version = %version.s, "get_meta_version");
-            version.s
-        }
-        Err(_) => {
-            if let Err(e) = conn.execute_batch(
-                "
-            INSERT INTO meta
-            (meta_key, meta_value)
-            VALUES
-            ('version', '0.0.0')
-            ;",
-            ) {
-                warn!(error = %e, "failed to initialize meta version");
-            }
-            info!("meta version initialized to 0.0.0");
-            "0.0.0".to_string()
-        }
+    if let Ok(version) = stmt.query_row([], |row| Ok(OneString { s: row.get(0)? })) {
+        debug!(version = %version.s, "get_meta_version");
+        return version.s;
     }
+    if let Err(e) = conn.execute_batch(
+        "
+    INSERT INTO meta
+    (meta_key, meta_value)
+    VALUES
+    ('version', '0.0.0')
+    ;",
+    ) {
+        warn!(error = %e, "failed to initialize meta version");
+    }
+    info!("meta version initialized to 0.0.0");
+    "0.0.0".to_string()
 }

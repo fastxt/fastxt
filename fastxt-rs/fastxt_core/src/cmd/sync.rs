@@ -21,7 +21,7 @@ use rusqlite::Connection;
 use std::collections::HashSet;
 use tracing::warn;
 
-//client
+/// Fetch a note by its UUID4. Returns a default empty `Note` if not found.
 pub fn get_note_by_uuid4(conn: &Connection, uuid4: &str) -> Note {
     conn.query_row(
         "select uuid4, txt, tags, created_at, ai_tags, ai_summary, ai_category FROM note where uuid4 = ? ",
@@ -45,6 +45,7 @@ pub fn get_note_by_uuid4(conn: &Connection, uuid4: &str) -> Note {
     })
 }
 
+/// Return all UUID4s in the database ordered by rowid (used as sync candidates).
 pub fn next_uuid4_candidates(conn: &Connection) -> Vec<String> {
     let mut stmt = match conn.prepare("select uuid4 FROM note order by rowid") {
         Ok(s) => s,
@@ -63,7 +64,8 @@ pub fn next_uuid4_candidates(conn: &Connection) -> Vec<String> {
     result
 }
 
-// to server
+/// Return the subset of `candidates` that are **not** present in this database.
+/// Used by the client to ask the server which notes it is missing.
 pub fn diff_uuid4_to_server(conn: &Connection, candidates: Vec<String>) -> Vec<String> {
     let mut stmt = match conn.prepare("select 1 FROM note where uuid4 = ? ") {
         Ok(s) => s,
@@ -78,8 +80,9 @@ pub fn diff_uuid4_to_server(conn: &Connection, candidates: Vec<String>) -> Vec<S
         .collect()
 }
 
-// from server
-pub fn diff_uuid4_from_server(conn: &Connection, candidates: Vec<String>) -> Vec<String> {
+/// Return the UUID4s present locally but **not** in `candidates` (the server's list).
+/// Used by the client to determine which notes to pull from the server.
+pub fn diff_uuid4_from_server(conn: &Connection, candidates: &[String]) -> Vec<String> {
     let candidates: HashSet<_> = candidates.iter().collect();
     let mut stmt = match conn.prepare("select uuid4 FROM note") {
         Ok(s) => s,

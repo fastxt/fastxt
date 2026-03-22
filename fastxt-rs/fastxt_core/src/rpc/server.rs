@@ -69,14 +69,14 @@ impl Fastxt for FastxtServer {
     ) -> Vec<String> {
         let conn = get_sqlite_connection();
         ensure_db_initialized(&conn);
-        diff_uuid4_from_server(&conn, candidates)
+        diff_uuid4_from_server(&conn, &candidates)
     }
 
     async fn send_note(self, _: context::Context, note: Note) -> bool {
         let conn = get_sqlite_connection();
         ensure_db_initialized(&conn);
         debug!(?note, "upsert note");
-        insert(&conn, note);
+        insert(&conn, &note);
         true
     }
 
@@ -168,6 +168,10 @@ async fn start_server(addr: &SocketAddr) -> io::Result<()> {
     Ok(())
 }
 
+/// Start the RPC sync server, blocking until it is stopped.
+///
+/// # Errors
+/// Returns `Err` if `addr` cannot be parsed as a socket address or if the Tokio runtime fails to start.
 pub fn start(addr: &str) -> Result<(), &'static str> {
     let server_addr: SocketAddr = addr.parse().map_err(|e| {
         warn!(addr, error = %e, "invalid server address");
