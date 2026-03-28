@@ -16,11 +16,11 @@
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
 
-use semver::Version;
 use rusqlite::Connection;
+use semver::Version;
 use tracing::{debug, info, warn};
 // version to upgrade to
-const VERSION: &str = "0.2.0";
+const VERSION: &str = "0.3.0";
 use crate::OneString;
 
 fn set_meta_version(conn: &Connection, version: &str) {
@@ -48,6 +48,7 @@ pub fn upgrade(conn: &Connection) -> Result<&str, &str> {
         let current = Version::parse(&get_meta_version(conn)).ok();
         let v0_1_0 = Version::parse("0.1.0").ok();
         let v0_2_0 = Version::parse("0.2.0").ok();
+        let v0_3_0 = Version::parse("0.3.0").ok();
 
         // Migration to 0.1.0
         if current < v0_1_0 {
@@ -62,8 +63,15 @@ pub fn upgrade(conn: &Connection) -> Result<&str, &str> {
             info!("upgraded to 0.2.0 (added AI columns)");
         }
 
+        // Migration to 0.3.0 - sqlite-vec virtual table for vector search
+        if current < v0_3_0 {
+            migrate_vec_notes(conn);
+            set_meta_version(conn, "0.3.0");
+            info!("upgraded to 0.3.0 (added sqlite-vec vector search)");
+        }
+
         let updated = Version::parse(&get_meta_version(conn)).ok();
-        if updated == v0_2_0 {
+        if updated == v0_3_0 {
             set_meta_version(conn, VERSION);
         }
         info!(version = VERSION, "upgrade complete");
@@ -72,8 +80,7 @@ pub fn upgrade(conn: &Connection) -> Result<&str, &str> {
 }
 
 fn get_meta_is_upgrading(conn: &Connection) -> bool {
-    let Ok(mut stmt) = conn
-        .prepare("SELECT meta_value FROM meta where meta_key = 'is_upgrading' ")
+    let Ok(mut stmt) = conn.prepare("SELECT meta_value FROM meta where meta_key = 'is_upgrading' ")
     else {
         return false;
     };
@@ -92,8 +99,7 @@ fn get_meta_is_upgrading(conn: &Connection) -> bool {
 /// Read the current schema version from the `meta` table.
 /// Inserts a `"0.0.0"` row if no version entry exists yet.
 pub fn get_meta_version(conn: &Connection) -> String {
-    let Ok(mut stmt) = conn
-        .prepare("SELECT meta_value FROM meta where meta_key = 'version' ")
+    let Ok(mut stmt) = conn.prepare("SELECT meta_value FROM meta where meta_key = 'version' ")
     else {
         return "0.0.0".to_string();
     };
@@ -113,4 +119,79 @@ pub fn get_meta_version(conn: &Connection) -> String {
     }
     info!("meta version initialized to 0.0.0");
     "0.0.0".to_string()
+}
+
+/// Migrate existing embeddings from `note_embedding` into the `vec_notes`
+/// sqlite-vec virtual table. The `note_embedding` table is kept for
+/// `model_id` tracking (vec_notes does not store metadata).
+fn migrate_vec_notes(conn: &Connection) {
+    use crate::cmd::DEFAULT_EMBEDDING_DIM;
+
+    // Ensure the vec_notes virtual table exists.
+    crate::cmd::create_vec_table(conn, DEFAULT_EMBEDDING_DIM);
+
+    // Count existing embeddings to migrate.
+    let count: i64 = conn
+        .query_row("SELECT COUNT(*) FROM note_embedding", [], |row| row.get(0))
+        .unwrap_or(0);
+
+    if count == 0 {
+        info!("no existing embeddings to migrate to vec_notes");
+        return;
+    }
+
+    info!(count, "migrating existing embeddings to vec_notes");
+
+    // Read all existing embeddings and insert into vec_notes.
+    let mut stmt = match conn.prepare("SELECT note_rowid, embedding FROM note_embedding") {
+        Ok(s) => s,
+        Err(e) => {
+            warn!(error = %e, "failed to prepare migration query");
+            return;
+        }
+    };
+
+    let rows: Vec<(i64, Vec<u8>)> = match stmt.query_map([], |row| {
+        Ok((row.get::<_, i64>(0)?, row.get::<_, Vec<u8>>(1)?))
+    }) {
+        Ok(r) => r.filter_map(|r| r.ok()).collect(),
+        Err(e) => {
+            warn!(error = %e, "failed to query embeddings for migration");
+            return;
+        }
+    };
+
+    let mut migrated = 0u64;
+    let mut skipped = 0u64;
+
+    for (note_rowid, embedding_bytes) in &rows {
+        // Verify the embedding dimension matches what vec_notes expects.
+        let dim = embedding_bytes.len() / 4; // 4 bytes per f32
+        if dim != DEFAULT_EMBEDDING_DIM {
+            debug!(
+                note_rowid,
+                dim,
+                expected = DEFAULT_EMBEDDING_DIM,
+                "skipping embedding with mismatched dimension"
+            );
+            skipped += 1;
+            continue;
+        }
+
+        // Delete any existing entry first (idempotent).
+        let _ = conn.execute(
+            "DELETE FROM vec_notes WHERE note_rowid = ?1",
+            rusqlite::params![note_rowid],
+        );
+        if let Err(e) = conn.execute(
+            "INSERT INTO vec_notes(note_rowid, embedding) VALUES (?1, ?2)",
+            rusqlite::params![note_rowid, embedding_bytes],
+        ) {
+            warn!(note_rowid, error = %e, "failed to migrate embedding to vec_notes");
+        } else {
+            migrated += 1;
+        }
+    }
+
+    info!(migrated, skipped, "vec_notes migration complete");
 }

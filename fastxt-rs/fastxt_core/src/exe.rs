@@ -16,9 +16,9 @@
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
 
-use tracing::{debug, info};
 #[cfg(feature = "ai")]
 use tracing::warn;
+use tracing::{debug, info};
 
 use crate::cmd::create;
 use crate::cmd::delete;
@@ -75,6 +75,8 @@ fn safe_serialize<T: serde::Serialize>(value: &T) -> String {
 
 /// Open a connection to the Fastxt `SQLite` database.
 ///
+/// Automatically registers the sqlite-vec extension before opening the connection.
+///
 /// # Panics
 ///
 /// Panics if the database directory cannot be resolved or the connection fails.
@@ -87,10 +89,15 @@ pub fn get_sqlite_connection() -> Connection {
 /// Try to open a connection to the Fastxt `SQLite` database, returning an error
 /// instead of panicking on failure.
 ///
+/// Automatically registers the sqlite-vec extension before opening the connection.
+///
 /// # Errors
 /// Returns `Err` if the database directory cannot be resolved or the `SQLite` connection fails.
 #[must_use = "connection should be used or the error handled"]
 pub fn try_get_sqlite_connection() -> Result<Connection, String> {
+    // Register sqlite-vec before opening connections so the extension is
+    // available in every new connection via sqlite3_auto_extension.
+    crate::cmd::register_sqlite_vec();
     let p = sqlite3_db_location().map_err(|e| format!("Failed to resolve database path: {e}"))?;
     let path = Path::new(&p);
     Connection::open(path).map_err(|e| format!("Failed to open SQLite database: {e}"))
@@ -122,8 +129,7 @@ fn sqlite3_db_location() -> Result<String, String> {
     if cfg!(target_os = "ios") {
         dir_name = "Documents";
     }
-    let home = dirs::home_dir()
-        .ok_or_else(|| "Failed to determine home directory".to_string())?;
+    let home = dirs::home_dir().ok_or_else(|| "Failed to determine home directory".to_string())?;
     let dir = format!("{}/{}", home.to_string_lossy(), dir_name);
     debug!(dir = %dir, "database directory location");
     if !Path::new(&dir).exists() {
@@ -768,22 +774,18 @@ fn do_ai_reprocess(conn: &Connection, cmd: &CmdAiReprocess) -> String {
             }
             None => {
                 // Get all notes
-                let mut stmt = match conn
-                    .prepare("SELECT rowid, txt FROM note ORDER BY created_at DESC")
-                {
-                    Ok(s) => s,
-                    Err(e) => {
-                        return format!(r#"{{"error":"Failed to query notes: {}"}}"#, e);
-                    }
-                };
+                let mut stmt =
+                    match conn.prepare("SELECT rowid, txt FROM note ORDER BY created_at DESC") {
+                        Ok(s) => s,
+                        Err(e) => {
+                            return format!(r#"{{"error":"Failed to query notes: {}"}}"#, e);
+                        }
+                    };
                 let rows: Vec<(i64, String)> =
                     match stmt.query_map([], |row| Ok((row.get(0)?, row.get(1)?))) {
                         Ok(r) => r.filter_map(|r| r.ok()).collect(),
                         Err(e) => {
-                            return format!(
-                                r#"{{"error":"Failed to query notes: {}"}}"#,
-                                e
-                            );
+                            return format!(r#"{{"error":"Failed to query notes: {}"}}"#, e);
                         }
                     };
                 rows
@@ -880,10 +882,9 @@ fn do_ai_organize(conn: &Connection, cmd: &CmdAiOrganize) -> String {
             }
         };
 
-        let notes: Vec<(i64, String)> = match stmt.query_map(
-            rusqlite::params![limit],
-            |row| Ok((row.get(0)?, row.get(1)?)),
-        ) {
+        let notes: Vec<(i64, String)> = match stmt.query_map(rusqlite::params![limit], |row| {
+            Ok((row.get(0)?, row.get(1)?))
+        }) {
             Ok(r) => r.filter_map(|r| r.ok()).collect(),
             Err(e) => {
                 let response = AiOrganizeResponse {

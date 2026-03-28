@@ -25,6 +25,27 @@ pub mod select;
 pub mod sync;
 use rusqlite::Connection;
 
+/// Default embedding dimension (all-MiniLM-L6-v2 produces 384-dim vectors).
+pub const DEFAULT_EMBEDDING_DIM: usize = 384;
+
+/// Register the sqlite-vec extension as an auto-extension.
+/// Must be called before opening any database connections.
+/// Safe to call multiple times — uses `std::sync::Once` internally.
+pub fn register_sqlite_vec() {
+    use std::sync::Once;
+    static INIT: Once = Once::new();
+    INIT.call_once(|| {
+        unsafe {
+            // Transmute follows the canonical pattern from the sqlite-vec crate documentation.
+            #[allow(clippy::missing_transmute_annotations)]
+            rusqlite::ffi::sqlite3_auto_extension(Some(std::mem::transmute(
+                sqlite_vec::sqlite3_vec_init as *const (),
+            )));
+        }
+        info!("sqlite-vec extension registered");
+    });
+}
+
 /// Create the database schema (tables and indices) if they do not already exist.
 ///
 /// # Panics
@@ -57,6 +78,24 @@ pub fn create(conn: &Connection) {
          COMMIT;",
     )
     .expect("failed to create database schema");
+
+    // Create the sqlite-vec virtual table for vector similarity search.
+    // This must be done outside the transaction above because virtual table
+    // creation cannot be rolled back.
+    create_vec_table(conn, DEFAULT_EMBEDDING_DIM);
+}
+
+/// Create the vec_notes virtual table with the given embedding dimension.
+/// Safe to call repeatedly — uses `IF NOT EXISTS` semantics via error handling.
+pub fn create_vec_table(conn: &Connection, dim: usize) {
+    let sql = format!(
+        "CREATE VIRTUAL TABLE IF NOT EXISTS vec_notes USING vec0(note_rowid INTEGER PRIMARY KEY, embedding float[{}])",
+        dim
+    );
+    if let Err(e) = conn.execute_batch(&sql) {
+        // If the table already exists (possibly with a different dimension), this is fine.
+        debug!("vec_notes table creation note: {}", e);
+    }
 }
 
 /// Delete a note and its associated embedding by rowid.
@@ -65,7 +104,9 @@ pub fn create(conn: &Connection) {
 /// Panics if the DELETE statement fails (e.g., database is read-only or locked).
 pub fn delete(conn: &Connection, rowid: i64) {
     debug!(rowid, "deleting note");
-    // Delete associated embedding first to avoid orphaned data
+    // Delete from vec_notes (sqlite-vec) first
+    let _ = conn.execute("DELETE FROM vec_notes WHERE note_rowid = ?1", [&rowid]);
+    // Delete associated embedding to avoid orphaned data
     let _ = conn.execute("DELETE FROM note_embedding WHERE note_rowid = ?1", [&rowid]);
     conn.execute("DELETE FROM note WHERE rowid = ?1", [&rowid])
         .expect("failed to delete note");
@@ -169,9 +210,8 @@ pub fn migrate_ai_columns(conn: &Connection) {
     // Add AI columns to note table if they don't exist
     let columns = ["ai_tags", "ai_summary", "ai_category"];
     for col in &columns {
-        let check_sql = format!(
-            "SELECT COUNT(*) FROM pragma_table_info('note') WHERE name='{col}'"
-        );
+        let check_sql =
+            format!("SELECT COUNT(*) FROM pragma_table_info('note') WHERE name='{col}'");
         let count: i32 = conn
             .query_row(&check_sql, [], |row| row.get(0))
             .unwrap_or(0);
@@ -265,7 +305,8 @@ pub fn select_notes_without_ai_tags(conn: &Connection, limit: u32) -> Vec<crate:
     result
 }
 
-/// Store embedding for a note.
+/// Store embedding for a note in both note_embedding (for model_id tracking)
+/// and vec_notes (for fast vector similarity search via sqlite-vec).
 pub fn store_embedding(conn: &Connection, note_rowid: i64, embedding: &[f32], model_id: &str) {
     let created_at = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
     let embedding_bytes: Vec<u8> = embedding.iter().flat_map(|f| f.to_le_bytes()).collect();
@@ -275,7 +316,21 @@ pub fn store_embedding(conn: &Connection, note_rowid: i64, embedding: &[f32], mo
          VALUES (?1, ?2, ?3, ?4)",
         rusqlite::params![note_rowid, embedding_bytes, model_id, created_at],
     ) {
-        warn!(error = %e, "failed to store embedding");
+        warn!(error = %e, "failed to store embedding in note_embedding");
+    }
+
+    // Also store in vec_notes for sqlite-vec vector search.
+    // Remove existing entry first (vec0 does not support OR REPLACE).
+    let _ = conn.execute(
+        "DELETE FROM vec_notes WHERE note_rowid = ?1",
+        rusqlite::params![note_rowid],
+    );
+    let vec_bytes = zerocopy::IntoBytes::as_bytes(embedding);
+    if let Err(e) = conn.execute(
+        "INSERT INTO vec_notes(note_rowid, embedding) VALUES (?1, ?2)",
+        rusqlite::params![note_rowid, vec_bytes],
+    ) {
+        warn!(error = %e, "failed to store embedding in vec_notes");
     }
 }
 
@@ -365,22 +420,105 @@ pub struct SemanticSearchResult {
     pub similarity: f32,
 }
 
-/// Search notes by semantic similarity to a query embedding.
+/// Search notes by semantic similarity to a query embedding using sqlite-vec.
+///
+/// Uses the `vec_notes` virtual table for fast nearest-neighbor search instead
+/// of loading all embeddings into memory. Falls back to the pure-Rust approach
+/// if the vec_notes table is empty (e.g., before migration).
+///
+/// The `model_id` parameter is currently unused by the sqlite-vec query (the
+/// vec_notes table does not track model_id), but kept for API compatibility.
+/// The `threshold` is applied as a post-filter on the distance returned by
+/// sqlite-vec (which returns L2 distance; we convert to cosine similarity).
 pub fn semantic_search(
+    conn: &Connection,
+    query_embedding: &[f32],
+    _model_id: &str,
+    limit: u32,
+    threshold: f32,
+) -> Vec<SemanticSearchResult> {
+    let query_bytes = zerocopy::IntoBytes::as_bytes(query_embedding);
+
+    // Use sqlite-vec's MATCH query for fast vector similarity search.
+    // sqlite-vec returns L2 (Euclidean) distance by default.
+    // We fetch more than `limit` to allow post-filtering by threshold.
+    let fetch_limit = limit * 4;
+    let mut stmt = match conn.prepare(
+        "SELECT v.note_rowid, v.distance, n.uuid4, n.txt, n.tags, n.created_at
+         FROM vec_notes v
+         INNER JOIN note n ON n.rowid = v.note_rowid
+         WHERE v.embedding MATCH ?1
+         ORDER BY v.distance
+         LIMIT ?2",
+    ) {
+        Ok(s) => s,
+        Err(e) => {
+            warn!(error = %e, "failed to prepare sqlite-vec semantic search, falling back");
+            return semantic_search_fallback(conn, query_embedding, _model_id, limit, threshold);
+        }
+    };
+
+    let results: Vec<SemanticSearchResult> =
+        match stmt.query_map(rusqlite::params![query_bytes, fetch_limit], |row| {
+            let distance: f64 = row.get(1)?;
+            Ok((
+                distance,
+                Note {
+                    rowid: row.get(0)?,
+                    uuid4: row.get(2)?,
+                    txt: row.get(3)?,
+                    tags: row.get(4)?,
+                    created_at: row.get(5)?,
+                    ai_tags: None,
+                    ai_summary: None,
+                    ai_category: None,
+                },
+            ))
+        }) {
+            Ok(rows) => rows
+                .filter_map(std::result::Result::ok)
+                .filter_map(|(distance, note)| {
+                    // Convert L2 distance to a similarity-like score.
+                    // similarity = 1 / (1 + distance) gives a value in (0, 1].
+                    let similarity = 1.0 / (1.0 + distance as f32);
+                    if similarity >= threshold {
+                        Some(SemanticSearchResult { note, similarity })
+                    } else {
+                        None
+                    }
+                })
+                .take(limit as usize)
+                .collect(),
+            Err(e) => {
+                warn!(error = %e, "sqlite-vec semantic search query failed, falling back");
+                return semantic_search_fallback(
+                    conn,
+                    query_embedding,
+                    _model_id,
+                    limit,
+                    threshold,
+                );
+            }
+        };
+
+    results
+}
+
+/// Fallback semantic search using pure-Rust cosine similarity.
+/// Used when the vec_notes table is not available or empty.
+fn semantic_search_fallback(
     conn: &Connection,
     query_embedding: &[f32],
     model_id: &str,
     limit: u32,
     threshold: f32,
 ) -> Vec<SemanticSearchResult> {
-    // Get all embeddings for this model
     let embeddings = get_all_embeddings(conn, Some(model_id));
 
     if embeddings.is_empty() {
         return vec![];
     }
 
-    // Compute similarities and sort
     let mut scored: Vec<(i64, f32)> = embeddings
         .iter()
         .map(|(rowid, embedding)| (*rowid, cosine_similarity(query_embedding, embedding)))
@@ -390,7 +528,6 @@ pub fn semantic_search(
     scored.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
     scored.truncate(limit as usize);
 
-    // Fetch notes for top results
     let rowids: Vec<i64> = scored.iter().map(|(r, _)| *r).collect();
     if rowids.is_empty() {
         return vec![];
@@ -404,16 +541,15 @@ pub fn semantic_search(
     let mut stmt = match conn.prepare(&sql) {
         Ok(s) => s,
         Err(e) => {
-            warn!(error = %e, "failed to prepare semantic_search note fetch");
+            warn!(error = %e, "failed to prepare fallback semantic_search note fetch");
             return vec![];
         }
     };
     let params: Vec<&dyn rusqlite::ToSql> =
         rowids.iter().map(|r| r as &dyn rusqlite::ToSql).collect();
 
-    let notes: std::collections::HashMap<i64, Note> = match stmt.query_map(
-        params.as_slice(),
-        |row| {
+    let notes: std::collections::HashMap<i64, Note> =
+        match stmt.query_map(params.as_slice(), |row| {
             Ok((
                 row.get::<_, i64>(0)?,
                 Note {
@@ -427,16 +563,14 @@ pub fn semantic_search(
                     ai_category: None,
                 },
             ))
-        },
-    ) {
-        Ok(rows) => rows.filter_map(std::result::Result::ok).collect(),
-        Err(e) => {
-            warn!(error = %e, "failed to query notes for semantic search");
-            std::collections::HashMap::new()
-        }
-    };
+        }) {
+            Ok(rows) => rows.filter_map(std::result::Result::ok).collect(),
+            Err(e) => {
+                warn!(error = %e, "failed to query notes for fallback semantic search");
+                std::collections::HashMap::new()
+            }
+        };
 
-    // Combine with scores in order
     scored
         .into_iter()
         .filter_map(|(rowid, score)| {
@@ -609,14 +743,26 @@ pub fn store_embedding_by_uuid4(
             }
         };
 
-    // Then store the embedding
+    // Then store the embedding in note_embedding
     let created_at = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
     if let Err(e) = conn.execute(
         "INSERT OR REPLACE INTO note_embedding (note_rowid, embedding, model_id, created_at)
          VALUES (?1, ?2, ?3, ?4)",
         rusqlite::params![note_rowid, embedding_bytes, model_id, created_at],
     ) {
-        warn!(error = %e, "failed to store embedding");
+        warn!(error = %e, "failed to store embedding in note_embedding");
+    }
+
+    // Also store in vec_notes for sqlite-vec vector search.
+    let _ = conn.execute(
+        "DELETE FROM vec_notes WHERE note_rowid = ?1",
+        rusqlite::params![note_rowid],
+    );
+    if let Err(e) = conn.execute(
+        "INSERT INTO vec_notes(note_rowid, embedding) VALUES (?1, ?2)",
+        rusqlite::params![note_rowid, embedding_bytes],
+    ) {
+        warn!(error = %e, "failed to store embedding in vec_notes");
     }
 }
 
@@ -626,6 +772,7 @@ mod tests {
     use crate::Note;
 
     fn setup_test_db() -> Connection {
+        register_sqlite_vec();
         let conn = Connection::open_in_memory().unwrap();
         create(&conn);
         conn
@@ -637,9 +784,7 @@ mod tests {
             uuid4: uuid::Uuid::new_v4().to_string(),
             txt: txt.to_string(),
             tags: tags.to_string(),
-            created_at: chrono::Utc::now()
-                .format("%Y-%m-%d %H:%M:%S")
-                .to_string(),
+            created_at: chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string(),
             ai_tags: None,
             ai_summary: None,
             ai_category: None,
@@ -800,8 +945,7 @@ mod tests {
         insert(&conn, &n2);
 
         let uuid3 = uuid::Uuid::new_v4().to_string();
-        let missing =
-            sync::diff_uuid4_to_server(&conn, vec![uuid1.clone(), uuid3.clone()]);
+        let missing = sync::diff_uuid4_to_server(&conn, vec![uuid1.clone(), uuid3.clone()]);
         assert_eq!(missing, vec![uuid3]);
 
         let from = sync::diff_uuid4_from_server(&conn, &[uuid1]);
