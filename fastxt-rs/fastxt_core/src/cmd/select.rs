@@ -35,7 +35,7 @@ pub fn select(conn: &Connection, limit: &u32, offset: &u32) -> String {
 /// Return a page of notes as a `Vec<Note>` (internal helper used by tests and search fallback).
 pub fn select_imp(conn: &Connection, limit: &u32, offset: &u32) -> Vec<Note> {
     let mut stmt = match conn.prepare(
-        "SELECT rowid, uuid4, txt, tags, created_at, ai_tags, ai_summary, ai_category
+        "SELECT rowid, uuid4, txt, tags, created_at, json(ai_tags), ai_summary, ai_category
         FROM note
         order by created_at desc limit :limit offset :offset",
     ) {

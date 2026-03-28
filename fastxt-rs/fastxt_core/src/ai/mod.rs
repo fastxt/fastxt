@@ -141,6 +141,7 @@ impl Default for AiConfig {
             categorize_model: None,
             reasoning_effort: None,
             consistency_rounds: None,
+            draft_model: None,
         }
     }
 }
@@ -277,6 +278,65 @@ pub fn get_default_backend() -> Option<Box<dyn AiBackend>> {
     None
 }
 
+/// Information about a discovered AI backend.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BackendInfo {
+    /// Backend identifier (e.g., "ollama", "llamacpp")
+    pub name: String,
+    /// Whether the backend is currently available and responsive
+    pub available: bool,
+    /// Backend type category (e.g., "ollama", "llamacpp", "ort")
+    pub backend_type: String,
+}
+
+/// Discover all known AI backends and check their availability.
+///
+/// Probes each backend (Ollama, llama.cpp) to determine if it is
+/// currently running and responsive. Returns a list of `BackendInfo`
+/// entries regardless of availability.
+#[cfg(feature = "ai")]
+pub fn discover_backends(_config: &AiConfig) -> Vec<BackendInfo> {
+    let mut backends = Vec::new();
+
+    // Check Ollama
+    let ollama = ollama::OllamaBackend::new();
+    backends.push(BackendInfo {
+        name: "ollama".to_string(),
+        available: ollama.is_available(),
+        backend_type: "ollama".to_string(),
+    });
+
+    // Check LlamaCpp
+    let llamacpp = llamacpp::LlamaCppBackend::new();
+    backends.push(BackendInfo {
+        name: "llamacpp".to_string(),
+        available: llamacpp.is_available(),
+        backend_type: "llamacpp".to_string(),
+    });
+
+    backends
+}
+
+/// Get the best available AI backend, checking each in priority order.
+///
+/// Priority: Ollama > llama.cpp.
+/// Falls back to Ollama (even if unavailable) if no backend responds.
+#[cfg(feature = "ai")]
+pub fn get_best_backend(_config: &AiConfig) -> Box<dyn AiBackend> {
+    let ollama = ollama::OllamaBackend::new();
+    if ollama.is_available() {
+        return Box::new(ollama);
+    }
+
+    let llamacpp = llamacpp::LlamaCppBackend::new();
+    if llamacpp.is_available() {
+        return Box::new(llamacpp);
+    }
+
+    // Fallback: return Ollama even if not available (caller checks is_available)
+    Box::new(ollama::OllamaBackend::new())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -292,6 +352,27 @@ mod tests {
         assert!(config.categorize_model.is_none());
         assert!(config.reasoning_effort.is_none());
         assert_eq!(config.consistency_rounds, None);
+        assert!(config.draft_model.is_none());
+    }
+
+    #[test]
+    fn test_ai_config_draft_model() {
+        let config = AiConfig {
+            draft_model: Some("llama3.2:1b".to_string()),
+            ..Default::default()
+        };
+        let json = serde_json::to_string(&config).unwrap();
+        assert!(json.contains("draft_model"));
+        assert!(json.contains("llama3.2:1b"));
+
+        // None draft_model should be omitted from serialization
+        let config_no_draft = AiConfig::default();
+        let json_no_draft = serde_json::to_string(&config_no_draft).unwrap();
+        assert!(!json_no_draft.contains("draft_model"));
+
+        // Round-trip deserialization
+        let parsed: AiConfig = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed.draft_model, Some("llama3.2:1b".to_string()));
     }
 
     #[test]

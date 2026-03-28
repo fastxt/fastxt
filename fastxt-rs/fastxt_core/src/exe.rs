@@ -356,6 +356,17 @@ fn process(cmd: Cmd, text: &str) -> String {
                 r#"{"error":"cmd ai-backend json error"}"#.to_string()
             }
         }
+        "discover-backends" => do_discover_backends(),
+        "related" => {
+            if let Ok(cmd) = serde_json::from_str::<CmdRelated>(text) {
+                let limit = cmd.limit.unwrap_or(5);
+                let notes = crate::cmd::find_related_notes_full(&conn, cmd.rowid, limit);
+                let response = RelatedResponse { notes, error: None };
+                safe_serialize(&response)
+            } else {
+                r#"{"error":"cmd related json error"}"#.to_string()
+            }
+        }
         _ => r#"{"error": "cmd no match"}"#.to_string(),
     }
 }
@@ -1173,6 +1184,37 @@ fn do_ai_backend(cmd: &CmdAiBackend) -> String {
             available: false,
             error: Some("AI feature not enabled. Build with --features ai".to_string()),
         };
+        safe_serialize(&response)
+    }
+}
+
+/// Handle discover-backends command - list all known backends and their availability.
+fn do_discover_backends() -> String {
+    #[cfg(feature = "ai")]
+    {
+        use crate::DiscoverBackendEntry;
+        use crate::DiscoverBackendsResponse;
+        use crate::ai::{AiConfig, discover_backends};
+
+        let config = AiConfig::default();
+        let backends = discover_backends(&config);
+
+        let response = DiscoverBackendsResponse {
+            backends: backends
+                .into_iter()
+                .map(|b| DiscoverBackendEntry {
+                    name: b.name,
+                    available: b.available,
+                    backend_type: b.backend_type,
+                })
+                .collect(),
+        };
+        safe_serialize(&response)
+    }
+
+    #[cfg(not(feature = "ai"))]
+    {
+        let response = crate::DiscoverBackendsResponse { backends: vec![] };
         safe_serialize(&response)
     }
 }

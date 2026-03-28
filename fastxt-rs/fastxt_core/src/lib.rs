@@ -364,6 +364,21 @@ pub struct AiBackendResponse {
     pub error: Option<String>,
 }
 
+/// Response from discover-backends command.
+#[derive(Serialize, Deserialize, Debug)]
+pub struct DiscoverBackendsResponse {
+    /// List of all known backends with their availability status
+    pub backends: Vec<DiscoverBackendEntry>,
+}
+
+/// A single backend entry in the discovery response.
+#[derive(Serialize, Deserialize, Debug)]
+pub struct DiscoverBackendEntry {
+    pub name: String,
+    pub available: bool,
+    pub backend_type: String,
+}
+
 /// Command to rename a category.
 #[derive(Serialize, Deserialize, Debug)]
 pub struct CmdRenameCategory {

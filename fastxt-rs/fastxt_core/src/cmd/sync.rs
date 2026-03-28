@@ -24,7 +24,7 @@ use tracing::warn;
 /// Fetch a note by its UUID4. Returns a default empty `Note` if not found.
 pub fn get_note_by_uuid4(conn: &Connection, uuid4: &str) -> Note {
     conn.query_row(
-        "select uuid4, txt, tags, created_at, ai_tags, ai_summary, ai_category FROM note where uuid4 = ? ",
+        "select uuid4, txt, tags, created_at, json(ai_tags), ai_summary, ai_category FROM note where uuid4 = ? ",
         [uuid4],
         |row| {
             Ok(Note {

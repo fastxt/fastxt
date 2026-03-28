@@ -20,7 +20,7 @@ use rusqlite::Connection;
 use semver::Version;
 use tracing::{debug, info, warn};
 // version to upgrade to
-const VERSION: &str = "0.3.0";
+const VERSION: &str = "0.4.0";
 use crate::OneString;
 
 fn set_meta_version(conn: &Connection, version: &str) {
@@ -49,6 +49,7 @@ pub fn upgrade(conn: &Connection) -> Result<&str, &str> {
         let v0_1_0 = Version::parse("0.1.0").ok();
         let v0_2_0 = Version::parse("0.2.0").ok();
         let v0_3_0 = Version::parse("0.3.0").ok();
+        let v0_4_0 = Version::parse("0.4.0").ok();
 
         // Migration to 0.1.0
         if current < v0_1_0 {
@@ -70,8 +71,15 @@ pub fn upgrade(conn: &Connection) -> Result<&str, &str> {
             info!("upgraded to 0.3.0 (added sqlite-vec vector search)");
         }
 
+        // Migration to 0.4.0 - Convert ai_tags from TEXT to JSONB
+        if Version::parse(&get_meta_version(conn)).ok() < v0_4_0 {
+            migrate_ai_tags_to_jsonb(conn);
+            set_meta_version(conn, "0.4.0");
+            info!("upgraded to 0.4.0 (converted ai_tags to JSONB)");
+        }
+
         let updated = Version::parse(&get_meta_version(conn)).ok();
-        if updated == v0_3_0 {
+        if updated == v0_4_0 {
             set_meta_version(conn, VERSION);
         }
         info!(version = VERSION, "upgrade complete");
@@ -194,4 +202,22 @@ fn migrate_vec_notes(conn: &Connection) {
     }
 
     info!(migrated, skipped, "vec_notes migration complete");
+}
+
+/// Convert existing TEXT ai_tags to JSONB format for more compact storage.
+///
+/// Uses SQLite's `jsonb()` function (available since SQLite 3.45.0).
+/// Only updates rows where ai_tags is non-null and non-empty.
+fn migrate_ai_tags_to_jsonb(conn: &Connection) {
+    match conn.execute(
+        "UPDATE note SET ai_tags = jsonb(ai_tags) WHERE ai_tags IS NOT NULL AND ai_tags != ''",
+        [],
+    ) {
+        Ok(rows) => {
+            info!(rows, "migrated ai_tags to JSONB format");
+        }
+        Err(e) => {
+            warn!(error = %e, "failed to migrate ai_tags to JSONB (requires SQLite 3.45+)");
+        }
+    }
 }

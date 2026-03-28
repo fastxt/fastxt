@@ -86,7 +86,7 @@ pub fn search(conn: &Connection, query: &str, limit: &u32, offset: &u32) -> Stri
 
     let r: Vec<String> = where_vec(num_words);
     let sql = format!(
-        "SELECT rowid, uuid4, txt, tags, created_at, ai_tags, ai_summary, ai_category
+        "SELECT rowid, uuid4, txt, tags, created_at, json(ai_tags), ai_summary, ai_category
         FROM note where
         {}
         order by created_at desc limit :limit offset :offset",

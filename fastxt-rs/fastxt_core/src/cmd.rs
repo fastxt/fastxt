@@ -125,7 +125,7 @@ pub fn insert(conn: &Connection, note: &Note) {
         // Check if there's an existing note with AI tags
         let existing_ai_tags: Option<String> = conn
             .query_row(
-                "SELECT ai_tags FROM note WHERE uuid4 = ?1 AND ai_tags IS NOT NULL AND ai_tags != ''",
+                "SELECT json(ai_tags) FROM note WHERE uuid4 = ?1 AND ai_tags IS NOT NULL AND ai_tags != ''",
                 rusqlite::params![&note.uuid4],
                 |row| row.get(0),
             )
@@ -238,13 +238,41 @@ pub fn migrate_ai_columns(conn: &Connection) {
     }
 }
 
-/// Update AI tags for a note.
+/// Update AI tags for a note, storing as JSONB for compact binary representation.
+///
+/// Uses SQLite's `jsonb()` function (available since SQLite 3.45) to store
+/// ai_tags in binary JSONB format. This is more compact and faster to query
+/// than plain JSON text. Use `json(ai_tags)` when reading to convert back to text.
 pub fn update_ai_tags(conn: &Connection, rowid: i64, ai_tags: &str) {
     if let Err(e) = conn.execute(
-        "UPDATE note SET ai_tags = ?1 WHERE rowid = ?2",
+        "UPDATE note SET ai_tags = jsonb(?1) WHERE rowid = ?2",
         rusqlite::params![ai_tags, rowid],
     ) {
         warn!(rowid, error = %e, "failed to update ai_tags");
+    }
+}
+
+/// Extract AI tags for a note using `json_each()` for efficient JSONB access.
+///
+/// Returns the tags as a `Vec<String>`, leveraging SQLite's `json_each()` to
+/// iterate over the JSONB array without deserializing the entire blob.
+pub fn json_extract_tags(conn: &Connection, rowid: i64) -> Vec<String> {
+    let mut stmt = match conn.prepare(
+        "SELECT je.value FROM note, json_each(json(note.ai_tags)) AS je WHERE note.rowid = ?1",
+    ) {
+        Ok(s) => s,
+        Err(e) => {
+            warn!(rowid, error = %e, "failed to prepare json_extract_tags");
+            return Vec::new();
+        }
+    };
+
+    match stmt.query_map(rusqlite::params![rowid], |row| row.get::<_, String>(0)) {
+        Ok(rows) => rows.filter_map(std::result::Result::ok).collect(),
+        Err(e) => {
+            warn!(rowid, error = %e, "failed to extract tags via json_each");
+            Vec::new()
+        }
     }
 }
 
@@ -602,7 +630,7 @@ pub fn find_related_notes(conn: &Connection, note_rowid: i64, limit: i64) -> Vec
     //    Fetch extra rows because we need to filter out the source note.
     let fetch_limit = limit + 1;
     let mut stmt = match conn.prepare(
-        "SELECT rowid, distance FROM vec_notes WHERE embedding MATCH ?1 ORDER BY distance LIMIT ?2",
+        "SELECT note_rowid, distance FROM vec_notes WHERE embedding MATCH ?1 ORDER BY distance LIMIT ?2",
     ) {
         Ok(s) => s,
         Err(e) => {
@@ -1299,10 +1327,30 @@ mod tests {
             .rowid;
 
         // Embeddings: n1 and n2 are very similar, n3 is moderately close, n4 is far.
-        store_embedding(&conn, r1, &make_test_embedding(&[1.0, 0.0, 0.0, 0.0]), "test");
-        store_embedding(&conn, r2, &make_test_embedding(&[0.9, 0.1, 0.0, 0.0]), "test");
-        store_embedding(&conn, r3, &make_test_embedding(&[0.5, 0.5, 0.0, 0.0]), "test");
-        store_embedding(&conn, r4, &make_test_embedding(&[0.0, 0.0, 1.0, 0.0]), "test");
+        store_embedding(
+            &conn,
+            r1,
+            &make_test_embedding(&[1.0, 0.0, 0.0, 0.0]),
+            "test",
+        );
+        store_embedding(
+            &conn,
+            r2,
+            &make_test_embedding(&[0.9, 0.1, 0.0, 0.0]),
+            "test",
+        );
+        store_embedding(
+            &conn,
+            r3,
+            &make_test_embedding(&[0.5, 0.5, 0.0, 0.0]),
+            "test",
+        );
+        store_embedding(
+            &conn,
+            r4,
+            &make_test_embedding(&[0.0, 0.0, 1.0, 0.0]),
+            "test",
+        );
 
         let related = find_related_notes(&conn, r1, 3);
         assert_eq!(related.len(), 3, "should return 3 related notes");
@@ -1332,7 +1380,12 @@ mod tests {
         let notes = select::select_imp(&conn, &1, &0);
         let r1 = notes[0].rowid;
 
-        store_embedding(&conn, r1, &make_test_embedding(&[1.0, 0.0, 0.0, 0.0]), "test");
+        store_embedding(
+            &conn,
+            r1,
+            &make_test_embedding(&[1.0, 0.0, 0.0, 0.0]),
+            "test",
+        );
 
         let related = find_related_notes(&conn, r1, 5);
         assert!(
@@ -1377,10 +1430,30 @@ mod tests {
         let r3 = notes.iter().find(|n| n.txt == "far").unwrap().rowid;
         let r4 = notes.iter().find(|n| n.txt == "farther").unwrap().rowid;
 
-        store_embedding(&conn, r1, &make_test_embedding(&[1.0, 0.0, 0.0, 0.0]), "test");
-        store_embedding(&conn, r2, &make_test_embedding(&[0.9, 0.1, 0.0, 0.0]), "test");
-        store_embedding(&conn, r3, &make_test_embedding(&[0.5, 0.5, 0.0, 0.0]), "test");
-        store_embedding(&conn, r4, &make_test_embedding(&[0.0, 0.0, 0.0, 1.0]), "test");
+        store_embedding(
+            &conn,
+            r1,
+            &make_test_embedding(&[1.0, 0.0, 0.0, 0.0]),
+            "test",
+        );
+        store_embedding(
+            &conn,
+            r2,
+            &make_test_embedding(&[0.9, 0.1, 0.0, 0.0]),
+            "test",
+        );
+        store_embedding(
+            &conn,
+            r3,
+            &make_test_embedding(&[0.5, 0.5, 0.0, 0.0]),
+            "test",
+        );
+        store_embedding(
+            &conn,
+            r4,
+            &make_test_embedding(&[0.0, 0.0, 0.0, 1.0]),
+            "test",
+        );
 
         // Request only 1 result.
         let related = find_related_notes(&conn, r1, 1);
@@ -1398,19 +1471,25 @@ mod tests {
         insert(&conn, &n2);
 
         let notes = select::select_imp(&conn, &10, &0);
-        let r1 = notes
-            .iter()
-            .find(|n| n.txt == "source note")
-            .unwrap()
-            .rowid;
+        let r1 = notes.iter().find(|n| n.txt == "source note").unwrap().rowid;
         let r2 = notes
             .iter()
             .find(|n| n.txt == "related note")
             .unwrap()
             .rowid;
 
-        store_embedding(&conn, r1, &make_test_embedding(&[1.0, 0.0, 0.0, 0.0]), "test");
-        store_embedding(&conn, r2, &make_test_embedding(&[0.9, 0.1, 0.0, 0.0]), "test");
+        store_embedding(
+            &conn,
+            r1,
+            &make_test_embedding(&[1.0, 0.0, 0.0, 0.0]),
+            "test",
+        );
+        store_embedding(
+            &conn,
+            r2,
+            &make_test_embedding(&[0.9, 0.1, 0.0, 0.0]),
+            "test",
+        );
 
         let full = find_related_notes_full(&conn, r1, 5);
         assert_eq!(full.len(), 1, "should return 1 related note");
