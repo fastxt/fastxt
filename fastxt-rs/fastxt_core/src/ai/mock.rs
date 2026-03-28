@@ -23,6 +23,8 @@
 //! unit tests and integration tests.
 
 use super::{AiBackend, AiConfig, AiError, AiResult};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 /// A mock AI backend for testing purposes.
 ///
@@ -33,6 +35,12 @@ pub struct MockBackend {
     available: bool,
     /// Tags to return for any input
     default_tags: Vec<String>,
+    /// Call counter for varying output in self-consistency tests.
+    /// Each call to `suggest_tags` increments this counter and
+    /// slightly varies the returned tags.
+    call_counter: Arc<AtomicUsize>,
+    /// When true, vary tags on each call for consistency testing
+    vary_tags: bool,
 }
 
 impl Default for MockBackend {
@@ -40,6 +48,8 @@ impl Default for MockBackend {
         MockBackend {
             available: true,
             default_tags: vec!["mock-tag".to_string()],
+            call_counter: Arc::new(AtomicUsize::new(0)),
+            vary_tags: false,
         }
     }
 }
@@ -55,6 +65,8 @@ impl MockBackend {
         MockBackend {
             available: false,
             default_tags: vec![],
+            call_counter: Arc::new(AtomicUsize::new(0)),
+            vary_tags: false,
         }
     }
 
@@ -63,6 +75,27 @@ impl MockBackend {
         MockBackend {
             available: true,
             default_tags: tags.into_iter().map(|s| s.to_string()).collect(),
+            call_counter: Arc::new(AtomicUsize::new(0)),
+            vary_tags: false,
+        }
+    }
+
+    /// Create a mock backend that varies tags on each call.
+    ///
+    /// Uses the provided base tags and swaps some out on each call.
+    /// Useful for testing self-consistency voting:
+    /// - Call 0: base tags as-is
+    /// - Call 1: replaces last tag with "variant-1"
+    /// - Call 2: replaces second-to-last tag with "variant-2"
+    ///
+    /// Tags that appear in all calls will pass majority voting,
+    /// while variant tags will be filtered out.
+    pub fn with_varying_tags(tags: Vec<&str>) -> Self {
+        MockBackend {
+            available: true,
+            default_tags: tags.into_iter().map(|s| s.to_string()).collect(),
+            call_counter: Arc::new(AtomicUsize::new(0)),
+            vary_tags: true,
         }
     }
 }
@@ -77,17 +110,43 @@ impl AiBackend for MockBackend {
             return Err(AiError::Unavailable);
         }
 
+        let call_num = self.call_counter.fetch_add(1, Ordering::Relaxed);
+
         // Return default tags plus any words that look like keywords (>4 chars, capitalized)
         let mut tags = self.default_tags.clone();
 
-        for word in text.split_whitespace() {
-            let cleaned = word.trim_matches(|c: char| !c.is_alphanumeric());
-            if cleaned.len() > 4 {
-                if let Some(first) = cleaned.chars().next() {
-                    if first.is_uppercase() {
-                        tags.push(cleaned.to_lowercase());
+        // When vary_tags is enabled, swap out some tags based on call number
+        if self.vary_tags && !tags.is_empty() {
+            match call_num % 3 {
+                0 => {
+                    // Call 0: base tags as-is
+                }
+                1 => {
+                    // Call 1: replace last tag with a variant
+                    if let Some(last) = tags.last_mut() {
+                        *last = "variant-1".to_string();
                     }
                 }
+                2 => {
+                    // Call 2: replace second-to-last tag with a variant
+                    let len = tags.len();
+                    if len >= 2 {
+                        tags[len - 2] = "variant-2".to_string();
+                    } else if let Some(last) = tags.last_mut() {
+                        *last = "variant-2".to_string();
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        for word in text.split_whitespace() {
+            let cleaned = word.trim_matches(|c: char| !c.is_alphanumeric());
+            if cleaned.len() > 4
+                && let Some(first) = cleaned.chars().next()
+                && first.is_uppercase()
+            {
+                tags.push(cleaned.to_lowercase());
             }
         }
 

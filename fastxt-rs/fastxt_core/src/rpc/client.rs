@@ -103,8 +103,7 @@ pub fn sync(addr: &str) -> Result<String, String> {
         .parse()
         .map_err(|e| format!("server_addr {addr} invalid: {e}"))?;
 
-    let rt = Runtime::new()
-        .map_err(|e| format!("Failed to create tokio runtime: {e}"))?;
+    let rt = Runtime::new().map_err(|e| format!("Failed to create tokio runtime: {e}"))?;
     let mut errors = Vec::new();
 
     rt.block_on(async {
@@ -157,8 +156,7 @@ pub fn stop_server(addr: &str) -> Result<String, String> {
     let server_addr: SocketAddr = addr
         .parse()
         .map_err(|e| format!("server_addr {addr} invalid: {e}"))?;
-    let rt = Runtime::new()
-        .map_err(|e| format!("Failed to create tokio runtime: {e}"))?;
+    let rt = Runtime::new().map_err(|e| format!("Failed to create tokio runtime: {e}"))?;
     rt.block_on(async {
         let resp = run_stop_server(&server_addr);
         if let Err(e) = resp.await {
@@ -236,7 +234,10 @@ async fn run_sync_embeddings(addr: &SocketAddr) -> RpcResult<()> {
                 .cloned()
                 .collect();
 
-            info!(count = uuid4s_to_receive.len(), "receiving embeddings from server");
+            info!(
+                count = uuid4s_to_receive.len(),
+                "receiving embeddings from server"
+            );
             for uuid4 in &uuid4s_to_receive {
                 if let Some((embedding_bytes, model_id)) = client
                     .receive_embedding(context::current(), uuid4.clone())
@@ -245,7 +246,10 @@ async fn run_sync_embeddings(addr: &SocketAddr) -> RpcResult<()> {
                     store_embedding_by_uuid4(&conn, uuid4, &embedding_bytes, &model_id);
                 }
             }
-            info!(count = uuid4s_to_receive.len(), "received embeddings from server");
+            info!(
+                count = uuid4s_to_receive.len(),
+                "received embeddings from server"
+            );
 
             Ok(())
         }
@@ -268,8 +272,7 @@ pub fn sync_embeddings(addr: &str) -> Result<String, String> {
         .parse()
         .map_err(|e| format!("server_addr {addr} invalid: {e}"))?;
 
-    let rt = Runtime::new()
-        .map_err(|e| format!("Failed to create tokio runtime: {e}"))?;
+    let rt = Runtime::new().map_err(|e| format!("Failed to create tokio runtime: {e}"))?;
     rt.block_on(async {
         if let Err(e) = run_sync_embeddings(&server_addr).await {
             warn!(error = %e, "sync_embeddings error");

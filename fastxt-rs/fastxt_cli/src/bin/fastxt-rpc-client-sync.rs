@@ -26,13 +26,11 @@ fn main() {
         )
         .init();
     let matches = Command::new("fastxt-rpc-client")
-        .arg(
-            Arg::new("addr")
-                .short('a')
-                .long("addr"),
-        )
+        .arg(Arg::new("addr").short('a').long("addr"))
         .get_matches();
-    let addr = matches.get_one::<String>("addr").map_or("127.0.0.1:3456", std::string::String::as_str);
+    let addr = matches
+        .get_one::<String>("addr")
+        .map_or("127.0.0.1:3456", std::string::String::as_str);
     eprintln!("addr: {addr}");
     run(&(r#"{"action":"client-sync", "addr": ""#.to_string() + addr + r#""}"#));
 }

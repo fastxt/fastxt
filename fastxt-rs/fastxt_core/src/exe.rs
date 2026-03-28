@@ -20,17 +20,6 @@
 use tracing::warn;
 use tracing::{debug, info};
 
-use crate::cmd::create;
-use crate::cmd::delete;
-use crate::cmd::insert;
-use crate::cmd::search::{search, search_count};
-use crate::cmd::select::select;
-#[cfg(feature = "ai")]
-use crate::cmd::{
-    select_notes_without_ai_tags, select_notes_without_embeddings, semantic_search,
-    store_embedding, update_ai_category, update_ai_summary, update_ai_tags,
-};
-use crate::upgrade;
 use crate::AiEmbedResponse;
 use crate::AiOrganizeResponse;
 use crate::AiTagsResponse;
@@ -57,6 +46,17 @@ use crate::RenameCategoryResponse;
 use crate::SemanticSearchResponse;
 #[cfg(feature = "ai")]
 use crate::SemanticSearchResult;
+use crate::cmd::create;
+use crate::cmd::delete;
+use crate::cmd::insert;
+use crate::cmd::search::{search, search_count};
+use crate::cmd::select::select;
+#[cfg(feature = "ai")]
+use crate::cmd::{
+    select_notes_without_ai_tags, select_notes_without_embeddings, semantic_search,
+    store_embedding, update_ai_category, update_ai_summary, update_ai_tags,
+};
+use crate::upgrade;
 use chrono;
 use chrono::prelude::Utc;
 use rusqlite::Connection;
@@ -350,7 +350,7 @@ fn do_select(conn: &Connection, limit: u32, offset: u32) -> String {
 fn do_ai_tag(cmd: &CmdAiTag) -> String {
     #[cfg(feature = "ai")]
     {
-        use crate::ai::{get_default_backend, AiConfig};
+        use crate::ai::{AiConfig, get_default_backend, suggest_tags_with_consistency};
 
         let config = AiConfig {
             endpoint: cmd.endpoint.clone(),
@@ -369,7 +369,14 @@ fn do_ai_tag(cmd: &CmdAiTag) -> String {
             return safe_serialize(&response);
         }
 
-        match backend.suggest_tags(&cmd.text, &config) {
+        let rounds = config.consistency_rounds.unwrap_or(1);
+        let result = if rounds > 1 {
+            suggest_tags_with_consistency(backend.as_ref(), &cmd.text, &config, rounds)
+        } else {
+            backend.suggest_tags(&cmd.text, &config)
+        };
+
+        match result {
             Ok(tags) => {
                 let response = AiTagsResponse {
                     tags,
@@ -405,7 +412,7 @@ fn do_ai_tag(cmd: &CmdAiTag) -> String {
 fn do_ai_tag_all(conn: &Connection, cmd: &CmdAiTagAll) -> String {
     #[cfg(feature = "ai")]
     {
-        use crate::ai::{get_default_backend, AiConfig};
+        use crate::ai::{AiConfig, get_default_backend, suggest_tags_with_consistency};
 
         let config = AiConfig {
             endpoint: cmd.endpoint.clone(),
@@ -427,11 +434,18 @@ fn do_ai_tag_all(conn: &Connection, cmd: &CmdAiTagAll) -> String {
             return r#"{"processed":0,"message":"No notes without AI tags"}"#.to_string();
         }
 
+        let rounds = config.consistency_rounds.unwrap_or(1);
         let mut processed = 0;
         let mut errors = 0;
 
         for note in notes {
-            match backend.suggest_tags(&note.txt, &config) {
+            let result = if rounds > 1 {
+                suggest_tags_with_consistency(backend.as_ref(), &note.txt, &config, rounds)
+            } else {
+                backend.suggest_tags(&note.txt, &config)
+            };
+
+            match result {
                 Ok(tags) => {
                     let tags_json = safe_serialize(&tags);
                     update_ai_tags(conn, note.rowid, &tags_json);
@@ -461,7 +475,7 @@ fn do_ai_tag_all(conn: &Connection, cmd: &CmdAiTagAll) -> String {
 fn do_ai_summarize(conn: &Connection, cmd: &CmdAiSummarize) -> String {
     #[cfg(feature = "ai")]
     {
-        use crate::ai::{get_default_backend, AiConfig};
+        use crate::ai::{AiConfig, get_default_backend};
 
         let config = AiConfig {
             endpoint: cmd.endpoint.clone(),
@@ -536,7 +550,7 @@ fn do_ai_summarize(conn: &Connection, cmd: &CmdAiSummarize) -> String {
 fn do_ai_embed(conn: &Connection, cmd: &CmdAiEmbed) -> String {
     #[cfg(feature = "ai")]
     {
-        use crate::ai::{get_default_backend, AiConfig};
+        use crate::ai::{AiConfig, get_default_backend};
 
         let config = AiConfig {
             endpoint: cmd.endpoint.clone(),
@@ -615,7 +629,7 @@ fn do_ai_embed(conn: &Connection, cmd: &CmdAiEmbed) -> String {
 fn do_ai_embed_all(conn: &Connection, cmd: &CmdAiEmbedAll) -> String {
     #[cfg(feature = "ai")]
     {
-        use crate::ai::{get_default_backend, AiConfig};
+        use crate::ai::{AiConfig, get_default_backend};
 
         let config = AiConfig {
             endpoint: cmd.endpoint.clone(),
@@ -674,7 +688,7 @@ fn do_ai_embed_all(conn: &Connection, cmd: &CmdAiEmbedAll) -> String {
 fn do_semantic_search(conn: &Connection, cmd: &CmdSemanticSearch) -> String {
     #[cfg(feature = "ai")]
     {
-        use crate::ai::{get_default_backend, AiConfig};
+        use crate::ai::{AiConfig, get_default_backend};
 
         let config = AiConfig {
             endpoint: cmd.endpoint.clone(),
@@ -745,7 +759,7 @@ fn do_semantic_search(conn: &Connection, cmd: &CmdSemanticSearch) -> String {
 fn do_ai_reprocess(conn: &Connection, cmd: &CmdAiReprocess) -> String {
     #[cfg(feature = "ai")]
     {
-        use crate::ai::{get_default_backend, AiConfig};
+        use crate::ai::{AiConfig, get_default_backend};
 
         let config = AiConfig::default();
         let backend = get_default_backend();
@@ -839,7 +853,7 @@ fn do_ai_reprocess(conn: &Connection, cmd: &CmdAiReprocess) -> String {
 fn do_ai_organize(conn: &Connection, cmd: &CmdAiOrganize) -> String {
     #[cfg(feature = "ai")]
     {
-        use crate::ai::{get_default_backend, AiConfig};
+        use crate::ai::{AiConfig, get_default_backend};
         use std::collections::HashMap;
 
         let config = AiConfig {

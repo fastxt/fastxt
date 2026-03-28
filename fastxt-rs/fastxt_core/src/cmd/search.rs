@@ -19,8 +19,8 @@ use super::make_tags;
 use super::select::{select, select_count};
 use crate::Note;
 use regex::Regex;
-use rusqlite::types::ToSql;
 use rusqlite::Connection;
+use rusqlite::types::ToSql;
 use tracing::{debug, warn};
 
 /// Count notes matching `query` (space-separated keywords, all must match).

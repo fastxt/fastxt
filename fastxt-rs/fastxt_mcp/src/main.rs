@@ -17,8 +17,8 @@
 */
 
 use rmcp::{
-    handler::server::router::tool::ToolRouter, handler::server::wrapper::Parameters, model::*,
-    schemars, tool, tool_handler, tool_router, ErrorData as McpError, ServerHandler, ServiceExt,
+    ErrorData as McpError, ServerHandler, ServiceExt, handler::server::router::tool::ToolRouter,
+    handler::server::wrapper::Parameters, model::*, schemars, tool, tool_handler, tool_router,
 };
 use schemars::JsonSchema;
 use serde::Deserialize;

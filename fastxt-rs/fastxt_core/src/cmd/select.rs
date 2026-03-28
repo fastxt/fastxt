@@ -16,8 +16,8 @@
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
 use crate::Note;
-use rusqlite::types::ToSql;
 use rusqlite::Connection;
+use rusqlite::types::ToSql;
 use tracing::warn;
 
 /// Return the total number of notes in the database.

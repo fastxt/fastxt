@@ -651,8 +651,10 @@ fn perform_search(data: &mut AppState) {
                     let mut display_parts = Vec::new();
                     for r in results {
                         if let Some(note) = r.get("note") {
-                            let similarity =
-                                r.get("similarity").and_then(serde_json::Value::as_f64).unwrap_or(0.0);
+                            let similarity = r
+                                .get("similarity")
+                                .and_then(serde_json::Value::as_f64)
+                                .unwrap_or(0.0);
 
                             let txt: String = note
                                 .get("txt")
@@ -843,8 +845,14 @@ fn batch_tag_all(data: &mut AppState) {
     let result = fastxt_core::exe::run(&cmd.to_string());
 
     if let Ok(response) = serde_json::from_str::<serde_json::Value>(&result) {
-        if let Some(processed) = response.get("processed").and_then(serde_json::Value::as_u64) {
-            let errors = response.get("errors").and_then(serde_json::Value::as_u64).unwrap_or(0);
+        if let Some(processed) = response
+            .get("processed")
+            .and_then(serde_json::Value::as_u64)
+        {
+            let errors = response
+                .get("errors")
+                .and_then(serde_json::Value::as_u64)
+                .unwrap_or(0);
             data.ai_status = format!("Tagged {processed} notes ({errors} errors)");
         } else if let Some(error) = response.get("error").and_then(|e| e.as_str()) {
             data.ai_status = format!("Error: {error}");
@@ -868,8 +876,14 @@ fn batch_embed_all(data: &mut AppState) {
     let result = fastxt_core::exe::run(&cmd.to_string());
 
     if let Ok(response) = serde_json::from_str::<serde_json::Value>(&result) {
-        if let Some(processed) = response.get("processed").and_then(serde_json::Value::as_u64) {
-            let errors = response.get("errors").and_then(serde_json::Value::as_u64).unwrap_or(0);
+        if let Some(processed) = response
+            .get("processed")
+            .and_then(serde_json::Value::as_u64)
+        {
+            let errors = response
+                .get("errors")
+                .and_then(serde_json::Value::as_u64)
+                .unwrap_or(0);
             data.ai_status = format!("Embedded {processed} notes ({errors} errors)");
         } else if let Some(error) = response.get("error").and_then(|e| e.as_str()) {
             data.ai_status = format!("Error: {error}");
@@ -893,8 +907,14 @@ fn organize_notes(data: &mut AppState) {
     let result = fastxt_core::exe::run(&cmd.to_string());
 
     if let Ok(response) = serde_json::from_str::<serde_json::Value>(&result) {
-        if let Some(processed) = response.get("processed").and_then(serde_json::Value::as_u64) {
-            let errors = response.get("errors").and_then(serde_json::Value::as_u64).unwrap_or(0);
+        if let Some(processed) = response
+            .get("processed")
+            .and_then(serde_json::Value::as_u64)
+        {
+            let errors = response
+                .get("errors")
+                .and_then(serde_json::Value::as_u64)
+                .unwrap_or(0);
             let categories = response
                 .get("categories")
                 .and_then(|c| c.as_object())
@@ -905,9 +925,7 @@ fn organize_notes(data: &mut AppState) {
                         .join("\n")
                 })
                 .unwrap_or_default();
-            data.ai_status = format!(
-                "Organized {processed} notes ({errors} errors)\n{categories}"
-            );
+            data.ai_status = format!("Organized {processed} notes ({errors} errors)\n{categories}");
         } else if let Some(error) = response.get("error").and_then(|e| e.as_str()) {
             data.ai_status = format!("Error: {error}");
         }

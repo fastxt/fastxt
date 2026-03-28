@@ -3,7 +3,7 @@ name = "fastxt_cli"
 version = "0.1.0"
 authors = ["Yi Wang"]
 license = "AGPL-3.0"
-edition = "2021"
+edition = "2024"
 
 [dependencies.fastxt_core]
 path = "../fastxt_core"

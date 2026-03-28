@@ -19,6 +19,7 @@
 use tracing::{debug, info, warn};
 
 use super::Fastxt;
+use crate::Note;
 use crate::cmd::insert;
 use crate::cmd::sync::{diff_uuid4_from_server, diff_uuid4_to_server, get_note_by_uuid4};
 use crate::cmd::{
@@ -27,7 +28,6 @@ use crate::cmd::{
 };
 use crate::exe::{ensure_db_initialized, get_sqlite_connection};
 use crate::upgrade::get_meta_version;
-use crate::Note;
 use futures::future::{AbortHandle, Abortable, Aborted};
 use futures::prelude::*;
 use std::{io, net::SocketAddr};
@@ -98,11 +98,7 @@ impl Fastxt for FastxtServer {
         get_embedding_model_id(&conn)
     }
 
-    async fn get_embedding_uuid4s(
-        self,
-        _: context::Context,
-        model_id: String,
-    ) -> Vec<String> {
+    async fn get_embedding_uuid4s(self, _: context::Context, model_id: String) -> Vec<String> {
         let conn = get_sqlite_connection();
         ensure_db_initialized(&conn);
         get_embedding_uuid4s_by_model(&conn, &model_id)
@@ -154,11 +150,7 @@ async fn start_server(addr: &SocketAddr) -> io::Result<()> {
                     client_addr,
                     abort_handle,
                 };
-                tokio::spawn(
-                    channel
-                        .execute(server.serve())
-                        .for_each(|_| async {}),
-                );
+                tokio::spawn(channel.execute(server.serve()).for_each(|_| async {}));
             }
         });
 
