@@ -315,6 +315,55 @@ pub struct AiOrganizeResponse {
     pub error: Option<String>,
 }
 
+/// Command to simplify text to plain, accessible language.
+#[derive(Serialize, Deserialize, Debug)]
+pub struct CmdAiSimplify {
+    pub text: String,
+    pub endpoint: Option<String>,
+    pub model: Option<String>,
+    pub backend: Option<String>,
+}
+
+/// Response from ai-simplify command.
+#[derive(Serialize, Deserialize, Debug)]
+pub struct AiSimplifyResponse {
+    pub simplified: Option<String>,
+    pub available: bool,
+    pub error: Option<String>,
+}
+
+/// Command to extract key points from text.
+#[derive(Serialize, Deserialize, Debug)]
+pub struct CmdAiKeyPoints {
+    pub text: String,
+    pub endpoint: Option<String>,
+    pub model: Option<String>,
+    pub backend: Option<String>,
+}
+
+/// Response from ai-key-points command.
+#[derive(Serialize, Deserialize, Debug)]
+pub struct AiKeyPointsResponse {
+    pub key_points: Vec<String>,
+    pub available: bool,
+    pub error: Option<String>,
+}
+
+/// Command to check or select an AI backend.
+#[derive(Serialize, Deserialize, Debug)]
+pub struct CmdAiBackend {
+    pub backend: String,
+    pub endpoint: Option<String>,
+}
+
+/// Response from ai-backend command.
+#[derive(Serialize, Deserialize, Debug)]
+pub struct AiBackendResponse {
+    pub backend: String,
+    pub available: bool,
+    pub error: Option<String>,
+}
+
 /// Command to rename a category.
 #[derive(Serialize, Deserialize, Debug)]
 pub struct CmdRenameCategory {

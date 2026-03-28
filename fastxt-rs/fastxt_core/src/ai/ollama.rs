@@ -32,7 +32,7 @@ use std::time::Duration;
 
 /// Truncate a string to at most `max_chars` bytes, ensuring the cut
 /// falls on a valid UTF-8 character boundary to prevent panics.
-fn truncate_str(s: &str, max_chars: usize) -> &str {
+pub fn truncate_str(s: &str, max_chars: usize) -> &str {
     if s.len() <= max_chars {
         return s;
     }
@@ -478,8 +478,55 @@ Categories:"#,
         }
     }
 
+    fn simplify(&self, text: &str, config: &AiConfig) -> AiResult<String> {
+        let truncated = truncate_str(text, 12000);
+        let prompt = format!(
+            "Rewrite the following text in plain, simple language. Use short sentences and common words. Keep the same meaning but make it easier to understand:\n\n{}",
+            truncated
+        );
+        self.generate(
+            &prompt,
+            config,
+            Some(&config.model_for_task("simplify")),
+            None,
+        )
+    }
+
+    fn key_points(&self, text: &str, config: &AiConfig) -> AiResult<Vec<String>> {
+        let truncated = truncate_str(text, 12000);
+        let prompt = format!(
+            "Extract the key points from the following text. Return each key point on its own line, prefixed with a dash (-):\n\n{}",
+            truncated
+        );
+        let response = self.generate(
+            &prompt,
+            config,
+            Some(&config.model_for_task("key_points")),
+            None,
+        )?;
+        Ok(Self::parse_bullet_points(&response))
+    }
+
     fn backend_name(&self) -> &str {
         "ollama"
+    }
+}
+
+impl OllamaBackend {
+    /// Parse bullet points from AI response.
+    fn parse_bullet_points(response: &str) -> Vec<String> {
+        response
+            .lines()
+            .map(|line| {
+                line.trim()
+                    .trim_start_matches(['-', '*', '\u{2022}'])
+                    .trim_start_matches(|c: char| c.is_numeric())
+                    .trim_start_matches(['.', ')', ':'])
+                    .trim()
+                    .to_string()
+            })
+            .filter(|s| !s.is_empty())
+            .collect()
     }
 }
 
@@ -601,6 +648,34 @@ mod tests {
         assert_eq!(truncate_str("hello world", 5), "hello");
         assert_eq!(truncate_str("hello", 10), "hello");
         assert_eq!(truncate_str("", 5), "");
+    }
+
+    #[test]
+    fn test_parse_bullet_points_dashes() {
+        let response = "- First point\n- Second point\n- Third point";
+        let points = OllamaBackend::parse_bullet_points(response);
+        assert_eq!(points, vec!["First point", "Second point", "Third point"]);
+    }
+
+    #[test]
+    fn test_parse_bullet_points_numbered() {
+        let response = "1. First\n2. Second\n3. Third";
+        let points = OllamaBackend::parse_bullet_points(response);
+        assert_eq!(points, vec!["First", "Second", "Third"]);
+    }
+
+    #[test]
+    fn test_parse_bullet_points_mixed() {
+        let response = "* Point one\n- Point two\n3) Point three";
+        let points = OllamaBackend::parse_bullet_points(response);
+        assert_eq!(points, vec!["Point one", "Point two", "Point three"]);
+    }
+
+    #[test]
+    fn test_parse_bullet_points_empty_lines() {
+        let response = "- First\n\n- Second\n  \n- Third";
+        let points = OllamaBackend::parse_bullet_points(response);
+        assert_eq!(points, vec!["First", "Second", "Third"]);
     }
 
     #[test]

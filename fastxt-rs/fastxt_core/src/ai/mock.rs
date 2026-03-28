@@ -213,6 +213,25 @@ impl AiBackend for MockBackend {
             .collect())
     }
 
+    fn simplify(&self, text: &str, _config: &AiConfig) -> AiResult<String> {
+        if !self.available {
+            return Err(AiError::Unavailable);
+        }
+        Ok(text.to_lowercase())
+    }
+
+    fn key_points(&self, text: &str, _config: &AiConfig) -> AiResult<Vec<String>> {
+        if !self.available {
+            return Err(AiError::Unavailable);
+        }
+        Ok(text
+            .split(['.', '!', '?'])
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .take(5)
+            .collect())
+    }
+
     fn backend_name(&self) -> &str {
         "mock"
     }
@@ -305,5 +324,39 @@ mod tests {
             backend.categorize(&["test"], &config),
             Err(AiError::Unavailable)
         ));
+        assert!(matches!(
+            backend.simplify("test", &config),
+            Err(AiError::Unavailable)
+        ));
+        assert!(matches!(
+            backend.key_points("test", &config),
+            Err(AiError::Unavailable)
+        ));
+    }
+
+    #[test]
+    fn test_mock_simplify() {
+        let backend = MockBackend::new();
+        let config = AiConfig::default();
+        let result = backend.simplify("Hello World", &config).unwrap();
+        assert_eq!(result, "hello world");
+    }
+
+    #[test]
+    fn test_mock_key_points() {
+        let backend = MockBackend::new();
+        let config = AiConfig::default();
+        let points = backend
+            .key_points("First point. Second point. Third point.", &config)
+            .unwrap();
+        assert_eq!(points, vec!["First point", "Second point", "Third point"]);
+    }
+
+    #[test]
+    fn test_mock_key_points_limits_to_five() {
+        let backend = MockBackend::new();
+        let config = AiConfig::default();
+        let points = backend.key_points("A. B. C. D. E. F. G.", &config).unwrap();
+        assert_eq!(points.len(), 5);
     }
 }

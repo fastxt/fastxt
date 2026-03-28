@@ -24,10 +24,13 @@ use crate::AiEmbedResponse;
 use crate::AiOrganizeResponse;
 use crate::AiTagsResponse;
 use crate::Cmd;
+use crate::CmdAiBackend;
 use crate::CmdAiEmbed;
 use crate::CmdAiEmbedAll;
+use crate::CmdAiKeyPoints;
 use crate::CmdAiOrganize;
 use crate::CmdAiReprocess;
+use crate::CmdAiSimplify;
 use crate::CmdAiSummarize;
 use crate::CmdAiTag;
 use crate::CmdAiTagAll;
@@ -328,6 +331,27 @@ fn process(cmd: Cmd, text: &str) -> String {
                 }
             } else {
                 r#"{"error":"cmd sync-embeddings json error"}"#.to_string()
+            }
+        }
+        "ai-simplify" => {
+            if let Ok(cmd) = serde_json::from_str::<CmdAiSimplify>(text) {
+                do_ai_simplify(&cmd)
+            } else {
+                r#"{"error":"cmd ai-simplify json error"}"#.to_string()
+            }
+        }
+        "ai-key-points" => {
+            if let Ok(cmd) = serde_json::from_str::<CmdAiKeyPoints>(text) {
+                do_ai_key_points(&cmd)
+            } else {
+                r#"{"error":"cmd ai-key-points json error"}"#.to_string()
+            }
+        }
+        "ai-backend" => {
+            if let Ok(cmd) = serde_json::from_str::<CmdAiBackend>(text) {
+                do_ai_backend(&cmd)
+            } else {
+                r#"{"error":"cmd ai-backend json error"}"#.to_string()
             }
         }
         _ => r#"{"error": "cmd no match"}"#.to_string(),
@@ -975,6 +999,174 @@ fn do_ai_organize(conn: &Connection, cmd: &CmdAiOrganize) -> String {
             processed: 0,
             errors: 0,
             categories: std::collections::HashMap::new(),
+            available: false,
+            error: Some("AI feature not enabled. Build with --features ai".to_string()),
+        };
+        safe_serialize(&response)
+    }
+}
+
+/// Get the appropriate backend by name.
+#[cfg(feature = "ai")]
+fn get_backend_by_name(name: &str) -> Box<dyn crate::ai::AiBackend> {
+    match name {
+        "llamacpp" => Box::new(crate::ai::llamacpp::LlamaCppBackend::new()),
+        _ => crate::ai::get_default_backend(),
+    }
+}
+
+/// Handle ai-simplify command - simplify text to plain, accessible language.
+#[allow(unused_variables)]
+fn do_ai_simplify(cmd: &CmdAiSimplify) -> String {
+    #[cfg(feature = "ai")]
+    {
+        use crate::AiSimplifyResponse;
+        use crate::ai::AiConfig;
+
+        let config = AiConfig {
+            endpoint: cmd.endpoint.clone(),
+            model: cmd.model.clone(),
+            ..Default::default()
+        };
+
+        let backend = match &cmd.backend {
+            Some(name) => get_backend_by_name(name),
+            None => crate::ai::get_default_backend(),
+        };
+
+        if !backend.is_available() {
+            let response = AiSimplifyResponse {
+                simplified: None,
+                available: false,
+                error: Some("AI backend not available".to_string()),
+            };
+            return safe_serialize(&response);
+        }
+
+        match backend.simplify(&cmd.text, &config) {
+            Ok(simplified) => {
+                let response = AiSimplifyResponse {
+                    simplified: Some(simplified),
+                    available: true,
+                    error: None,
+                };
+                safe_serialize(&response)
+            }
+            Err(e) => {
+                warn!(error = %e, "failed to simplify text");
+                let response = AiSimplifyResponse {
+                    simplified: None,
+                    available: true,
+                    error: Some(e.to_string()),
+                };
+                safe_serialize(&response)
+            }
+        }
+    }
+
+    #[cfg(not(feature = "ai"))]
+    {
+        let response = crate::AiSimplifyResponse {
+            simplified: None,
+            available: false,
+            error: Some("AI feature not enabled. Build with --features ai".to_string()),
+        };
+        safe_serialize(&response)
+    }
+}
+
+/// Handle ai-key-points command - extract key points from text.
+#[allow(unused_variables)]
+fn do_ai_key_points(cmd: &CmdAiKeyPoints) -> String {
+    #[cfg(feature = "ai")]
+    {
+        use crate::AiKeyPointsResponse;
+        use crate::ai::AiConfig;
+
+        let config = AiConfig {
+            endpoint: cmd.endpoint.clone(),
+            model: cmd.model.clone(),
+            ..Default::default()
+        };
+
+        let backend = match &cmd.backend {
+            Some(name) => get_backend_by_name(name),
+            None => crate::ai::get_default_backend(),
+        };
+
+        if !backend.is_available() {
+            let response = AiKeyPointsResponse {
+                key_points: vec![],
+                available: false,
+                error: Some("AI backend not available".to_string()),
+            };
+            return safe_serialize(&response);
+        }
+
+        match backend.key_points(&cmd.text, &config) {
+            Ok(key_points) => {
+                let response = AiKeyPointsResponse {
+                    key_points,
+                    available: true,
+                    error: None,
+                };
+                safe_serialize(&response)
+            }
+            Err(e) => {
+                warn!(error = %e, "failed to extract key points");
+                let response = AiKeyPointsResponse {
+                    key_points: vec![],
+                    available: true,
+                    error: Some(e.to_string()),
+                };
+                safe_serialize(&response)
+            }
+        }
+    }
+
+    #[cfg(not(feature = "ai"))]
+    {
+        let response = crate::AiKeyPointsResponse {
+            key_points: vec![],
+            available: false,
+            error: Some("AI feature not enabled. Build with --features ai".to_string()),
+        };
+        safe_serialize(&response)
+    }
+}
+
+/// Handle ai-backend command - check backend availability.
+#[allow(unused_variables)]
+fn do_ai_backend(cmd: &CmdAiBackend) -> String {
+    #[cfg(feature = "ai")]
+    {
+        use crate::AiBackendResponse;
+        use crate::ai::AiConfig;
+
+        let config = AiConfig {
+            endpoint: cmd.endpoint.clone(),
+            ..Default::default()
+        };
+
+        let backend = get_backend_by_name(&cmd.backend);
+        let available = backend.is_available();
+
+        let response = AiBackendResponse {
+            backend: cmd.backend.clone(),
+            available,
+            error: if available {
+                None
+            } else {
+                Some(format!("Backend '{}' is not available", cmd.backend))
+            },
+        };
+        safe_serialize(&response)
+    }
+
+    #[cfg(not(feature = "ai"))]
+    {
+        let response = crate::AiBackendResponse {
+            backend: cmd.backend.clone(),
             available: false,
             error: Some("AI feature not enabled. Build with --features ai".to_string()),
         };

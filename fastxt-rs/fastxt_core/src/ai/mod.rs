@@ -25,6 +25,8 @@
 use serde::{Deserialize, Serialize};
 
 #[cfg(feature = "ai")]
+pub mod llamacpp;
+#[cfg(feature = "ai")]
 pub mod mock;
 #[cfg(feature = "ai")]
 pub mod ollama;
@@ -178,6 +180,12 @@ pub trait AiBackend: Send + Sync {
     ///
     /// Returns a category label for each input text.
     fn categorize(&self, texts: &[&str], config: &AiConfig) -> AiResult<Vec<String>>;
+
+    /// Simplify text to plain, accessible language.
+    fn simplify(&self, text: &str, config: &AiConfig) -> AiResult<String>;
+
+    /// Extract key points from text.
+    fn key_points(&self, text: &str, config: &AiConfig) -> AiResult<Vec<String>>;
 
     /// Get the name/identifier of this backend.
     fn backend_name(&self) -> &str;
