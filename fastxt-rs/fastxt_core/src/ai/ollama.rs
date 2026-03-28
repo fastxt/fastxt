@@ -53,6 +53,10 @@ struct GenerateRequest {
     stream: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     options: Option<GenerateOptions>,
+    /// JSON schema for structured output. When set, Ollama constrains the
+    /// response to match this schema instead of returning free text.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    format: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Serialize)]
@@ -61,6 +65,21 @@ struct GenerateOptions {
     temperature: Option<f32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     num_predict: Option<i32>,
+    /// Reasoning effort level for models that support it ("low", "medium", "high").
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reasoning_effort: Option<String>,
+}
+
+/// Structured response for tag suggestions.
+#[derive(Debug, Deserialize)]
+struct TagsResponse {
+    tags: Vec<String>,
+}
+
+/// Structured response for categorization.
+#[derive(Debug, Deserialize)]
+struct CategoriesResponse {
+    categories: Vec<String>,
 }
 
 /// Ollama API response for generating text.
@@ -149,18 +168,34 @@ impl OllamaBackend {
     }
 
     /// Generate text completion from Ollama.
-    fn generate(&self, prompt: &str, config: &AiConfig) -> AiResult<String> {
+    ///
+    /// `model_override` allows per-task model selection.
+    /// `format` provides a JSON schema for structured output.
+    fn generate(
+        &self,
+        prompt: &str,
+        config: &AiConfig,
+        model_override: Option<&str>,
+        format: Option<serde_json::Value>,
+    ) -> AiResult<String> {
         let base_url = Self::get_base_url(config);
         let url = format!("{}/api/generate", base_url);
 
+        let model = match model_override {
+            Some(m) => m.to_string(),
+            None => Self::get_model(config),
+        };
+
         let request = GenerateRequest {
-            model: Self::get_model(config),
+            model,
             prompt: prompt.to_string(),
             stream: Some(false),
             options: Some(GenerateOptions {
                 temperature: config.temperature,
                 num_predict: config.max_tokens.map(|t| t as i32),
+                reasoning_effort: config.reasoning_effort.clone(),
             }),
+            format,
         };
 
         let response = self
@@ -189,6 +224,34 @@ impl OllamaBackend {
             .map_err(|e| AiError::InvalidResponse(e.to_string()))?;
 
         Ok(result.response.trim().to_string())
+    }
+
+    /// Build the JSON schema for structured tag output.
+    fn tags_schema() -> serde_json::Value {
+        serde_json::json!({
+            "type": "object",
+            "properties": {
+                "tags": {
+                    "type": "array",
+                    "items": { "type": "string" }
+                }
+            },
+            "required": ["tags"]
+        })
+    }
+
+    /// Build the JSON schema for structured categorization output.
+    fn categories_schema() -> serde_json::Value {
+        serde_json::json!({
+            "type": "object",
+            "properties": {
+                "categories": {
+                    "type": "array",
+                    "items": { "type": "string" }
+                }
+            },
+            "required": ["categories"]
+        })
     }
 
     /// Parse tags from AI response.
@@ -233,8 +296,27 @@ impl AiBackend for OllamaBackend {
     fn suggest_tags(&self, text: &str, config: &AiConfig) -> AiResult<Vec<String>> {
         // Truncate text if too long (rough token estimate: ~4 chars per token)
         let truncated = truncate_str(text, 8000);
+        let model = config.model_for_task("tagging");
 
         let prompt = format!(
+            r#"Analyze the following text and suggest 3-7 relevant short lowercase tags (1-2 words each).
+
+Text:
+{}"#,
+            truncated
+        );
+
+        // Try structured output first
+        let response = self.generate(&prompt, config, Some(&model), Some(Self::tags_schema()))?;
+
+        if let Ok(parsed) = serde_json::from_str::<TagsResponse>(&response) {
+            if !parsed.tags.is_empty() {
+                return Ok(parsed.tags);
+            }
+        }
+
+        // Fallback: try without structured output for older Ollama versions
+        let fallback_prompt = format!(
             r#"Analyze the following text and suggest relevant tags.
 Return ONLY a JSON array of 3-7 short lowercase tags (1-2 words each).
 Do not include any explanation or additional text.
@@ -246,13 +328,14 @@ Tags:"#,
             truncated
         );
 
-        let response = self.generate(&prompt, config)?;
-        Ok(Self::parse_tags(&response))
+        let fallback_response = self.generate(&fallback_prompt, config, Some(&model), None)?;
+        Ok(Self::parse_tags(&fallback_response))
     }
 
     fn summarize(&self, text: &str, config: &AiConfig) -> AiResult<String> {
         // Truncate text if too long
         let truncated = truncate_str(text, 12000);
+        let model = config.model_for_task("summarize");
 
         let prompt = format!(
             r#"Summarize the following text in 1-2 sentences.
@@ -265,7 +348,7 @@ Summary:"#,
             truncated
         );
 
-        self.generate(&prompt, config)
+        self.generate(&prompt, config, Some(&model), None)
     }
 
     fn embed(&self, text: &str, config: &AiConfig) -> AiResult<Vec<f32>> {
@@ -276,7 +359,7 @@ Summary:"#,
         let truncated = truncate_str(text, 8000);
 
         let request = EmbeddingRequest {
-            model: Self::get_model(config),
+            model: config.model_for_task("embedding"),
             prompt: truncated.to_string(),
         };
 
@@ -313,6 +396,8 @@ Summary:"#,
             return Ok(vec![]);
         }
 
+        let model = config.model_for_task("categorize");
+
         // Build a prompt that asks for categories
         let text_list: String = texts
             .iter()
@@ -325,6 +410,30 @@ Summary:"#,
 
         let prompt = format!(
             r#"Categorize each text into one of these categories: work, personal, reference, idea, task, other.
+Return one category per text in the categories array.
+
+Texts:
+{}"#,
+            text_list
+        );
+
+        // Try structured output first
+        let response = self.generate(
+            &prompt,
+            config,
+            Some(&model),
+            Some(Self::categories_schema()),
+        )?;
+
+        if let Ok(parsed) = serde_json::from_str::<CategoriesResponse>(&response) {
+            if parsed.categories.len() == texts.len() {
+                return Ok(parsed.categories);
+            }
+        }
+
+        // Fallback: try without structured output for older Ollama versions
+        let fallback_prompt = format!(
+            r#"Categorize each text into one of these categories: work, personal, reference, idea, task, other.
 Return ONLY a JSON array of category strings, one for each text.
 
 Texts:
@@ -334,17 +443,17 @@ Categories:"#,
             text_list
         );
 
-        let response = self.generate(&prompt, config)?;
+        let fallback_response = self.generate(&fallback_prompt, config, Some(&model), None)?;
 
         // Parse categories from response
-        if let Ok(categories) = serde_json::from_str::<Vec<String>>(&response) {
+        if let Ok(categories) = serde_json::from_str::<Vec<String>>(&fallback_response) {
             if categories.len() == texts.len() {
                 return Ok(categories);
             }
         }
 
         // Fallback: try to extract categories line by line
-        let categories: Vec<String> = response
+        let categories: Vec<String> = fallback_response
             .lines()
             .filter_map(|line| {
                 let trimmed = line.trim();
@@ -410,5 +519,96 @@ mod tests {
     fn test_backend_creation() {
         let backend = OllamaBackend::new();
         assert_eq!(backend.backend_name(), "ollama");
+    }
+
+    #[test]
+    fn test_tags_schema_structure() {
+        let schema = OllamaBackend::tags_schema();
+        assert_eq!(schema["type"], "object");
+        assert_eq!(schema["properties"]["tags"]["type"], "array");
+        assert_eq!(schema["properties"]["tags"]["items"]["type"], "string");
+        let required = schema["required"].as_array().unwrap();
+        assert_eq!(required.len(), 1);
+        assert_eq!(required[0], "tags");
+    }
+
+    #[test]
+    fn test_categories_schema_structure() {
+        let schema = OllamaBackend::categories_schema();
+        assert_eq!(schema["type"], "object");
+        assert_eq!(schema["properties"]["categories"]["type"], "array");
+        assert_eq!(
+            schema["properties"]["categories"]["items"]["type"],
+            "string"
+        );
+        let required = schema["required"].as_array().unwrap();
+        assert_eq!(required.len(), 1);
+        assert_eq!(required[0], "categories");
+    }
+
+    #[test]
+    fn test_structured_tags_response_parsing() {
+        let json = r#"{"tags": ["rust", "programming", "web"]}"#;
+        let parsed: TagsResponse = serde_json::from_str(json).unwrap();
+        assert_eq!(parsed.tags, vec!["rust", "programming", "web"]);
+    }
+
+    #[test]
+    fn test_structured_categories_response_parsing() {
+        let json = r#"{"categories": ["work", "personal", "other"]}"#;
+        let parsed: CategoriesResponse = serde_json::from_str(json).unwrap();
+        assert_eq!(parsed.categories, vec!["work", "personal", "other"]);
+    }
+
+    #[test]
+    fn test_generate_request_serialization_with_format() {
+        let request = GenerateRequest {
+            model: "llama3.2".to_string(),
+            prompt: "test".to_string(),
+            stream: Some(false),
+            options: Some(GenerateOptions {
+                temperature: Some(0.3),
+                num_predict: Some(256),
+                reasoning_effort: Some("medium".to_string()),
+            }),
+            format: Some(OllamaBackend::tags_schema()),
+        };
+        let json = serde_json::to_value(&request).unwrap();
+        assert!(json["format"].is_object());
+        assert_eq!(json["options"]["reasoning_effort"], "medium");
+    }
+
+    #[test]
+    fn test_generate_request_serialization_without_format() {
+        let request = GenerateRequest {
+            model: "llama3.2".to_string(),
+            prompt: "test".to_string(),
+            stream: Some(false),
+            options: Some(GenerateOptions {
+                temperature: Some(0.3),
+                num_predict: Some(256),
+                reasoning_effort: None,
+            }),
+            format: None,
+        };
+        let json = serde_json::to_value(&request).unwrap();
+        assert!(json.get("format").is_none());
+        assert!(json["options"].get("reasoning_effort").is_none());
+    }
+
+    #[test]
+    fn test_truncate_str_ascii() {
+        assert_eq!(truncate_str("hello world", 5), "hello");
+        assert_eq!(truncate_str("hello", 10), "hello");
+        assert_eq!(truncate_str("", 5), "");
+    }
+
+    #[test]
+    fn test_truncate_str_multibyte() {
+        // Each CJK character is 3 bytes in UTF-8
+        let text = "\u{4f60}\u{597d}\u{4e16}\u{754c}"; // 12 bytes total
+        let result = truncate_str(text, 7);
+        // Should cut at char boundary: 6 bytes = 2 chars
+        assert_eq!(result, "\u{4f60}\u{597d}");
     }
 }

@@ -78,6 +78,38 @@ pub struct AiConfig {
     pub temperature: Option<f32>,
     /// Request timeout in seconds
     pub timeout_secs: Option<u64>,
+    /// Per-task model override for tagging
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tagging_model: Option<String>,
+    /// Per-task model override for summarization
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub summarize_model: Option<String>,
+    /// Per-task model override for embeddings
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub embedding_model: Option<String>,
+    /// Per-task model override for categorization
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub categorize_model: Option<String>,
+    /// Reasoning effort level for models that support it ("low", "medium", "high")
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reasoning_effort: Option<String>,
+}
+
+impl AiConfig {
+    /// Get the model name for a specific task, falling back to the general model.
+    pub fn model_for_task(&self, task: &str) -> String {
+        let task_model = match task {
+            "tagging" => self.tagging_model.as_ref(),
+            "summarize" => self.summarize_model.as_ref(),
+            "embedding" => self.embedding_model.as_ref(),
+            "categorize" => self.categorize_model.as_ref(),
+            _ => None,
+        };
+        task_model
+            .or(self.model.as_ref())
+            .cloned()
+            .unwrap_or_else(|| "llama3.2".to_string())
+    }
 }
 
 impl Default for AiConfig {
@@ -88,6 +120,11 @@ impl Default for AiConfig {
             max_tokens: Some(256),
             temperature: Some(0.3),
             timeout_secs: Some(30),
+            tagging_model: None,
+            summarize_model: None,
+            embedding_model: None,
+            categorize_model: None,
+            reasoning_effort: None,
         }
     }
 }
@@ -164,6 +201,46 @@ mod tests {
         let config = AiConfig::default();
         assert_eq!(config.endpoint, Some("http://localhost:11434".to_string()));
         assert_eq!(config.model, Some("llama3.2".to_string()));
+        assert!(config.tagging_model.is_none());
+        assert!(config.summarize_model.is_none());
+        assert!(config.embedding_model.is_none());
+        assert!(config.categorize_model.is_none());
+        assert!(config.reasoning_effort.is_none());
+    }
+
+    #[test]
+    fn test_model_for_task_defaults() {
+        let config = AiConfig::default();
+        assert_eq!(config.model_for_task("tagging"), "llama3.2");
+        assert_eq!(config.model_for_task("summarize"), "llama3.2");
+        assert_eq!(config.model_for_task("embedding"), "llama3.2");
+        assert_eq!(config.model_for_task("categorize"), "llama3.2");
+        assert_eq!(config.model_for_task("unknown"), "llama3.2");
+    }
+
+    #[test]
+    fn test_model_for_task_overrides() {
+        let config = AiConfig {
+            tagging_model: Some("mistral".to_string()),
+            embedding_model: Some("nomic-embed-text".to_string()),
+            ..Default::default()
+        };
+        assert_eq!(config.model_for_task("tagging"), "mistral");
+        assert_eq!(config.model_for_task("summarize"), "llama3.2");
+        assert_eq!(config.model_for_task("embedding"), "nomic-embed-text");
+        assert_eq!(config.model_for_task("categorize"), "llama3.2");
+    }
+
+    #[test]
+    fn test_model_for_task_no_general_model() {
+        let config = AiConfig {
+            model: None,
+            tagging_model: Some("mistral".to_string()),
+            ..Default::default()
+        };
+        assert_eq!(config.model_for_task("tagging"), "mistral");
+        // Falls back to hardcoded default when both task and general model are None
+        assert_eq!(config.model_for_task("summarize"), "llama3.2");
     }
 
     #[test]
