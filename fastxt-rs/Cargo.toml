@@ -5,6 +5,7 @@ members = [
     "fastxt_cli",
     "fastxt_core",
     "fastxt_desktop",
+    "fastxt_mcp",
 ]
 
 [profile.dev]
