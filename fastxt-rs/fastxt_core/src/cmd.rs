@@ -582,6 +582,107 @@ fn semantic_search_fallback(
         .collect()
 }
 
+/// Find notes related to a given note by embedding similarity using sqlite-vec.
+///
+/// Returns a list of `(note_rowid, distance)` pairs ordered by ascending distance
+/// (most similar first). The source note is excluded from results.
+/// Returns an empty `Vec` if the note has no embedding.
+pub fn find_related_notes(conn: &Connection, note_rowid: i64, limit: i64) -> Vec<(i64, f64)> {
+    // 1. Get the embedding for the given note from note_embedding table.
+    let embedding_bytes: Vec<u8> = match conn.query_row(
+        "SELECT embedding FROM note_embedding WHERE note_rowid = ?1",
+        rusqlite::params![note_rowid],
+        |row| row.get(0),
+    ) {
+        Ok(bytes) => bytes,
+        Err(_) => return Vec::new(),
+    };
+
+    // 2. Query vec_notes for nearest neighbors, excluding the source note.
+    //    Fetch extra rows because we need to filter out the source note.
+    let fetch_limit = limit + 1;
+    let mut stmt = match conn.prepare(
+        "SELECT rowid, distance FROM vec_notes WHERE embedding MATCH ?1 ORDER BY distance LIMIT ?2",
+    ) {
+        Ok(s) => s,
+        Err(e) => {
+            warn!(error = %e, "failed to prepare find_related_notes query");
+            return Vec::new();
+        }
+    };
+
+    match stmt.query_map(rusqlite::params![embedding_bytes, fetch_limit], |row| {
+        Ok((row.get::<_, i64>(0)?, row.get::<_, f64>(1)?))
+    }) {
+        Ok(rows) => rows
+            .filter_map(std::result::Result::ok)
+            .filter(|(rowid, _)| *rowid != note_rowid)
+            .take(limit as usize)
+            .collect(),
+        Err(e) => {
+            warn!(error = %e, "failed to query find_related_notes");
+            Vec::new()
+        }
+    }
+}
+
+/// Find notes related to a given note, returning full [`Note`] objects.
+///
+/// This is a convenience wrapper around [`find_related_notes`] that fetches
+/// the complete note data for each related result.
+pub fn find_related_notes_full(conn: &Connection, note_rowid: i64, limit: i64) -> Vec<Note> {
+    let related = find_related_notes(conn, note_rowid, limit);
+    if related.is_empty() {
+        return Vec::new();
+    }
+
+    let rowids: Vec<i64> = related.iter().map(|(r, _)| *r).collect();
+    let placeholders: String = rowids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+    let sql = format!(
+        "SELECT rowid, uuid4, txt, tags, created_at, ai_tags, ai_summary, ai_category
+         FROM note WHERE rowid IN ({placeholders})"
+    );
+
+    let mut stmt = match conn.prepare(&sql) {
+        Ok(s) => s,
+        Err(e) => {
+            warn!(error = %e, "failed to prepare find_related_notes_full note fetch");
+            return Vec::new();
+        }
+    };
+    let params: Vec<&dyn rusqlite::ToSql> =
+        rowids.iter().map(|r| r as &dyn rusqlite::ToSql).collect();
+
+    let notes_map: std::collections::HashMap<i64, Note> =
+        match stmt.query_map(params.as_slice(), |row| {
+            Ok((
+                row.get::<_, i64>(0)?,
+                Note {
+                    rowid: row.get(0)?,
+                    uuid4: row.get(1)?,
+                    txt: row.get(2)?,
+                    tags: row.get(3)?,
+                    created_at: row.get(4)?,
+                    ai_tags: row.get(5)?,
+                    ai_summary: row.get(6)?,
+                    ai_category: row.get(7)?,
+                },
+            ))
+        }) {
+            Ok(rows) => rows.filter_map(std::result::Result::ok).collect(),
+            Err(e) => {
+                warn!(error = %e, "failed to query notes for find_related_notes_full");
+                return Vec::new();
+            }
+        };
+
+    // Preserve the distance-based ordering from find_related_notes.
+    related
+        .into_iter()
+        .filter_map(|(rowid, _)| notes_map.get(&rowid).cloned())
+        .collect()
+}
+
 /// Count notes without embeddings (for batch embedding generation).
 pub fn count_notes_without_embeddings(conn: &Connection) -> i64 {
     conn.query_row(
@@ -1151,5 +1252,169 @@ mod tests {
         let tags: Vec<String> = serde_json::from_str(&result).unwrap();
         assert!(tags.contains(&"rust".to_string()));
         assert!(tags.contains(&"python".to_string()));
+    }
+
+    // ---- find_related_notes tests ----
+
+    /// Build a 384-dimensional test embedding with the first few values set.
+    /// The rest are zero-padded to match DEFAULT_EMBEDDING_DIM.
+    fn make_test_embedding(leading: &[f32]) -> Vec<f32> {
+        let mut v = vec![0.0f32; DEFAULT_EMBEDDING_DIM];
+        for (i, &val) in leading.iter().enumerate() {
+            v[i] = val;
+        }
+        v
+    }
+
+    #[test]
+    fn test_find_related_notes_ordered_by_similarity() {
+        let conn = setup_test_db();
+
+        // Insert 4 notes with embeddings of increasing distance from note 1.
+        let n1 = make_test_note("rust basics", "rust");
+        let n2 = make_test_note("rust advanced", "rust");
+        let n3 = make_test_note("python basics", "python");
+        let n4 = make_test_note("cooking pasta", "food");
+        insert(&conn, &n1);
+        insert(&conn, &n2);
+        insert(&conn, &n3);
+        insert(&conn, &n4);
+
+        let notes = select::select_imp(&conn, &10, &0);
+        let r1 = notes.iter().find(|n| n.txt == "rust basics").unwrap().rowid;
+        let r2 = notes
+            .iter()
+            .find(|n| n.txt == "rust advanced")
+            .unwrap()
+            .rowid;
+        let r3 = notes
+            .iter()
+            .find(|n| n.txt == "python basics")
+            .unwrap()
+            .rowid;
+        let r4 = notes
+            .iter()
+            .find(|n| n.txt == "cooking pasta")
+            .unwrap()
+            .rowid;
+
+        // Embeddings: n1 and n2 are very similar, n3 is moderately close, n4 is far.
+        store_embedding(&conn, r1, &make_test_embedding(&[1.0, 0.0, 0.0, 0.0]), "test");
+        store_embedding(&conn, r2, &make_test_embedding(&[0.9, 0.1, 0.0, 0.0]), "test");
+        store_embedding(&conn, r3, &make_test_embedding(&[0.5, 0.5, 0.0, 0.0]), "test");
+        store_embedding(&conn, r4, &make_test_embedding(&[0.0, 0.0, 1.0, 0.0]), "test");
+
+        let related = find_related_notes(&conn, r1, 3);
+        assert_eq!(related.len(), 3, "should return 3 related notes");
+
+        // Verify ordering: n2 should be closest to n1, then n3, then n4.
+        assert_eq!(related[0].0, r2, "n2 should be most similar to n1");
+        assert_eq!(related[1].0, r3, "n3 should be second most similar to n1");
+        assert_eq!(related[2].0, r4, "n4 should be least similar to n1");
+
+        // Distances should be ascending.
+        assert!(
+            related[0].1 <= related[1].1,
+            "distances should be ascending"
+        );
+        assert!(
+            related[1].1 <= related[2].1,
+            "distances should be ascending"
+        );
+    }
+
+    #[test]
+    fn test_find_related_notes_excludes_self() {
+        let conn = setup_test_db();
+
+        let n1 = make_test_note("only note", "test");
+        insert(&conn, &n1);
+        let notes = select::select_imp(&conn, &1, &0);
+        let r1 = notes[0].rowid;
+
+        store_embedding(&conn, r1, &make_test_embedding(&[1.0, 0.0, 0.0, 0.0]), "test");
+
+        let related = find_related_notes(&conn, r1, 5);
+        assert!(
+            related.is_empty(),
+            "should return empty when only the source note exists"
+        );
+    }
+
+    #[test]
+    fn test_find_related_notes_no_embedding() {
+        let conn = setup_test_db();
+
+        let n1 = make_test_note("no embedding", "test");
+        insert(&conn, &n1);
+        let notes = select::select_imp(&conn, &1, &0);
+        let r1 = notes[0].rowid;
+
+        // Do not store any embedding for this note.
+        let related = find_related_notes(&conn, r1, 5);
+        assert!(
+            related.is_empty(),
+            "should return empty when note has no embedding"
+        );
+    }
+
+    #[test]
+    fn test_find_related_notes_respects_limit() {
+        let conn = setup_test_db();
+
+        let n1 = make_test_note("source", "a");
+        let n2 = make_test_note("near", "b");
+        let n3 = make_test_note("far", "c");
+        let n4 = make_test_note("farther", "d");
+        insert(&conn, &n1);
+        insert(&conn, &n2);
+        insert(&conn, &n3);
+        insert(&conn, &n4);
+
+        let notes = select::select_imp(&conn, &10, &0);
+        let r1 = notes.iter().find(|n| n.txt == "source").unwrap().rowid;
+        let r2 = notes.iter().find(|n| n.txt == "near").unwrap().rowid;
+        let r3 = notes.iter().find(|n| n.txt == "far").unwrap().rowid;
+        let r4 = notes.iter().find(|n| n.txt == "farther").unwrap().rowid;
+
+        store_embedding(&conn, r1, &make_test_embedding(&[1.0, 0.0, 0.0, 0.0]), "test");
+        store_embedding(&conn, r2, &make_test_embedding(&[0.9, 0.1, 0.0, 0.0]), "test");
+        store_embedding(&conn, r3, &make_test_embedding(&[0.5, 0.5, 0.0, 0.0]), "test");
+        store_embedding(&conn, r4, &make_test_embedding(&[0.0, 0.0, 0.0, 1.0]), "test");
+
+        // Request only 1 result.
+        let related = find_related_notes(&conn, r1, 1);
+        assert_eq!(related.len(), 1, "should respect limit of 1");
+        assert_eq!(related[0].0, r2, "should return the closest note");
+    }
+
+    #[test]
+    fn test_find_related_notes_full_returns_note_objects() {
+        let conn = setup_test_db();
+
+        let n1 = make_test_note("source note", "src");
+        let n2 = make_test_note("related note", "rel");
+        insert(&conn, &n1);
+        insert(&conn, &n2);
+
+        let notes = select::select_imp(&conn, &10, &0);
+        let r1 = notes
+            .iter()
+            .find(|n| n.txt == "source note")
+            .unwrap()
+            .rowid;
+        let r2 = notes
+            .iter()
+            .find(|n| n.txt == "related note")
+            .unwrap()
+            .rowid;
+
+        store_embedding(&conn, r1, &make_test_embedding(&[1.0, 0.0, 0.0, 0.0]), "test");
+        store_embedding(&conn, r2, &make_test_embedding(&[0.9, 0.1, 0.0, 0.0]), "test");
+
+        let full = find_related_notes_full(&conn, r1, 5);
+        assert_eq!(full.len(), 1, "should return 1 related note");
+        assert_eq!(full[0].txt, "related note");
+        assert_eq!(full[0].rowid, r2);
     }
 }

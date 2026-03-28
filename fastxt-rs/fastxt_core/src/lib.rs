@@ -380,6 +380,24 @@ pub struct RenameCategoryResponse {
     pub updated: usize,
 }
 
+/// Command to find notes related to a given note by embedding similarity.
+#[derive(Serialize, Deserialize, Debug)]
+pub struct CmdRelated {
+    /// Rowid of the note to find related notes for
+    pub rowid: i64,
+    /// Maximum number of related notes to return (default 5)
+    pub limit: Option<i64>,
+}
+
+/// Response from the `related` command.
+#[derive(Serialize, Deserialize, Debug)]
+pub struct RelatedResponse {
+    /// Related notes ordered by similarity (most similar first)
+    pub notes: Vec<Note>,
+    /// Error message if any
+    pub error: Option<String>,
+}
+
 /// Command to dismiss (clear) a category.
 #[derive(Serialize, Deserialize, Debug)]
 pub struct CmdDismissCategory {

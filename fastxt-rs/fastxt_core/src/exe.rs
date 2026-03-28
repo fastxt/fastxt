@@ -37,6 +37,7 @@ use crate::CmdAiTagAll;
 use crate::CmdDelete;
 use crate::CmdDismissCategory;
 use crate::CmdInsert;
+use crate::CmdRelated;
 use crate::CmdRenameCategory;
 use crate::CmdRpcClient;
 use crate::CmdRpcServer;
@@ -45,6 +46,7 @@ use crate::CmdSelect;
 use crate::CmdSemanticSearch;
 use crate::DismissCategoryResponse;
 use crate::Note;
+use crate::RelatedResponse;
 use crate::RenameCategoryResponse;
 use crate::SemanticSearchResponse;
 #[cfg(feature = "ai")]
@@ -1011,6 +1013,7 @@ fn do_ai_organize(conn: &Connection, cmd: &CmdAiOrganize) -> String {
 fn get_backend_by_name(name: &str) -> Box<dyn crate::ai::AiBackend> {
     match name {
         "llamacpp" => Box::new(crate::ai::llamacpp::LlamaCppBackend::new()),
+        "foundry-local" => Box::new(crate::ai::foundry_local::FoundryLocalBackend::new()),
         _ => crate::ai::get_default_backend(),
     }
 }

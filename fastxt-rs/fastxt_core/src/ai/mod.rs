@@ -25,6 +25,8 @@
 use serde::{Deserialize, Serialize};
 
 #[cfg(feature = "ai")]
+pub mod foundry_local;
+#[cfg(feature = "ai")]
 pub mod llamacpp;
 #[cfg(feature = "ai")]
 pub mod mock;
@@ -100,6 +102,12 @@ pub struct AiConfig {
     /// and only tags appearing in >= ceil(n/2) rounds are kept (majority vote).
     /// None or Some(1) disables consistency checking (backward compatible).
     pub consistency_rounds: Option<usize>,
+    /// Draft model for speculative decoding.
+    /// When set, Ollama/llama-server can use this smaller model to draft tokens
+    /// that are verified by the main model, accelerating inference.
+    /// The actual speculative decoding is handled by the backend; Fastxt stores the preference.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub draft_model: Option<String>,
 }
 
 impl AiConfig {
