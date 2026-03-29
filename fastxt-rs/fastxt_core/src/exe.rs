@@ -36,6 +36,7 @@ use crate::CmdAiTag;
 use crate::CmdAiTagAll;
 use crate::CmdDelete;
 use crate::CmdDismissCategory;
+use crate::CmdHybridSearch;
 use crate::CmdInsert;
 use crate::CmdRelated;
 use crate::CmdRenameCategory;
@@ -45,6 +46,8 @@ use crate::CmdSearch;
 use crate::CmdSelect;
 use crate::CmdSemanticSearch;
 use crate::DismissCategoryResponse;
+use crate::HybridSearchResponse;
+use crate::HybridSearchResultItem;
 use crate::Note;
 use crate::RelatedResponse;
 use crate::RenameCategoryResponse;
@@ -54,7 +57,7 @@ use crate::SemanticSearchResult;
 use crate::cmd::create;
 use crate::cmd::delete;
 use crate::cmd::insert;
-use crate::cmd::search::{search, search_count};
+use crate::cmd::search::{hybrid_search, search, search_count};
 use crate::cmd::select::select;
 #[cfg(feature = "ai")]
 use crate::cmd::{
@@ -287,6 +290,13 @@ fn process(cmd: Cmd, text: &str) -> String {
                 do_semantic_search(&conn, &cmd)
             } else {
                 r#"{"error":"cmd semantic-search json error"}"#.to_string()
+            }
+        }
+        "hybrid-search" => {
+            if let Ok(cmd) = serde_json::from_str::<CmdHybridSearch>(text) {
+                do_hybrid_search(&conn, &cmd)
+            } else {
+                r#"{"error":"cmd hybrid-search json error"}"#.to_string()
             }
         }
         "ai-reprocess" => {
@@ -1217,4 +1227,64 @@ fn do_discover_backends() -> String {
         let response = crate::DiscoverBackendsResponse { backends: vec![] };
         safe_serialize(&response)
     }
+}
+
+/// Handle hybrid-search command - combine FTS5 keyword + vector similarity via RRF.
+#[allow(unused_variables)]
+fn do_hybrid_search(conn: &Connection, cmd: &CmdHybridSearch) -> String {
+    let limit = cmd.limit.unwrap_or(10);
+
+    // Try to get a query embedding from the AI backend (if available).
+    let query_embedding: Option<Vec<f32>>;
+    let used_embedding: bool;
+
+    #[cfg(feature = "ai")]
+    {
+        use crate::ai::{AiConfig, get_default_backend};
+
+        let config = AiConfig {
+            endpoint: cmd.endpoint.clone(),
+            model: cmd.model.clone(),
+            ..Default::default()
+        };
+
+        let backend = get_default_backend();
+        if backend.is_available() {
+            match backend.embed(&cmd.query, &config) {
+                Ok(emb) => {
+                    query_embedding = Some(emb);
+                    used_embedding = true;
+                }
+                Err(e) => {
+                    debug!(error = %e, "failed to embed query for hybrid search, proceeding with text-only");
+                    query_embedding = None;
+                    used_embedding = false;
+                }
+            }
+        } else {
+            query_embedding = None;
+            used_embedding = false;
+        }
+    }
+
+    #[cfg(not(feature = "ai"))]
+    {
+        query_embedding = None;
+        used_embedding = false;
+    }
+
+    let results = hybrid_search(conn, &cmd.query, query_embedding.as_deref(), limit);
+
+    let response = HybridSearchResponse {
+        results: results
+            .into_iter()
+            .map(|r| HybridSearchResultItem {
+                note: r.note,
+                score: r.score,
+            })
+            .collect(),
+        used_embedding,
+        error: None,
+    };
+    safe_serialize(&response)
 }

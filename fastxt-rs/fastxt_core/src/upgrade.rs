@@ -20,7 +20,7 @@ use rusqlite::Connection;
 use semver::Version;
 use tracing::{debug, info, warn};
 // version to upgrade to
-const VERSION: &str = "0.4.0";
+const VERSION: &str = "0.5.0";
 use crate::OneString;
 
 fn set_meta_version(conn: &Connection, version: &str) {
@@ -50,6 +50,7 @@ pub fn upgrade(conn: &Connection) -> Result<&str, &str> {
         let v0_2_0 = Version::parse("0.2.0").ok();
         let v0_3_0 = Version::parse("0.3.0").ok();
         let v0_4_0 = Version::parse("0.4.0").ok();
+        let v0_5_0 = Version::parse("0.5.0").ok();
 
         // Migration to 0.1.0
         if current < v0_1_0 {
@@ -78,8 +79,15 @@ pub fn upgrade(conn: &Connection) -> Result<&str, &str> {
             info!("upgraded to 0.4.0 (converted ai_tags to JSONB)");
         }
 
+        // Migration to 0.5.0 - FTS5 full-text search
+        if Version::parse(&get_meta_version(conn)).ok() < v0_5_0 {
+            crate::cmd::migrate_fts5(conn);
+            set_meta_version(conn, "0.5.0");
+            info!("upgraded to 0.5.0 (added FTS5 full-text search)");
+        }
+
         let updated = Version::parse(&get_meta_version(conn)).ok();
-        if updated == v0_4_0 {
+        if updated == v0_5_0 {
             set_meta_version(conn, VERSION);
         }
         info!(version = VERSION, "upgrade complete");

@@ -83,6 +83,9 @@ pub fn create(conn: &Connection) {
     // This must be done outside the transaction above because virtual table
     // creation cannot be rolled back.
     create_vec_table(conn, DEFAULT_EMBEDDING_DIM);
+
+    // Create the FTS5 virtual table for full-text search.
+    create_fts5_table(conn);
 }
 
 /// Create the vec_notes virtual table with the given embedding dimension.
@@ -95,6 +98,33 @@ pub fn create_vec_table(conn: &Connection, dim: usize) {
     if let Err(e) = conn.execute_batch(&sql) {
         // If the table already exists (possibly with a different dimension), this is fine.
         debug!("vec_notes table creation note: {}", e);
+    }
+}
+
+/// Create the FTS5 virtual table and sync triggers for full-text search.
+/// The FTS5 table mirrors `txt` and `tags` from the `note` table.
+/// Safe to call repeatedly — uses `IF NOT EXISTS`.
+pub fn create_fts5_table(conn: &Connection) {
+    if let Err(e) = conn.execute_batch(
+        "CREATE VIRTUAL TABLE IF NOT EXISTS note_fts USING fts5(txt, tags, content=note, content_rowid=rowid);",
+    ) {
+        debug!("note_fts table creation note: {}", e);
+    }
+
+    // Create triggers to keep FTS5 in sync with the note table.
+    if let Err(e) = conn.execute_batch(
+        "CREATE TRIGGER IF NOT EXISTS note_ai AFTER INSERT ON note BEGIN
+            INSERT INTO note_fts(rowid, txt, tags) VALUES (new.rowid, new.txt, new.tags);
+        END;
+        CREATE TRIGGER IF NOT EXISTS note_ad AFTER DELETE ON note BEGIN
+            INSERT INTO note_fts(note_fts, rowid, txt, tags) VALUES('delete', old.rowid, old.txt, old.tags);
+        END;
+        CREATE TRIGGER IF NOT EXISTS note_au AFTER UPDATE ON note BEGIN
+            INSERT INTO note_fts(note_fts, rowid, txt, tags) VALUES('delete', old.rowid, old.txt, old.tags);
+            INSERT INTO note_fts(rowid, txt, tags) VALUES (new.rowid, new.txt, new.tags);
+        END;",
+    ) {
+        debug!("note_fts triggers creation note: {}", e);
     }
 }
 
@@ -235,6 +265,23 @@ pub fn migrate_ai_columns(conn: &Connection) {
          );",
     ) {
         warn!(error = %e, "failed to create note_embedding table");
+    }
+}
+
+/// Migrate database to add FTS5 virtual table and populate from existing notes.
+/// Called during upgrade process.
+pub fn migrate_fts5(conn: &Connection) {
+    // Create the FTS5 virtual table and triggers.
+    create_fts5_table(conn);
+
+    // Populate FTS5 from existing notes.
+    if let Err(e) = conn
+        .execute_batch("INSERT INTO note_fts(rowid, txt, tags) SELECT rowid, txt, tags FROM note;")
+    {
+        // May fail if already populated (e.g., duplicate rowids) — that is fine.
+        debug!("FTS5 population note: {}", e);
+    } else {
+        info!("populated note_fts from existing notes");
     }
 }
 
@@ -1495,5 +1542,228 @@ mod tests {
         assert_eq!(full.len(), 1, "should return 1 related note");
         assert_eq!(full[0].txt, "related note");
         assert_eq!(full[0].rowid, r2);
+    }
+
+    // ---- FTS5 hybrid search tests ----
+
+    #[test]
+    fn test_fts5_table_created() {
+        let conn = setup_test_db();
+        let count: i64 = conn
+            .query_row(
+                "SELECT count(1) FROM sqlite_master WHERE type='table' AND name='note_fts'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 1, "note_fts table should exist");
+    }
+
+    #[test]
+    fn test_fts5_search_basic() {
+        let conn = setup_test_db();
+        insert(&conn, &make_test_note("rust programming language", "code"));
+        insert(&conn, &make_test_note("python scripting language", "code"));
+        insert(&conn, &make_test_note("cooking delicious recipes", "food"));
+
+        let results = search::hybrid_search(&conn, "rust", None, 10);
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].note.txt, "rust programming language");
+    }
+
+    #[test]
+    fn test_fts5_search_multiple_words() {
+        let conn = setup_test_db();
+        insert(&conn, &make_test_note("rust systems programming", "code"));
+        insert(&conn, &make_test_note("rust game development", "games"));
+        insert(&conn, &make_test_note("python programming", "code"));
+
+        let results = search::hybrid_search(&conn, "rust programming", None, 10);
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].note.txt, "rust systems programming");
+    }
+
+    #[test]
+    fn test_hybrid_search_text_only() {
+        let conn = setup_test_db();
+        insert(&conn, &make_test_note("machine learning basics", "ai"));
+        insert(&conn, &make_test_note("deep learning neural nets", "ai"));
+        insert(&conn, &make_test_note("cooking pasta recipes", "food"));
+
+        let results = search::hybrid_search(&conn, "learning", None, 10);
+        assert_eq!(results.len(), 2);
+        let texts: Vec<&str> = results.iter().map(|r| r.note.txt.as_str()).collect();
+        assert!(texts.contains(&"machine learning basics"));
+        assert!(texts.contains(&"deep learning neural nets"));
+    }
+
+    #[test]
+    fn test_hybrid_search_with_vector() {
+        let conn = setup_test_db();
+        insert(&conn, &make_test_note("alpha note", "first"));
+        insert(&conn, &make_test_note("beta note", "second"));
+        insert(&conn, &make_test_note("gamma note", "third"));
+
+        let notes = select::select_imp(&conn, &10, &0);
+
+        let emb1 = make_test_embedding(&[1.0, 0.0, 0.0, 0.0]);
+        let emb2 = make_test_embedding(&[0.0, 1.0, 0.0, 0.0]);
+        let emb3 = make_test_embedding(&[0.9, 0.1, 0.0, 0.0]);
+
+        for note in &notes {
+            let emb = if note.txt == "alpha note" {
+                &emb1
+            } else if note.txt == "beta note" {
+                &emb2
+            } else {
+                &emb3
+            };
+            store_embedding(&conn, note.rowid, emb, "test-model");
+        }
+
+        let query_emb = make_test_embedding(&[1.0, 0.0, 0.0, 0.0]);
+
+        let results = search::hybrid_search(&conn, "alpha", Some(&query_emb), 10);
+        assert!(!results.is_empty());
+        assert_eq!(results[0].note.txt, "alpha note");
+    }
+
+    #[test]
+    fn test_rrf_scoring_combines_sources() {
+        let conn = setup_test_db();
+        insert(&conn, &make_test_note("unique alpha text", "tag1"));
+        insert(&conn, &make_test_note("unique beta text", "tag2"));
+
+        let notes = select::select_imp(&conn, &10, &0);
+
+        let emb_alpha = make_test_embedding(&[0.1, 0.0, 0.0, 0.0]);
+        let emb_beta = make_test_embedding(&[1.0, 0.0, 0.0, 0.0]);
+
+        for note in &notes {
+            let emb = if note.txt.contains("alpha") {
+                &emb_alpha
+            } else {
+                &emb_beta
+            };
+            store_embedding(&conn, note.rowid, emb, "test-model");
+        }
+
+        let query_emb = make_test_embedding(&[1.0, 0.0, 0.0, 0.0]);
+
+        let results = search::hybrid_search(&conn, "alpha", Some(&query_emb), 10);
+        assert!(!results.is_empty());
+
+        let texts: Vec<&str> = results.iter().map(|r| r.note.txt.as_str()).collect();
+        assert!(texts.contains(&"unique alpha text"));
+        assert!(texts.contains(&"unique beta text"));
+
+        for result in &results {
+            assert!(result.score > 0.0);
+        }
+    }
+
+    #[test]
+    fn test_hybrid_search_no_embeddings_graceful() {
+        let conn = setup_test_db();
+        insert(&conn, &make_test_note("test note here", "example"));
+
+        let results = search::hybrid_search(&conn, "test", None, 10);
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].note.txt, "test note here");
+    }
+
+    #[test]
+    fn test_hybrid_search_empty_query() {
+        let conn = setup_test_db();
+        insert(&conn, &make_test_note("some note", "tag"));
+
+        let results = search::hybrid_search(&conn, "", None, 10);
+        assert!(results.is_empty());
+    }
+
+    #[test]
+    fn test_fts5_sync_on_delete() {
+        let conn = setup_test_db();
+        insert(&conn, &make_test_note("deletable note", "temp"));
+        let notes = select::select_imp(&conn, &1, &0);
+        let rowid = notes[0].rowid;
+
+        let results = search::hybrid_search(&conn, "deletable", None, 10);
+        assert_eq!(results.len(), 1);
+
+        delete(&conn, rowid);
+        let results = search::hybrid_search(&conn, "deletable", None, 10);
+        assert!(results.is_empty());
+    }
+
+    #[test]
+    fn test_fts5_sync_on_update() {
+        let conn = setup_test_db();
+        let note = make_test_note("original text", "v1");
+        let uuid = note.uuid4.clone();
+        let created_at = note.created_at.clone();
+        insert(&conn, &note);
+
+        let results = search::hybrid_search(&conn, "original", None, 10);
+        assert_eq!(results.len(), 1);
+
+        let updated = Note {
+            rowid: 0,
+            uuid4: uuid,
+            txt: "modified text".to_string(),
+            tags: "v2".to_string(),
+            created_at,
+            ai_tags: None,
+            ai_summary: None,
+            ai_category: None,
+        };
+        insert(&conn, &updated);
+
+        let results = search::hybrid_search(&conn, "original", None, 10);
+        assert!(results.is_empty());
+
+        let results = search::hybrid_search(&conn, "modified", None, 10);
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].note.txt, "modified text");
+    }
+
+    #[test]
+    fn test_migrate_fts5_populates_existing() {
+        register_sqlite_vec();
+        let conn = Connection::open_in_memory().unwrap();
+
+        conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS note (
+             rowid          INTEGER PRIMARY KEY AUTOINCREMENT,
+             uuid4          TEXT NOT NULL UNIQUE,
+             txt            TEXT NOT NULL,
+             tags           TEXT NOT NULL,
+             created_at     TEXT NOT NULL,
+             ai_tags        TEXT,
+             ai_summary     TEXT,
+             ai_category    TEXT
+             );
+             CREATE TABLE IF NOT EXISTS meta (
+             meta_key        TEXT PRIMARY KEY,
+             meta_value      TEXT NOT NULL
+             );",
+        )
+        .unwrap();
+
+        conn.execute(
+            "INSERT INTO note (uuid4, txt, tags, created_at) VALUES ('u1', 'existing note one', 'old', '2024-01-01 00:00:00')",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO note (uuid4, txt, tags, created_at) VALUES ('u2', 'existing note two', 'old', '2024-01-01 00:00:01')",
+            [],
+        )
+        .unwrap();
+
+        migrate_fts5(&conn);
+
+        let results = search::hybrid_search(&conn, "existing", None, 10);
+        assert_eq!(results.len(), 2);
     }
 }

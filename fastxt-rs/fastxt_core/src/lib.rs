@@ -413,6 +413,37 @@ pub struct RelatedResponse {
     pub error: Option<String>,
 }
 
+/// Parameters for the `hybrid-search` command.
+/// Combines FTS5 keyword search with sqlite-vec vector similarity via RRF.
+#[derive(Serialize, Deserialize, Debug)]
+pub struct CmdHybridSearch {
+    /// Query text to search for
+    pub query: String,
+    /// Maximum number of results (default 10)
+    pub limit: Option<i64>,
+    /// Optional: Ollama endpoint URL (for embedding the query)
+    pub endpoint: Option<String>,
+    /// Optional: Model name for embeddings
+    pub model: Option<String>,
+}
+
+/// Response from hybrid-search command.
+#[derive(Serialize, Deserialize, Debug)]
+pub struct HybridSearchResponse {
+    pub results: Vec<HybridSearchResultItem>,
+    /// Whether AI embedding was used in the search
+    pub used_embedding: bool,
+    pub error: Option<String>,
+}
+
+/// A single result from hybrid search.
+#[derive(Serialize, Deserialize, Debug)]
+pub struct HybridSearchResultItem {
+    pub note: Note,
+    /// Combined RRF score
+    pub score: f64,
+}
+
 /// Command to dismiss (clear) a category.
 #[derive(Serialize, Deserialize, Debug)]
 pub struct CmdDismissCategory {
