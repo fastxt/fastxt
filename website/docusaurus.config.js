@@ -1,3 +1,5 @@
+const darkCodeTheme = require('prism-react-renderer').themes.dracula;
+
 module.exports = {
   title: 'Fastxt',
   tagline: 'Own your txt. On-device AI. Sync everywhere.',
@@ -6,6 +8,12 @@ module.exports = {
   favicon: 'img/favicon.ico',
   organizationName: 'fastxt',
   projectName: 'fastxt',
+  onBrokenLinks: 'throw',
+  onBrokenMarkdownLinks: 'warn',
+  i18n: {
+    defaultLocale: 'en',
+    locales: ['en'],
+  },
   themeConfig: {
     colorMode: {
       defaultMode: 'dark',
@@ -94,6 +102,11 @@ module.exports = {
       ],
       copyright: `Unless otherwise noted, contents on this website are copyleft with a CC-by-SA 4.0 license.`,
     },
+    prism: {
+      theme: darkCodeTheme,
+      darkTheme: darkCodeTheme,
+      additionalLanguages: ['bash', 'toml', 'rust', 'json'],
+    },
   },
   presets: [
     [
@@ -106,6 +119,15 @@ module.exports = {
         theme: {
           customCss: require.resolve('./src/css/custom.css'),
         },
+      },
+    ],
+  ],
+  themes: [
+    [
+      '@easyops-cn/docusaurus-search-local',
+      {
+        hashed: true,
+        indexBlog: true,
       },
     ],
   ],
