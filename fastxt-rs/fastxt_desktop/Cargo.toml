@@ -13,15 +13,7 @@ default = []
 ai = ["fastxt_core/ai"]
 
 [dependencies]
-anyhow = "1"
 fastxt_core = { path = "../fastxt_core" }
 serde_json = "1"
-
-[dependencies.druid]
-features = ["svg"]
-git = "https://github.com/linebender/druid.git"
-
-[dependencies.qrcode]
-default-features = false
-features = ["svg"]
-version = "0.14"
+tokio = { version = "1", features = ["rt-multi-thread"] }
+iced = { version = "0.14", features = ["qr_code", "tokio"] }

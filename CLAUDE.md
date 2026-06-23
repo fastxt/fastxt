@@ -34,11 +34,11 @@ fastxt-rs/                    # Rust workspace (core library + apps)
 │       ├── cmd/              # CRUD operations, search, sync
 │       └── rpc/              # tarpc-based P2P sync protocol
 ├── fastxt_cli/               # CLI binaries for RPC server/client
-└── fastxt_desktop/           # Desktop GUI (Druid)
+└── fastxt_desktop/           # Desktop GUI (Iced) — app.rs (view), commands.rs (logic)
 
 fastxt-android/               # Native Android app (Kotlin)
-fastxt-flutter/               # Flutter app (early stage)
 website/                      # Docusaurus website (fastxt.app)
+archive/                      # Dormant prototypes (fastxt-mac, fastxt-win, fastxt-flutter) — not built
 ```
 
 ## Build Commands
@@ -69,13 +69,6 @@ cd website
 npm install
 npm start        # Development server
 npm run build    # Production build
-```
-
-### Flutter App
-```bash
-cd fastxt-flutter
-flutter pub get
-flutter run
 ```
 
 ### Android App

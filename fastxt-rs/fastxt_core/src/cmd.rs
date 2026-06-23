@@ -359,7 +359,7 @@ pub fn select_notes_without_ai_tags(conn: &Connection, limit: u32) -> Vec<crate:
         }
     };
 
-    let result = match stmt.query_map([&limit], |row| {
+    match stmt.query_map([&limit], |row| {
         Ok(crate::Note {
             rowid: row.get(0)?,
             uuid4: row.get(1)?,
@@ -376,8 +376,7 @@ pub fn select_notes_without_ai_tags(conn: &Connection, limit: u32) -> Vec<crate:
             warn!(error = %e, "failed to query notes without AI tags");
             Vec::new()
         }
-    };
-    result
+    }
 }
 
 /// Store embedding for a note in both note_embedding (for model_id tracking)
@@ -785,7 +784,7 @@ pub fn select_notes_without_embeddings(conn: &Connection, limit: u32) -> Vec<cra
         }
     };
 
-    let result = match stmt.query_map([&limit], |row| {
+    match stmt.query_map([&limit], |row| {
         Ok(crate::Note {
             rowid: row.get(0)?,
             uuid4: row.get(1)?,
@@ -802,8 +801,7 @@ pub fn select_notes_without_embeddings(conn: &Connection, limit: u32) -> Vec<cra
             warn!(error = %e, "failed to query notes without embeddings");
             Vec::new()
         }
-    };
-    result
+    }
 }
 
 /// Rename a category for all notes that have it.

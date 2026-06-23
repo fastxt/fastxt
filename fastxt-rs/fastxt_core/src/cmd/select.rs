@@ -46,7 +46,7 @@ pub fn select_imp(conn: &Connection, limit: &u32, offset: &u32) -> Vec<Note> {
         }
     };
 
-    let result = match stmt.query_map(
+    match stmt.query_map(
         &[
             (":limit", limit as &dyn ToSql),
             (":offset", offset as &dyn ToSql),
@@ -69,6 +69,5 @@ pub fn select_imp(conn: &Connection, limit: &u32, offset: &u32) -> Vec<Note> {
             warn!(error = %e, "failed to query notes");
             Vec::new()
         }
-    };
-    result
+    }
 }

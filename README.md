@@ -34,11 +34,9 @@ fastxt-android: Android App
 
 fastxt-ios: iOS and iPadOS App
 
-fastxt-mac: macOS App
+fastxt-rs: rust code — shared core library plus the cross-platform desktop GUI (`fastxt_desktop`, Iced) for Windows/macOS/Linux
 
-fastxt-rs: rust code, as shared core library used by other presentation layers
-
-fastxt-win: Windows App
+archive: dormant prototypes (fastxt-mac SwiftUI, fastxt-win UWP, fastxt-flutter) — superseded, not built
 
 
 # Developer Setup

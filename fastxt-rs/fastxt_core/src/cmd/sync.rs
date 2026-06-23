@@ -54,14 +54,13 @@ pub fn next_uuid4_candidates(conn: &Connection) -> Vec<String> {
             return Vec::new();
         }
     };
-    let result = match stmt.query_map([], |row| Ok(OneString { s: row.get(0)? })) {
+    match stmt.query_map([], |row| Ok(OneString { s: row.get(0)? })) {
         Ok(rows) => rows.flatten().map(|u| u.s).collect(),
         Err(e) => {
             warn!(error = %e, "failed to query uuid4 candidates");
             Vec::new()
         }
-    };
-    result
+    }
 }
 
 /// Return the subset of `candidates` that are **not** present in this database.
@@ -91,7 +90,7 @@ pub fn diff_uuid4_from_server(conn: &Connection, candidates: &[String]) -> Vec<S
             return Vec::new();
         }
     };
-    let result = match stmt.query_map([], |row| Ok(OneString { s: row.get(0)? })) {
+    match stmt.query_map([], |row| Ok(OneString { s: row.get(0)? })) {
         Ok(rows) => rows
             .flatten()
             .filter(|u| !candidates.contains(&u.s))
@@ -101,6 +100,5 @@ pub fn diff_uuid4_from_server(conn: &Connection, candidates: &[String]) -> Vec<S
             warn!(error = %e, "failed to query uuid4 from server");
             Vec::new()
         }
-    };
-    result
+    }
 }
