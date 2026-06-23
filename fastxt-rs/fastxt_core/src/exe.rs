@@ -58,7 +58,7 @@ use crate::cmd::create;
 use crate::cmd::delete;
 use crate::cmd::insert;
 use crate::cmd::search::{hybrid_search, search, search_count};
-use crate::cmd::select::select;
+use crate::cmd::select::{select, select_count};
 #[cfg(feature = "ai")]
 use crate::cmd::{
     select_notes_without_ai_tags, select_notes_without_embeddings, semantic_search,
@@ -388,8 +388,11 @@ fn do_search(conn: &Connection, query: &str, limit: u32, offset: u32) -> String 
 }
 
 fn do_select(conn: &Connection, limit: u32, offset: u32) -> String {
+    // Include the total note count (not just the returned page) so callers can
+    // show an accurate total, mirroring `do_search`.
+    let count = select_count(conn);
     let notes = select(conn, &limit, &offset);
-    format!(r#"{{"notes":{notes}}}"#)
+    format!(r#"{{"count":{count},"notes":{notes}}}"#)
 }
 
 /// Handle ai-tag command - suggest tags for given text.

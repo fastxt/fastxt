@@ -384,9 +384,10 @@ impl Fastxt {
                 self.busy = false;
                 self.notes_count = outcome.count_label;
                 self.notes = outcome.notes;
-                if !outcome.status.is_empty() {
-                    self.ai_status = outcome.status;
-                }
+                // Assign unconditionally: `status` is empty on success, which must
+                // clear the transient "Searching..." set when a semantic search
+                // was dispatched (otherwise it lingers after the results arrive).
+                self.ai_status = outcome.status;
                 Task::none()
             }
 
@@ -524,12 +525,15 @@ impl Fastxt {
         ]
         .spacing(6);
 
+        // Gated on `!busy` like the action buttons: toggling on dispatches a
+        // background load that clears `busy`, so allowing it mid-operation would
+        // re-enable the other buttons while that earlier operation is still running.
         let category_toggle = button(text(if self.category_view {
             "📂 Categories ✓"
         } else {
             "📂 Categories"
         }))
-        .on_press(Message::ToggleCategoryView);
+        .on_press_maybe((!self.busy).then_some(Message::ToggleCategoryView));
 
         let body = if self.category_view {
             self.category_list()

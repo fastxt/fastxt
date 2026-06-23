@@ -63,8 +63,19 @@ pub struct SummaryOutcome {
 }
 
 /// Run a JSON command through the core and parse the response as JSON.
+///
+/// `fastxt_core::exe::run` can `panic!` on a fatal database failure (the SQLite
+/// file is unopenable, or a schema upgrade fails). We catch that here: because
+/// the GUI calls these wrappers via `spawn_blocking`, an uncaught panic is
+/// swallowed by the runtime and produces *no* result message, which would leave
+/// the `busy` flag stuck and disable every button for the rest of the session.
+/// Converting the panic into an error response lets the normal *Ready handlers
+/// run, clear `busy`, and surface the failure.
 fn run(cmd: &Value) -> Value {
-    let result = fastxt_core::exe::run(&cmd.to_string());
+    let input = cmd.to_string();
+    let result = std::panic::catch_unwind(|| fastxt_core::exe::run(&input)).unwrap_or_else(|_| {
+        r#"{"error":"core command failed (database unavailable?)"}"#.to_string()
+    });
     serde_json::from_str(&result).unwrap_or_else(|_| json!({ "error": "failed to parse response" }))
 }
 
@@ -332,6 +343,18 @@ pub fn organize(endpoint: &str, model: &str) -> String {
         "endpoint": endpoint,
         "model": model,
     }));
+    organize_status(&resp)
+}
+
+/// Format an `ai-organize` response into a status + category breakdown.
+fn organize_status(resp: &Value) -> String {
+    // `do_ai_organize` always includes `processed: 0` even on failure (e.g. AI
+    // backend down), so an explicit error must take precedence over the success
+    // line — otherwise the user sees "Organized 0 notes" instead of the reason.
+    let err = str_field(resp, "error");
+    if !err.is_empty() {
+        return format!("Error: {err}");
+    }
     if let Some(processed) = resp.get("processed").and_then(Value::as_u64) {
         let errors = resp.get("errors").and_then(Value::as_u64).unwrap_or(0);
         let categories = resp
@@ -346,12 +369,8 @@ pub fn organize(endpoint: &str, model: &str) -> String {
             .unwrap_or_default();
         format!("Organized {processed} notes ({errors} errors)\n{categories}")
     } else {
-        let err = str_field(&resp, "error");
-        if err.is_empty() {
-            "Failed to organize notes".to_string()
-        } else {
-            format!("Error: {err}")
-        }
+        // Error already handled above; a missing `processed` here is unexpected.
+        "Failed to organize notes".to_string()
     }
 }
 
@@ -450,5 +469,37 @@ mod tests {
     fn batch_status_surfaces_error() {
         let v = json!({ "error": "boom" });
         assert_eq!(batch_status(&v, "Tagged"), "Error: boom");
+    }
+
+    #[test]
+    fn organize_status_prefers_error_over_zero_processed() {
+        // do_ai_organize emits processed:0 *and* an error when the backend is
+        // down; the error message must win over "Organized 0 notes".
+        let v = json!({
+            "processed": 0,
+            "errors": 0,
+            "categories": {},
+            "available": false,
+            "error": "AI backend not available. Make sure Ollama is running.",
+        });
+        assert_eq!(
+            organize_status(&v),
+            "Error: AI backend not available. Make sure Ollama is running."
+        );
+    }
+
+    #[test]
+    fn organize_status_formats_success_with_categories() {
+        let v = json!({
+            "processed": 5,
+            "errors": 1,
+            "categories": { "work": 3, "personal": 2 },
+            "available": true,
+            "error": null,
+        });
+        let out = organize_status(&v);
+        assert!(out.starts_with("Organized 5 notes (1 errors)\n"));
+        assert!(out.contains("work: 3 notes"));
+        assert!(out.contains("personal: 2 notes"));
     }
 }
