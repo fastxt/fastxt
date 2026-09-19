@@ -309,10 +309,10 @@ Text:
         // Try structured output first
         let response = self.generate(&prompt, config, Some(&model), Some(Self::tags_schema()))?;
 
-        if let Ok(parsed) = serde_json::from_str::<TagsResponse>(&response) {
-            if !parsed.tags.is_empty() {
-                return Ok(parsed.tags);
-            }
+        if let Ok(parsed) = serde_json::from_str::<TagsResponse>(&response)
+            && !parsed.tags.is_empty()
+        {
+            return Ok(parsed.tags);
         }
 
         // Fallback: try without structured output for older Ollama versions
@@ -425,10 +425,10 @@ Texts:
             Some(Self::categories_schema()),
         )?;
 
-        if let Ok(parsed) = serde_json::from_str::<CategoriesResponse>(&response) {
-            if parsed.categories.len() == texts.len() {
-                return Ok(parsed.categories);
-            }
+        if let Ok(parsed) = serde_json::from_str::<CategoriesResponse>(&response)
+            && parsed.categories.len() == texts.len()
+        {
+            return Ok(parsed.categories);
         }
 
         // Fallback: try without structured output for older Ollama versions
@@ -446,10 +446,10 @@ Categories:"#,
         let fallback_response = self.generate(&fallback_prompt, config, Some(&model), None)?;
 
         // Parse categories from response
-        if let Ok(categories) = serde_json::from_str::<Vec<String>>(&fallback_response) {
-            if categories.len() == texts.len() {
-                return Ok(categories);
-            }
+        if let Ok(categories) = serde_json::from_str::<Vec<String>>(&fallback_response)
+            && categories.len() == texts.len()
+        {
+            return Ok(categories);
         }
 
         // Fallback: try to extract categories line by line

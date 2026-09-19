@@ -10,7 +10,7 @@ default = []
 ai = ["reqwest"]
 
 [dependencies.rusqlite]
-version = "0.32"
+version = "0.40"
 features = ["bundled"]
 
 [dependencies]
@@ -21,19 +21,19 @@ semver = "1"
 serde = "1"
 serde_derive = "1"
 serde_json = "1"
-tarpc = { version = "0.35", features = ["full"]}
-dirs = "6"
+tarpc = { version = "0.38", features = ["full"]}
+dirs = "7"
 regex = "1"
 linked_hash_set = "0.1"
 uuid = { version = "1", features = ["v4"] }
 tokio = { version = "1", features = ["full"] }
 futures = "0.3"
-if-addrs = "0.13"
+if-addrs = "0.15"
 tokio-serde = { version = "0.9", features = ["bincode"] }
 tracing = "0.1"
 
 # AI feature dependencies (optional)
-reqwest = { version = "0.12", features = ["blocking", "json"], optional = true }
+reqwest = { version = "0.13", features = ["blocking", "json"], optional = true }
 
 [lib]
 name = "fastxt_core"

@@ -17,8 +17,8 @@
 */
 
 use rmcp::{
-    ErrorData as McpError, ServerHandler, ServiceExt, handler::server::router::tool::ToolRouter,
-    handler::server::wrapper::Parameters, model::*, schemars, tool, tool_handler, tool_router,
+    ErrorData as McpError, ServerHandler, ServiceExt, handler::server::wrapper::Parameters,
+    model::*, schemars, tool, tool_handler, tool_router,
 };
 use schemars::JsonSchema;
 use serde::Deserialize;
@@ -167,9 +167,7 @@ fn build_agent_tags(
 
 /// The Fastxt MCP server exposing note operations as tools.
 #[derive(Clone)]
-struct FastxtMcpServer {
-    tool_router: ToolRouter<Self>,
-}
+struct FastxtMcpServer;
 
 #[tool_router]
 impl FastxtMcpServer {
@@ -178,9 +176,7 @@ impl FastxtMcpServer {
         let conn = fastxt_core::exe::get_sqlite_connection();
         fastxt_core::exe::ensure_db_initialized(&conn);
 
-        Self {
-            tool_router: Self::tool_router(),
-        }
+        Self
     }
 
     #[tool(
@@ -581,21 +577,14 @@ impl FastxtMcpServer {
 
 #[tool_handler]
 impl ServerHandler for FastxtMcpServer {
-    fn get_info(&self) -> ServerInfo {
-        ServerInfo {
-            capabilities: ServerCapabilities::builder().enable_tools().build(),
-            server_info: Implementation {
-                name: "fastxt-mcp".to_string(),
-                version: env!("CARGO_PKG_VERSION").to_string(),
-                title: None,
-                description: Some(
-                    "MCP server for Fastxt local-first text notes with agent memory capabilities"
-                        .to_string(),
+    fn get_info(&self) -> ServerConfig {
+        ServerConfig::new(ServerCapabilities::builder().enable_tools().build())
+            .with_server_info(
+                Implementation::new("fastxt-mcp", env!("CARGO_PKG_VERSION")).with_description(
+                    "MCP server for Fastxt local-first text notes with agent memory capabilities",
                 ),
-                icons: None,
-                website_url: None,
-            },
-            instructions: Some(
+            )
+            .with_instructions(
                 "Fastxt MCP server for managing local text notes and agent memory.\n\n\
                  ## Note management tools:\n\
                  - search_notes: Search notes by text query\n\
@@ -615,11 +604,8 @@ impl ServerHandler for FastxtMcpServer {
                  - summarize_context: AI-summarize all memories on a topic\n\
                  - list_topics: List all topics with memory counts\n\n\
                  Typical workflow: remember facts/decisions -> recall relevant context -> \
-                 summarize_context for overviews -> forget outdated memories."
-                    .to_string(),
-            ),
-            ..Default::default()
-        }
+                 summarize_context for overviews -> forget outdated memories.",
+            )
     }
 }
 

@@ -418,8 +418,10 @@ pub fn get_embedding(conn: &Connection, note_rowid: i64) -> Option<(Vec<f32>, St
             let model_id: String = row.get(1)?;
             // Convert bytes back to f32 vector
             let embedding: Vec<f32> = bytes
-                .chunks_exact(4)
-                .map(|chunk| f32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]))
+                .as_chunks::<4>()
+                .0
+                .iter()
+                .map(|chunk| f32::from_le_bytes(*chunk))
                 .collect();
             Ok((embedding, model_id))
         },
@@ -461,8 +463,10 @@ pub fn get_all_embeddings(conn: &Connection, model_id: Option<&str>) -> Vec<(i64
     rows.into_iter()
         .map(|(rowid, bytes)| {
             let embedding: Vec<f32> = bytes
-                .chunks_exact(4)
-                .map(|chunk| f32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]))
+                .as_chunks::<4>()
+                .0
+                .iter()
+                .map(|chunk| f32::from_le_bytes(*chunk))
                 .collect();
             (rowid, embedding)
         })
@@ -1166,11 +1170,11 @@ mod tests {
         assert_eq!(*cats.get("cooking").unwrap(), 1);
 
         assert_eq!(rename_category(&conn, "cooking", "culinary"), 1);
-        assert!(get_categories(&conn).get("cooking").is_none());
+        assert!(!get_categories(&conn).contains_key("cooking"));
         assert_eq!(*get_categories(&conn).get("culinary").unwrap(), 1);
 
         assert_eq!(dismiss_category(&conn, "culinary"), 1);
-        assert!(get_categories(&conn).get("culinary").is_none());
+        assert!(!get_categories(&conn).contains_key("culinary"));
     }
 
     #[test]
