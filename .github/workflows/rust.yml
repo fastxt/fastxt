@@ -16,10 +16,11 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  build-and-test:
-    name: Build & Test
+  # Lint once on Linux — rustfmt/clippy results are platform-independent,
+  # so running them per-OS would triple the cost for no extra signal.
+  lint:
+    name: Lint (fmt + clippy)
     runs-on: ubuntu-latest
-
     steps:
       - uses: actions/checkout@v4
 
@@ -28,29 +29,61 @@ jobs:
         with:
           components: rustfmt, clippy
 
-      - name: Cache Cargo dependencies
-        uses: actions/cache@v4
+      - uses: Swatinem/rust-cache@v2
         with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            fastxt-rs/target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('fastxt-rs/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-
+          workspaces: fastxt-rs
 
       - name: Check formatting
         working-directory: fastxt-rs
         run: cargo fmt --all -- --check
 
-      - name: Clippy lint
+      - name: Clippy
         working-directory: fastxt-rs
         run: cargo clippy --workspace --all-targets -- -D warnings
 
-      - name: Build
+      - name: Clippy (ai feature)
+        working-directory: fastxt-rs
+        run: cargo clippy --workspace --all-targets --features fastxt_core/ai -- -D warnings
+
+  # Build and test on every platform we intend to distribute the desktop GUI
+  # on. The Iced/wgpu port had never been compiled on macOS or Windows in CI.
+  build-and-test:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      # Report every platform's result; don't let one failure mask the others.
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-latest, name: Linux }
+          - { os: macos-latest, name: macOS }
+          - { os: windows-latest, name: Windows }
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: fastxt-rs
+          key: ${{ matrix.os }}
+
+      # Includes fastxt_desktop, so this is the real Iced/wgpu compile check.
+      - name: Build workspace
         working-directory: fastxt-rs
         run: cargo build --workspace
 
-      - name: Run tests
+      # The ai feature pulls in reqwest, whose TLS backend differs per platform
+      # (OpenSSL / Security.framework / schannel) — worth compiling everywhere.
+      - name: Build with ai feature
+        working-directory: fastxt-rs
+        run: cargo build --workspace --features fastxt_core/ai
+
+      - name: Test
         working-directory: fastxt-rs
         run: cargo test --workspace
+
+      - name: Test (ai feature)
+        working-directory: fastxt-rs
+        run: cargo test --workspace --features fastxt_core/ai
