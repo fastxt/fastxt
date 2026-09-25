@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  WiX v3 source for the Fastxt MSI installer.
+
+  Build (see .github/workflows/release.yml):
+    candle -arch x64 -dVersion=<x.y.z> -dTargetDir=<...>\ -dIconsDir=<...> fastxt.wxs
+    light fastxt.wixobj -out Fastxt-<x.y.z>-x86_64.msi
+
+  Preprocessor variables:
+    Version   — numeric x.y.z (MSI forbids anything else; tags must be vX.Y.Z)
+    TargetDir — directory containing fastxt.exe, with trailing backslash
+    IconsDir  — directory containing Fastxt.ico
+-->
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+  <Product Id="*"
+           Name="Fastxt"
+           Language="1033"
+           Version="$(var.Version)"
+           Manufacturer="Yi Wang"
+           UpgradeCode="213fdb31-b122-45ab-82ae-43e1b18cb765">
+
+    <Package InstallerVersion="200"
+             Compressed="yes"
+             InstallScope="perMachine"
+             Description="Fastxt — local-first text notes with on-device AI" />
+
+    <MajorUpgrade DowngradeErrorMessage="A newer version of Fastxt is already installed." />
+    <MediaTemplate EmbedCab="yes" />
+
+    <Icon Id="Fastxt.ico" SourceFile="$(var.IconsDir)\Fastxt.ico" />
+    <Property Id="ARPPRODUCTICON" Value="Fastxt.ico" />
+
+    <Directory Id="TARGETDIR" Name="SourceDir">
+      <Directory Id="ProgramFiles64Folder">
+        <Directory Id="INSTALLDIR" Name="Fastxt" />
+      </Directory>
+      <Directory Id="ProgramMenuFolder">
+        <Directory Id="AppMenuDir" Name="Fastxt" />
+      </Directory>
+    </Directory>
+
+    <ComponentGroup Id="ProductComponents" Directory="INSTALLDIR">
+      <Component Id="FastxtExe" Guid="*" Win64="yes">
+        <File Id="FastxtExeFile" Source="$(var.TargetDir)fastxt.exe" KeyPath="yes" />
+      </Component>
+      <Component Id="StartMenuShortcut" Guid="*" Directory="AppMenuDir">
+        <Shortcut Id="AppShortcut"
+                  Name="Fastxt"
+                  Description="Fastxt — local-first text notes"
+                  Target="[INSTALLDIR]fastxt.exe"
+                  WorkingDirectory="INSTALLDIR"
+                  Icon="Fastxt.ico" />
+        <RemoveFolder Id="AppMenuDirRemove" Directory="AppMenuDir" On="uninstall" />
+        <RegistryValue Root="HKLM" Key="Software\Fastxt"
+                       Name="installed" Type="integer" Value="1" KeyPath="yes" />
+      </Component>
+    </ComponentGroup>
+
+    <Feature Id="Main" Title="Fastxt" Level="1">
+      <ComponentGroupRef Id="ProductComponents" />
+    </Feature>
+  </Product>
+</Wix>

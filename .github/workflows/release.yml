@@ -1,0 +1,207 @@
+name: Release
+
+# Builds distributable artifacts for the desktop app on all three platforms
+# and attaches them to a GitHub Release.
+#
+#   tag push (vX.Y.Z) — full run, publishes a GitHub Release.
+#   workflow_dispatch — build-only smoke test: versions come from
+#     fastxt_desktop/Cargo.toml and the publish step is skipped, so the
+#     Windows/Linux packaging can be verified before cutting a real tag.
+#
+# Tags must be plain numeric vX.Y.Z — the MSI format forbids anything else.
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  macos:
+    name: macOS (.dmg universal)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve version
+        id: ver
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            V=${GITHUB_REF_NAME#v}
+          else
+            V=$(grep -m1 '^version' fastxt-rs/fastxt_desktop/Cargo.toml | sed 's/.*"\(.*\)".*/\1/')
+          fi
+          echo "v=$V" >> "$GITHUB_OUTPUT"
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: fastxt-rs
+          key: release-macos
+
+      - name: Build release binaries
+        working-directory: fastxt-rs
+        run: |
+          cargo build --release -p fastxt_desktop --features ai --target aarch64-apple-darwin
+          cargo build --release -p fastxt_desktop --features ai --target x86_64-apple-darwin
+
+      - name: Bundle .app and .dmg
+        run: |
+          fastxt-rs/fastxt_desktop/packaging/bundle-macos.sh \
+            "${{ steps.ver.outputs.v }}" \
+            "$PWD/fastxt-rs/target/dist" \
+            fastxt-rs/target/aarch64-apple-darwin/release/fastxt \
+            fastxt-rs/target/x86_64-apple-darwin/release/fastxt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist-macos
+          path: fastxt-rs/target/dist/*.dmg
+          if-no-files-found: error
+
+  windows:
+    name: Windows (.msi + .zip)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve version
+        id: ver
+        shell: bash
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            V=${GITHUB_REF_NAME#v}
+          else
+            V=$(grep -m1 '^version' fastxt-rs/fastxt_desktop/Cargo.toml | sed 's/.*"\(.*\)".*/\1/')
+          fi
+          echo "v=$V" >> "$GITHUB_OUTPUT"
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: fastxt-rs
+          key: release-windows
+
+      - name: Build release binary
+        working-directory: fastxt-rs
+        run: cargo build --release -p fastxt_desktop --features ai
+
+      - name: Locate WiX Toolset
+        id: wix
+        shell: pwsh
+        run: |
+          $candle = (Get-Command candle.exe -ErrorAction SilentlyContinue).Source
+          if (-not $candle) {
+            choco install wixtoolset --version 3.14.1.8722 -y --no-progress
+            $candle = "C:\Program Files (x86)\WiX Toolset 3.14\bin\candle.exe"
+          }
+          if (-not (Test-Path $candle)) { throw "candle.exe not found" }
+          "bin=$(Split-Path $candle)" >> $env:GITHUB_OUTPUT
+
+      - name: Build .msi
+        shell: pwsh
+        working-directory: fastxt-rs/fastxt_desktop
+        env:
+          V: ${{ steps.ver.outputs.v }}
+        run: |
+          if ($env:V -notmatch '^\d+\.\d+\.\d+$') {
+            throw "MSI version must be plain x.y.z (got $($env:V)); tag as vX.Y.Z"
+          }
+          $bin = "${{ steps.wix.outputs.bin }}"
+          $target = "$PWD\..\..\target\release\"
+          & "$bin\candle.exe" -arch x64 -dVersion=$env:V "-dTargetDir=$target" `
+            "-dIconsDir=$PWD\icons" -out "$PWD\fastxt.wixobj" packaging\windows\fastxt.wxs
+          & "$bin\light.exe" -spdb -out "$env:GITHUB_WORKSPACE\Fastxt-$($env:V)-x86_64.msi" `
+            "$PWD\fastxt.wixobj"
+
+      - name: Package portable .zip
+        shell: pwsh
+        env:
+          V: ${{ steps.ver.outputs.v }}
+        run: |
+          Compress-Archive -Path fastxt-rs\target\release\fastxt.exe, LICENSE `
+            -DestinationPath "Fastxt-$($env:V)-x86_64-windows.zip"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist-windows
+          path: |
+            Fastxt-*.msi
+            Fastxt-*.zip
+          if-no-files-found: error
+
+  linux:
+    name: Linux (.deb + .tar.gz)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve version
+        id: ver
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            V=${GITHUB_REF_NAME#v}
+          else
+            V=$(grep -m1 '^version' fastxt-rs/fastxt_desktop/Cargo.toml | sed 's/.*"\(.*\)".*/\1/')
+          fi
+          echo "v=$V" >> "$GITHUB_OUTPUT"
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: fastxt-rs
+          key: release-linux
+
+      - name: Install cargo-deb
+        run: cargo install cargo-deb --locked
+
+      - name: Build release binary
+        working-directory: fastxt-rs
+        run: cargo build --release -p fastxt_desktop --features ai
+
+      - name: Package
+        working-directory: fastxt-rs
+        env:
+          V: ${{ steps.ver.outputs.v }}
+        run: |
+          cargo deb -p fastxt_desktop --no-build
+          mkdir -p target/dist/stage
+          cp target/release/fastxt ../LICENSE target/dist/stage/
+          tar czf "target/dist/Fastxt-${V}-x86_64-linux.tar.gz" \
+            -C target/dist/stage fastxt LICENSE
+          cp target/debian/fastxt_*_amd64.deb "target/dist/Fastxt-${V}-amd64.deb"
+          rm -rf target/dist/stage
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist-linux
+          path: fastxt-rs/target/dist/*
+          if-no-files-found: error
+
+  release:
+    name: Publish GitHub Release
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: [macos, windows, linux]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          fail_on_unmatched_files: true
+          generate_release_notes: true

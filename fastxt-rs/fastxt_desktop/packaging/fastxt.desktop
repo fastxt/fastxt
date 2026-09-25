@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Fastxt
+GenericName=Text Notes
+Comment=Local-first text notes with on-device AI
+Exec=fastxt
+Icon=fastxt
+Terminal=false
+Categories=Utility;Office;
+StartupWMClass=fastxt

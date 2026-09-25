@@ -71,6 +71,19 @@ npm start        # Development server
 npm run build    # Production build
 ```
 
+### Desktop Releases (CI)
+Cut a release by pushing a plain-numeric tag — `.github/workflows/release.yml` builds
+a universal `.dmg` (macOS, both arches), `.msi` + portable `.zip` (Windows, WiX v3),
+and `.deb` + `.tar.gz` (Linux, cargo-deb), then publishes them to a GitHub Release:
+```bash
+git tag v0.1.0 && git push origin v0.1.0   # tags MUST be vX.Y.Z (MSI requirement)
+```
+The workflow also runs on `workflow_dispatch` (Actions tab → Release → Run) as a
+build-only smoke test — it versions from `fastxt_desktop/Cargo.toml` and skips
+publishing. Packaging assets live in `fastxt-rs/fastxt_desktop/packaging/` and
+icons in `fastxt-rs/fastxt_desktop/icons/`. macOS artifacts are ad-hoc signed
+(not notarized) until a Developer ID certificate is configured.
+
 ### Android App
 Open `fastxt-android/` in Android Studio or run:
 ```bash

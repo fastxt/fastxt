@@ -2,7 +2,11 @@
 name = "fastxt_desktop"
 version = "0.1.0"
 edition = "2024"
-authors = ["Ares <ttenx@pm.me>"]
+authors = ["Yi Wang"]
+license = "AGPL-3.0"
+description = "Fastxt desktop app — local-first text notes with on-device AI"
+homepage = "https://fastxt.app"
+repository = "https://github.com/fastxt/fastxt"
 
 [[bin]]
 name = "fastxt"
@@ -17,3 +21,15 @@ fastxt_core = { path = "../fastxt_core" }
 serde_json = "1"
 tokio = { version = "1", features = ["rt-multi-thread"] }
 iced = { version = "0.14", features = ["qr_code", "tokio"] }
+
+# Packaging metadata for cargo-deb (`cargo deb`). Paths are relative to this
+# manifest; `target/...` resolves to the workspace target dir.
+[package.metadata.deb]
+name = "fastxt"
+maintainer = "Yi Wang <yi@yilab.com>"
+depends = "$auto"
+assets = [
+    ["target/release/fastxt", "usr/bin/", "755"],
+    ["packaging/fastxt.desktop", "usr/share/applications/", "644"],
+    ["icons/fastxt-512.png", "usr/share/icons/hicolor/512x512/apps/fastxt.png", "644"],
+]
