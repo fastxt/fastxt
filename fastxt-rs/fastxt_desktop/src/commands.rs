@@ -16,490 +16,426 @@
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
 
-//! Framework-agnostic business logic for the Fastxt desktop app.
+//! Framework-agnostic logic for the desktop app, on the typed core API.
 //!
-//! Every public function here is a thin, **synchronous** wrapper over the
-//! [`fastxt_core::exe::run`] JSON action contract. There are deliberately no GUI
-//! types in this module — the Iced layer ([`crate::app`]) calls these from a
-//! background thread via [`tokio::task::spawn_blocking`], so they must stay pure
-//! and `Send`. Keeping them here (and not in the view) is what makes the GUI
-//! framework swappable: the same logic backed Druid and now backs Iced.
+//! Everything here is synchronous and `Send`; the Iced layer calls it from
+//! background threads. GUI types stay out.
 
-use serde_json::{Value, json};
+use fastxt_core::ai::JobReport;
+use fastxt_core::model::{CategoryCount, Filter, Note, Page, ScoredNote, Settings};
+pub use fastxt_core::sync::client::SyncReport;
+pub use fastxt_core::sync::server::ServerHandle;
+use fastxt_core::{Fastxt, Result};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
 
-/// A single note rendered as a card in the list / search results.
+/// Everything fetched at startup.
+#[derive(Debug, Clone)]
+pub struct Boot {
+    pub settings: Settings,
+    pub categories: Vec<(String, u32)>,
+    pub list: ListOutcome,
+}
+
+/// Load settings, categories and the first page in one background job.
+pub fn boot(db: &AppDb) -> Boot {
+    Boot {
+        settings: settings(db),
+        categories: category_pairs(db),
+        list: list(db, PAGE, 0, None),
+    }
+}
+
+/// Page size shared by the list UI.
+pub const PAGE: u32 = 50;
+
+/// How the current list was produced.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ListQuery {
+    /// Newest notes, optionally one category.
+    Browse {
+        category: Option<String>,
+        offset: u32,
+    },
+    /// Text search.
+    Search { query: String, offset: u32 },
+    /// Semantic search (AI; always first page).
+    Semantic { query: String },
+}
+
+/// Re-run a list query.
+pub fn fetch(db: &AppDb, query: &ListQuery) -> ListOutcome {
+    match query {
+        ListQuery::Browse { category, offset } => list(db, PAGE, *offset, category.as_deref()),
+        ListQuery::Search { query, offset } => text_search(db, query, PAGE, *offset),
+        ListQuery::Semantic { query } => semantic_search(db, query, PAGE),
+    }
+}
+
+/// Category counts as (name, count) pairs for the sidebar.
+pub fn category_pairs(db: &AppDb) -> Vec<(String, u32)> {
+    categories(db)
+        .into_iter()
+        .map(|c| (c.category, c.count))
+        .collect()
+}
+
+impl ListQuery {
+    /// Current page offset (semantic search is always the first page).
+    #[must_use]
+    pub fn offset(&self) -> u32 {
+        match self {
+            ListQuery::Browse { offset, .. } | ListQuery::Search { offset, .. } => *offset,
+            ListQuery::Semantic { .. } => 0,
+        }
+    }
+
+    /// Same query at another offset.
+    #[must_use]
+    pub fn with_offset(&self, offset: u32) -> Self {
+        match self {
+            ListQuery::Browse { category, .. } => ListQuery::Browse {
+                category: category.clone(),
+                offset,
+            },
+            ListQuery::Search { query, .. } => ListQuery::Search {
+                query: query.clone(),
+                offset,
+            },
+            ListQuery::Semantic { .. } => self.clone(),
+        }
+    }
+}
+
+/// The shared database handle the app and any started sync server use.
+pub type AppDb = Arc<Mutex<Fastxt>>;
+
+/// Open the app's database (default location).
+///
+/// # Errors
+/// See [`Fastxt::open_default`].
+pub fn open_db() -> Result<Fastxt> {
+    Fastxt::open_default()
+}
+
+/// A note rendered as a card.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct NoteCard {
     pub rowid: i64,
+    pub uuid4: String,
     pub txt: String,
     pub tags: String,
+    pub ai_tags: String,
     pub summary: String,
+    pub category: Option<String>,
     pub created_at: String,
-    /// Similarity score in `[0, 1]` for semantic search; `None` for text search.
+    /// Similarity in `[-1, 1]` when the list came from semantic search.
     pub similarity: Option<f64>,
 }
 
-/// Result of a search / list operation.
+impl NoteCard {
+    fn from(note: &Note, similarity: Option<f64>) -> Self {
+        NoteCard {
+            rowid: note.rowid,
+            uuid4: note.uuid4.clone(),
+            txt: note.txt.clone(),
+            tags: note.tags.clone(),
+            ai_tags: note.ai_tag_list().join(", "),
+            summary: note.ai_summary.clone().unwrap_or_default(),
+            category: note.ai_category.clone(),
+            created_at: note
+                .created_at
+                .split(' ')
+                .next()
+                .unwrap_or_default()
+                .to_string(),
+            similarity,
+        }
+    }
+}
+
+/// One page of results plus a headline.
 #[derive(Debug, Clone, Default)]
-pub struct SearchOutcome {
-    pub count_label: String,
+pub struct ListOutcome {
+    pub label: String,
     pub notes: Vec<NoteCard>,
-    /// Non-empty when the backend reported a problem (e.g. AI unavailable).
-    pub status: String,
+    pub total: u32,
+    pub offset: u32,
+    pub error: Option<String>,
 }
 
-/// AI tag suggestion plus a human-readable status line.
-#[derive(Debug, Clone, Default)]
-pub struct TagSuggestion {
-    pub tags: String,
-    pub status: String,
+fn lock<T>(db: &AppDb, f: impl FnOnce(&mut Fastxt) -> Result<T>) -> std::result::Result<T, String> {
+    let mut guard = db
+        .lock()
+        .map_err(|_| "the database is locked".to_string())?;
+    f(&mut guard).map_err(|e| e.to_string())
 }
 
-/// AI summary plus a human-readable status line.
-#[derive(Debug, Clone, Default)]
-pub struct SummaryOutcome {
-    pub summary: String,
-    pub status: String,
+fn page_outcome(page: Page, offset: u32, verb: &str) -> ListOutcome {
+    let total = page.count;
+    let label = if total == 0 {
+        format!("No notes {verb}")
+    } else {
+        format!("{verb}: {} of {total}", page.notes.len())
+    };
+    ListOutcome {
+        label,
+        notes: page.notes.iter().map(|n| NoteCard::from(n, None)).collect(),
+        total,
+        offset,
+        error: None,
+    }
 }
 
-/// Run a JSON command through the core and parse the response as JSON.
-///
-/// `fastxt_core::exe::run` can `panic!` on a fatal database failure (the SQLite
-/// file is unopenable, or a schema upgrade fails). We catch that here: because
-/// the GUI calls these wrappers via `spawn_blocking`, an uncaught panic is
-/// swallowed by the runtime and produces *no* result message, which would leave
-/// the `busy` flag stuck and disable every button for the rest of the session.
-/// Converting the panic into an error response lets the normal *Ready handlers
-/// run, clear `busy`, and surface the failure.
-fn run(cmd: &Value) -> Value {
-    let input = cmd.to_string();
-    let result = std::panic::catch_unwind(|| fastxt_core::exe::run(&input)).unwrap_or_else(|_| {
-        r#"{"error":"core command failed (database unavailable?)"}"#.to_string()
+/// List the newest notes.
+pub fn list(db: &AppDb, limit: u32, offset: u32, category: Option<&str>) -> ListOutcome {
+    let filter = Filter {
+        category: category.map(str::to_string),
+    };
+    match lock(db, |db| db.list(limit, offset, &filter)) {
+        Ok(page) => page_outcome(page, offset, "listed"),
+        Err(e) => ListOutcome {
+            error: Some(e),
+            ..Default::default()
+        },
+    }
+}
+
+/// Full-text search (FTS5 trigram index, LIKE fallback for short terms).
+pub fn text_search(db: &AppDb, query: &str, limit: u32, offset: u32) -> ListOutcome {
+    match lock(db, |db| db.search(query, limit, offset)) {
+        Ok(page) => page_outcome(page, offset, "found"),
+        Err(e) => ListOutcome {
+            error: Some(e),
+            ..Default::default()
+        },
+    }
+}
+
+/// Semantic search; scores notes by meaning via the configured embedder.
+/// Falls back to text search when AI is unavailable, with a note why.
+pub fn semantic_search(db: &AppDb, query: &str, limit: u32) -> ListOutcome {
+    let result = lock(db, |db| {
+        let ai = fastxt_core::ai::Ai::for_db(db)?;
+        let check = ai.check();
+        if !check.ok {
+            return Err(fastxt_core::Error::AiUnavailable(check.message));
+        }
+        let vector = ai.embed(query)?;
+        db.semantic_search(&vector, ai.embedding_model_id(), limit, 0.0)
     });
-    serde_json::from_str(&result).unwrap_or_else(|_| json!({ "error": "failed to parse response" }))
-}
-
-/// Read a string field from a JSON object, defaulting to `""`.
-fn str_field(v: &Value, key: &str) -> String {
-    v.get(key).and_then(Value::as_str).unwrap_or("").to_string()
-}
-
-/// Build a [`NoteCard`] from a note JSON object, keeping only the date portion
-/// of `created_at` (the core stores `"%Y-%m-%d %H:%M:%S"`).
-fn note_from_json(note: &Value, similarity: Option<f64>) -> NoteCard {
-    let created_at = str_field(note, "created_at")
-        .split(' ')
-        .next()
-        .unwrap_or("")
-        .to_string();
-    NoteCard {
-        rowid: note.get("rowid").and_then(Value::as_i64).unwrap_or(0),
-        txt: str_field(note, "txt"),
-        tags: str_field(note, "tags"),
-        summary: str_field(note, "ai_summary"),
-        created_at,
-        similarity,
-    }
-}
-
-/// Format a `{processed, errors}` batch response, or surface its error.
-fn batch_status(resp: &Value, verb: &str) -> String {
-    if let Some(processed) = resp.get("processed").and_then(Value::as_u64) {
-        let errors = resp.get("errors").and_then(Value::as_u64).unwrap_or(0);
-        format!("{verb} {processed} notes ({errors} errors)")
-    } else {
-        let err = str_field(resp, "error");
-        if err.is_empty() {
-            format!("Failed: {verb}")
-        } else {
-            format!("Error: {err}")
+    match result {
+        Ok(hits) => ListOutcome {
+            label: format!("{} most similar notes", hits.len()),
+            notes: hits
+                .iter()
+                .map(|h: &ScoredNote| NoteCard::from(&h.note, Some(h.score)))
+                .collect(),
+            total: hits.len() as u32,
+            offset: 0,
+            error: None,
+        },
+        Err(e) => {
+            // Degrade to text search but say so.
+            let fallback = text_search(db, query, limit, 0);
+            ListOutcome {
+                label: format!("{} (AI unavailable — text results)", fallback.label),
+                error: Some(e),
+                ..fallback
+            }
         }
     }
 }
 
-/// List the most recent notes (used to populate the list on startup).
-pub fn recent_notes(limit: u32, offset: u32) -> SearchOutcome {
-    let resp = run(&json!({ "action": "select", "limit": limit, "offset": offset }));
-    let notes: Vec<NoteCard> = resp
-        .get("notes")
-        .and_then(Value::as_array)
-        .map(|arr| arr.iter().map(|n| note_from_json(n, None)).collect())
-        .unwrap_or_default();
-    let count = resp
-        .get("count")
-        .and_then(Value::as_u64)
-        .unwrap_or(notes.len() as u64);
-    SearchOutcome {
-        count_label: format!("{count} notes"),
-        notes,
-        status: String::new(),
-    }
+/// Fetch one note for the detail editor.
+pub fn get_note(db: &AppDb, rowid: i64) -> Option<NoteCard> {
+    lock(db, |db| db.get(&rowid.into()))
+        .ok()
+        .flatten()
+        .map(|n| NoteCard::from(&n, None))
 }
 
-/// Full-text search.
-pub fn text_search(query: &str, limit: u32, offset: u32) -> SearchOutcome {
-    let resp = run(&json!({
-        "action": "search",
-        "query": query,
-        "limit": limit,
-        "offset": offset,
-    }));
-    let count = resp.get("count").and_then(Value::as_u64).unwrap_or(0);
-    let notes: Vec<NoteCard> = resp
-        .get("notes")
-        .and_then(Value::as_array)
-        .map(|arr| arr.iter().map(|n| note_from_json(n, None)).collect())
-        .unwrap_or_default();
-    SearchOutcome {
-        count_label: format!("{count} notes found"),
-        notes,
-        status: String::new(),
-    }
+/// Save a new note; returns its rowid.
+pub fn insert_note(db: &AppDb, txt: &str, tags: &str) -> std::result::Result<i64, String> {
+    lock(db, |db| {
+        db.insert(fastxt_core::model::NewNote::new(txt, tags))
+            .map(|n| n.rowid)
+    })
 }
 
-/// AI-powered semantic search.
-pub fn semantic_search(query: &str, endpoint: &str, model: &str) -> SearchOutcome {
-    let resp = run(&json!({
-        "action": "semantic-search",
-        "query": query,
-        "limit": 20,
-        "threshold": 0.5,
-        "endpoint": endpoint,
-        "model": model,
-    }));
-    if let Some(results) = resp.get("results").and_then(Value::as_array) {
-        let available = resp
-            .get("available")
-            .and_then(Value::as_bool)
-            .unwrap_or(false);
-        let notes: Vec<NoteCard> = results
-            .iter()
-            .filter_map(|r| {
-                r.get("note")
-                    .map(|note| note_from_json(note, r.get("similarity").and_then(Value::as_f64)))
-            })
-            .collect();
-        SearchOutcome {
-            count_label: format!("{} similar notes", notes.len()),
-            notes,
-            status: if available {
-                String::new()
-            } else {
-                "AI not available for semantic search".to_string()
-            },
-        }
-    } else {
-        let err = str_field(&resp, "error");
-        SearchOutcome {
-            count_label: "0 notes".to_string(),
-            notes: Vec::new(),
-            status: if err.is_empty() {
-                "Search failed".to_string()
-            } else {
-                format!("Error: {err}")
-            },
-        }
-    }
-}
-
-/// Suggest tags for the given text via AI.
-pub fn ai_tags(text: &str, endpoint: &str, model: &str) -> TagSuggestion {
-    let resp = run(&json!({
-        "action": "ai-tag",
-        "text": text,
-        "endpoint": endpoint,
-        "model": model,
-    }));
-    if let Some(tags) = resp.get("tags").and_then(Value::as_array) {
-        let tag_str = tags
-            .iter()
-            .filter_map(Value::as_str)
-            .collect::<Vec<_>>()
-            .join(",");
-        let available = resp
-            .get("available")
-            .and_then(Value::as_bool)
-            .unwrap_or(false);
-        TagSuggestion {
-            tags: tag_str,
-            status: if available {
-                String::new()
-            } else {
-                "AI not available. Check Ollama is running.".to_string()
-            },
-        }
-    } else {
-        let err = str_field(&resp, "error");
-        TagSuggestion {
-            tags: String::new(),
-            status: if err.is_empty() {
-                "Failed to parse AI response".to_string()
-            } else {
-                format!("Error: {err}")
-            },
-        }
-    }
-}
-
-/// Insert a note. Returns the rowid of the inserted note, or `None` on failure.
-pub fn insert_note(content: &str, tags: &str) -> Option<i64> {
-    let resp = run(&json!({
-        "action": "insert",
-        "txt": content,
-        "tags": tags,
-        "limit": 1,
-        "offset": 0,
-    }));
-    resp.get("notes")
-        .and_then(Value::as_array)
-        .and_then(|n| n.first())
-        .and_then(|note| note.get("rowid").and_then(Value::as_i64))
-}
-
-/// Insert the current note, then ask AI to summarize it (mirrors the original
-/// Druid flow, which persisted the note to obtain a rowid for `ai-summarize`).
-pub fn summarize_new_note(
-    content: &str,
+/// Save a new note together with an AI summary generated for it, in one step.
+pub fn insert_with_summary(
+    db: &AppDb,
+    txt: &str,
     tags: &str,
-    endpoint: &str,
-    model: &str,
-) -> SummaryOutcome {
-    let Some(rowid) = insert_note(content, tags) else {
-        return SummaryOutcome {
-            summary: String::new(),
-            status: "Failed to generate summary".to_string(),
-        };
-    };
-    let resp = run(&json!({
-        "action": "ai-summarize",
-        "rowid": rowid,
-        "endpoint": endpoint,
-        "model": model,
-    }));
-    if let Some(summary) = resp.get("summary").and_then(Value::as_str) {
-        SummaryOutcome {
-            summary: summary.to_string(),
-            status: String::new(),
-        }
-    } else {
-        let err = str_field(&resp, "error");
-        SummaryOutcome {
-            summary: String::new(),
-            status: if err.is_empty() {
-                "Failed to generate summary".to_string()
-            } else {
-                format!("Error: {err}")
-            },
-        }
+    summary: &str,
+) -> std::result::Result<i64, String> {
+    lock(db, |db| {
+        let mut new = fastxt_core::model::NewNote::new(txt, tags);
+        new.ai_summary = Some(summary.to_string());
+        db.insert(new).map(|n| n.rowid)
+    })
+}
+
+/// Change a note's text and tags.
+pub fn update_note(
+    db: &AppDb,
+    rowid: i64,
+    txt: &str,
+    tags: &str,
+) -> std::result::Result<(), String> {
+    lock(db, |db| db.update(&rowid.into(), txt, tags).map(|_| ()))
+}
+
+/// Delete a note (tombstone; syncs to peers).
+pub fn delete_note(db: &AppDb, rowid: i64) -> std::result::Result<(), String> {
+    lock(db, |db| db.delete(&rowid.into()).map(|_| ()))
+}
+
+/// AI tag suggestions for arbitrary text; `Err` explains what's missing.
+pub fn ai_tags(db: &AppDb, text: &str) -> std::result::Result<Vec<String>, String> {
+    lock(db, |db| {
+        let vocabulary: Vec<String> = db.tag_vocabulary(40)?.into_iter().map(|t| t.tag).collect();
+        fastxt_core::ai::Ai::for_db(db)?.suggest_tags(text, &vocabulary)
+    })
+    .map_err(|e| e.to_string())
+}
+
+/// AI summary of arbitrary text — nothing is saved.
+pub fn ai_summarize(db: &AppDb, text: &str) -> std::result::Result<String, String> {
+    lock(db, |db| fastxt_core::ai::summarize_text(db, text)).map_err(|e| e.to_string())
+}
+
+/// Probe the AI backend; the message explains what to fix.
+pub fn ai_check(db: &AppDb) -> String {
+    match lock(db, |db| {
+        fastxt_core::ai::Ai::for_db(db).map(|ai| ai.check())
+    }) {
+        Ok(check) if check.ok => check.message,
+        Ok(check) => format!("✗ {}", check.message),
+        Err(e) => format!("✗ {e}"),
     }
 }
 
-/// Probe the configured AI endpoint with a trivial request.
-pub fn test_connection(endpoint: &str, model: &str) -> String {
-    let resp = run(&json!({
-        "action": "ai-tag",
-        "text": "test",
-        "endpoint": endpoint,
-        "model": model,
-    }));
-    if resp
-        .get("available")
-        .and_then(Value::as_bool)
-        .unwrap_or(false)
-    {
-        "✓ Connected to Ollama successfully!".to_string()
-    } else {
-        "✗ Could not connect to Ollama. Make sure it's running.".to_string()
-    }
+/// Stored settings.
+pub fn settings(db: &AppDb) -> Settings {
+    lock(db, |db| db.settings()).unwrap_or_default()
 }
 
-/// Batch-tag all notes that lack AI tags.
-pub fn tag_all(endpoint: &str, model: &str) -> String {
-    let resp = run(&json!({
-        "action": "ai-tag-all",
-        "limit": 100,
-        "endpoint": endpoint,
-        "model": model,
-    }));
-    batch_status(&resp, "Tagged")
+/// Persist settings.
+pub fn save_settings(db: &AppDb, settings: &Settings) -> std::result::Result<(), String> {
+    lock(db, |db| db.save_settings(settings).map(|_| ()))
 }
 
-/// Batch-embed all notes that lack embeddings.
-pub fn embed_all(endpoint: &str, model: &str) -> String {
-    let resp = run(&json!({
-        "action": "ai-embed-all",
-        "limit": 100,
-        "endpoint": endpoint,
-        "model": model,
-    }));
-    batch_status(&resp, "Embedded")
+/// Categories with counts.
+pub fn categories(db: &AppDb) -> Vec<CategoryCount> {
+    lock(db, |db| db.categories()).unwrap_or_default()
 }
 
-/// Ask AI to organize notes into categories, returning a status + breakdown.
-pub fn organize(endpoint: &str, model: &str) -> String {
-    let resp = run(&json!({
-        "action": "ai-organize",
-        "limit": 100,
-        "endpoint": endpoint,
-        "model": model,
-    }));
-    organize_status(&resp)
+/// Rename a category on every note that has it.
+pub fn rename_category(db: &AppDb, old: &str, new: &str) -> std::result::Result<usize, String> {
+    lock(db, |db| db.rename_category(old, new))
 }
 
-/// Format an `ai-organize` response into a status + category breakdown.
-fn organize_status(resp: &Value) -> String {
-    // `do_ai_organize` always includes `processed: 0` even on failure (e.g. AI
-    // backend down), so an explicit error must take precedence over the success
-    // line — otherwise the user sees "Organized 0 notes" instead of the reason.
-    let err = str_field(resp, "error");
-    if !err.is_empty() {
-        return format!("Error: {err}");
-    }
-    if let Some(processed) = resp.get("processed").and_then(Value::as_u64) {
-        let errors = resp.get("errors").and_then(Value::as_u64).unwrap_or(0);
-        let categories = resp
-            .get("categories")
-            .and_then(Value::as_object)
-            .map(|obj| {
-                obj.iter()
-                    .map(|(k, v)| format!("  {}: {} notes", k, v.as_u64().unwrap_or(0)))
-                    .collect::<Vec<_>>()
-                    .join("\n")
-            })
-            .unwrap_or_default();
-        format!("Organized {processed} notes ({errors} errors)\n{categories}")
-    } else {
-        // Error already handled above; a missing `processed` here is unexpected.
-        "Failed to organize notes".to_string()
-    }
+/// Clear a category from every note.
+pub fn dismiss_category(db: &AppDb, category: &str) -> std::result::Result<usize, String> {
+    lock(db, |db| db.dismiss_category(category))
 }
 
-/// Sync against another Fastxt instance acting as server (one-shot client sync).
-pub fn client_sync(addr: &str) -> String {
-    let resp = run(&json!({ "action": "client-sync", "addr": addr }));
-    if let Some(resp_str) = resp.get("client-sync").and_then(Value::as_str) {
-        format!("✓ {resp_str}")
-    } else {
-        let err = str_field(&resp, "error");
-        if err.is_empty() {
-            "Sync failed".to_string()
-        } else {
-            format!("Error: {err}")
+// ---------------------------------------------------------------------------
+// Batch jobs (chunked so the UI can show progress and cancel)
+// ---------------------------------------------------------------------------
+
+/// What a batch step should do.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BatchKind {
+    Tag,
+    Embed,
+    Organize,
+}
+
+impl BatchKind {
+    #[must_use]
+    pub fn label(self) -> &'static str {
+        match self {
+            BatchKind::Tag => "Tagging",
+            BatchKind::Embed => "Embedding",
+            BatchKind::Organize => "Organizing",
         }
     }
 }
 
-/// Load all notes grouped by AI category, formatted for display.
-pub fn load_categories() -> String {
-    use std::collections::BTreeMap;
-
-    let resp = run(&json!({ "action": "select", "limit": 1000, "offset": 0 }));
-    let Some(notes) = resp.get("notes").and_then(Value::as_array) else {
-        return "Failed to load categories".to_string();
-    };
-
-    // BTreeMap keeps category order stable across runs (HashMap did not).
-    let mut categories: BTreeMap<String, Vec<String>> = BTreeMap::new();
-    for note in notes {
-        let category = note
-            .get("ai_category")
-            .and_then(Value::as_str)
-            .unwrap_or("uncategorized")
-            .to_string();
-        let txt: String = str_field(note, "txt").chars().take(50).collect();
-        categories.entry(category).or_default().push(txt);
-    }
-
-    if categories.is_empty() {
-        return "No notes found. Run 'Organize Notes' to categorize.".to_string();
-    }
-
-    let mut parts = Vec::new();
-    for (category, items) in &categories {
-        parts.push(format!("📁 {} ({} notes)", category, items.len()));
-        for item in items.iter().take(5) {
-            parts.push(format!("  • {item}"));
+/// Run a batch job in chunks until drained or cancelled. `progress` sees the
+/// running totals. Returns the accumulated report.
+///
+/// # Errors
+/// Returns the first unrecoverable error (e.g. AI unavailable).
+pub fn run_batch(
+    db: &AppDb,
+    kind: BatchKind,
+    chunk: u32,
+    cancel: &AtomicBool,
+    progress: &dyn Fn(u32, u32),
+) -> std::result::Result<(u32, u32), String> {
+    let mut done = 0u32;
+    let mut errors = 0u32;
+    loop {
+        if cancel.load(Ordering::Relaxed) {
+            break;
         }
-        if items.len() > 5 {
-            parts.push(format!("  ... and {} more", items.len() - 5));
+        let silent = |_, _| {};
+        let report: JobReport = lock(db, |db| match kind {
+            BatchKind::Tag => fastxt_core::ai::tag_notes(db, chunk, &silent),
+            BatchKind::Embed => fastxt_core::ai::embed_notes(db, chunk, &silent),
+            BatchKind::Organize => fastxt_core::ai::categorize_notes(db, chunk, &silent),
+        })
+        .map_err(|e| e.to_string())?;
+        if report.processed == 0 {
+            // Drained, or the remaining notes keep failing: don't spin.
+            errors += report.errors;
+            break;
         }
-        parts.push(String::new());
+        done += report.processed;
+        errors += report.errors;
+        progress(done, done + errors);
     }
-    parts.join("\n")
+    progress(done, done + errors);
+    Ok((done, errors))
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+// ---------------------------------------------------------------------------
+// Sync
+// ---------------------------------------------------------------------------
 
-    #[test]
-    fn parses_note_fields_and_truncates_date_to_day() {
-        let v = json!({
-            "rowid": 7,
-            "txt": "hello world",
-            "tags": "a,b",
-            "ai_summary": "a summary",
-            "created_at": "2026-06-20 10:11:12",
-        });
-        let card = note_from_json(&v, Some(0.42));
-        assert_eq!(card.rowid, 7);
-        assert_eq!(card.txt, "hello world");
-        assert_eq!(card.tags, "a,b");
-        assert_eq!(card.summary, "a summary");
-        assert_eq!(card.created_at, "2026-06-20");
-        assert_eq!(card.similarity, Some(0.42));
-    }
+/// Start the sync server; the pairing code is in `handle.pairing_code`.
+pub fn start_server(db: &AppDb, port: u16) -> std::result::Result<ServerHandle, String> {
+    let path = lock(db, |db| {
+        db.path().map(std::path::Path::to_path_buf).ok_or_else(|| {
+            fastxt_core::Error::Sync("the server needs a file-backed database".into())
+        })
+    })?;
+    let server_db: AppDb = Arc::new(Mutex::new(Fastxt::open(path).map_err(|e| e.to_string())?));
+    fastxt_core::sync::server::serve(server_db, port).map_err(|e| e.to_string())
+}
 
-    #[test]
-    fn note_defaults_when_fields_missing() {
-        let card = note_from_json(&json!({}), None);
-        assert_eq!(card.rowid, 0);
-        assert_eq!(card.txt, "");
-        assert_eq!(card.created_at, "");
-        assert_eq!(card.similarity, None);
-    }
+/// Stop the sync server.
+pub fn stop_server(handle: &ServerHandle) {
+    handle.stop();
+}
 
-    #[test]
-    fn batch_status_reports_counts() {
-        let v = json!({ "processed": 3, "errors": 1 });
-        assert_eq!(batch_status(&v, "Tagged"), "Tagged 3 notes (1 errors)");
-    }
+/// Sync with the server named in a pairing code.
+pub fn sync(db: &AppDb, pairing_code: &str) -> std::result::Result<SyncReport, String> {
+    lock(db, |db| fastxt_core::sync::client::sync(pairing_code, db)).map_err(|e| e.to_string())
+}
 
-    #[test]
-    fn batch_status_surfaces_error() {
-        let v = json!({ "error": "boom" });
-        assert_eq!(batch_status(&v, "Tagged"), "Error: boom");
-    }
-
-    #[test]
-    fn organize_status_prefers_error_over_zero_processed() {
-        // do_ai_organize emits processed:0 *and* an error when the backend is
-        // down; the error message must win over "Organized 0 notes".
-        let v = json!({
-            "processed": 0,
-            "errors": 0,
-            "categories": {},
-            "available": false,
-            "error": "AI backend not available. Make sure Ollama is running.",
-        });
-        assert_eq!(
-            organize_status(&v),
-            "Error: AI backend not available. Make sure Ollama is running."
-        );
-    }
-
-    #[test]
-    fn organize_status_formats_success_with_categories() {
-        let v = json!({
-            "processed": 5,
-            "errors": 1,
-            "categories": { "work": 3, "personal": 2 },
-            "available": true,
-            "error": null,
-        });
-        let out = organize_status(&v);
-        assert!(out.starts_with("Organized 5 notes (1 errors)\n"));
-        assert!(out.contains("work: 3 notes"));
-        assert!(out.contains("personal: 2 notes"));
-    }
+/// Human line for a sync report.
+#[must_use]
+pub fn sync_report_text(report: &SyncReport) -> String {
+    format!(
+        "✓ synced: {} notes pulled, {} pushed, {} embeddings pulled, {} pushed",
+        report.notes_pulled,
+        report.notes_pushed,
+        report.embeddings_pulled,
+        report.embeddings_pushed
+    )
 }
