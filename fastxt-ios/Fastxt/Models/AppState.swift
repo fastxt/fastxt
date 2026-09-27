@@ -205,18 +205,6 @@ struct Response: Decodable {
     let notes: [Note]
 }
 
-// AI Response structs
-struct AiTagsResponse: Decodable {
-    let tags: [String]
-    let available: Bool
-    let error: String?
-}
-
-struct AiSummaryResponse: Decodable {
-    let summary: String?
-    let available: Bool
-    let error: String?
-}
 
 class Env: ObservableObject {
     @Published var addr:String = ""
@@ -245,16 +233,17 @@ class Env: ObservableObject {
 
         aiStatus = "Getting AI suggestions..."
 
-        // Use Apple Foundation Models directly
-        let response = FastxtAI.suggestTags(text: text)
-
-        if let data = response.data(using: .utf8),
-           let result = try? JSONDecoder().decode(AiTagsResponse.self, from: data) {
-            DispatchQueue.main.async { [weak self] in
-                self?.aiSuggestedTags = result.tags
-                self?.aiAvailable = result.available
-                self?.aiStatus = result.error ?? ""
-                self?.showAiTags = !result.tags.isEmpty
+        // Off the main thread: Foundation Models can take seconds.
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let response = FastxtAI.suggestTags(text: text)
+            if let data = response.data(using: .utf8),
+               let result = try? JSONDecoder().decode(AiTagsResponse.self, from: data) {
+                DispatchQueue.main.async {
+                    self?.aiSuggestedTags = result.tags
+                    self?.aiAvailable = result.available
+                    self?.aiStatus = result.error ?? ""
+                    self?.showAiTags = !result.tags.isEmpty
+                }
             }
         }
     }
@@ -283,14 +272,15 @@ class Env: ObservableObject {
 
         aiStatus = "Generating summary..."
 
-        let response = FastxtAI.summarize(text: text)
-
-        if let data = response.data(using: .utf8),
-           let result = try? JSONDecoder().decode(AiSummaryResponse.self, from: data) {
-            DispatchQueue.main.async { [weak self] in
-                self?.aiSummary = result.summary ?? ""
-                self?.aiAvailable = result.available
-                self?.aiStatus = result.error ?? ""
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let response = FastxtAI.summarize(text: text)
+            if let data = response.data(using: .utf8),
+               let result = try? JSONDecoder().decode(AiSummaryResponse.self, from: data) {
+                DispatchQueue.main.async {
+                    self?.aiSummary = result.summary ?? ""
+                    self?.aiAvailable = result.available
+                    self?.aiStatus = result.error ?? ""
+                }
             }
         }
     }

@@ -9,6 +9,6 @@
 #ifndef Fastxt_Bridging_Header_h
 #define Fastxt_Bridging_Header_h
 
-#import "fastxt-core.h"
+#import "../fastxt-rs/fastxt_ffi/include/fastxt.h"
 
 #endif /* Fastxt_Bridging_Header_h */

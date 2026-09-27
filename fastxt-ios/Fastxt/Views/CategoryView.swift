@@ -2,13 +2,17 @@
 //  CategoryView.swift
 //  Fastxt
 //
-//  Created by AI Assistant
-//  Copyright © 2024 Yi Wang. All rights reserved.
+//  View showing notes grouped by AI-generated categories.
 //
 
 import SwiftUI
 
-/// View showing notes grouped by AI-generated categories.
+/// A note with its AI category, as read from the select response.
+private struct CategorizedNote: Hashable {
+    let note: Note
+    let category: String?
+}
+
 struct CategoryView: View {
     @EnvironmentObject var env: Env
     @State private var categories: [String: [Note]] = [:]
@@ -122,75 +126,57 @@ struct CategoryView: View {
     /// Load notes grouped by category.
     private func loadCategories() {
         isLoading = true
-
-        // Get all notes
-        let input = "{\"action\":\"select\",\"limit\":500,\"offset\":0}"
-        let result = fastxt_run(input)
-
-        if let data = result?.data(using: .utf8),
-           let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-           let notesArray = json["notes"] as? [[String: Any]] {
-
+        DispatchQueue.global(qos: .userInitiated).async {
+            let response = AppState.ft.run(json_input: #"{"action":"select","limit":500,"offset":0}"#)
             var grouped: [String: [Note]] = [:]
 
-            for noteDict in notesArray {
-                if let txt = noteDict["txt"] as? String {
+            if let data = response.data(using: .utf8),
+               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let notesArray = json["notes"] as? [[String: Any]] {
+
+                for noteDict in notesArray {
+                    guard let txt = noteDict["txt"] as? String else { continue }
                     let note = Note(
-                        rowid: noteDict["rowid"] as? Int64 ?? 0,
+                        id: noteDict["rowid"] as? Int64 ?? Int64(noteDict["rowid"] as? Int ?? 0),
+                        uuid4: noteDict["uuid4"] as? String ?? "",
                         txt: txt,
                         tags: noteDict["tags"] as? String ?? "",
-                        aiCategory: noteDict["ai_category"] as? String
+                        created_at: noteDict["created_at"] as? String ?? ""
                     )
-
-                    let category = note.aiCategory?.isEmpty == false ? note.aiCategory! : "uncategorized"
-                    if grouped[category] == nil {
-                        grouped[category] = []
-                    }
-                    grouped[category]?.append(note)
+                    let category = (noteDict["ai_category"] as? String)
+                        .flatMap { $0.isEmpty ? nil : $0 } ?? "uncategorized"
+                    grouped[category, default: []].append(note)
                 }
             }
 
-            categories = grouped
+            DispatchQueue.main.async {
+                self.categories = grouped
+                self.isLoading = false
+            }
         }
-
-        isLoading = false
     }
 
     /// Organize notes using AI categorization.
     private func organizeNotes() {
         organizeStatus = "Organizing..."
         isLoading = true
-
-        // Call ai-organize command
-        let input = "{\"action\":\"ai-organize\",\"limit\":100}"
-        let result = fastxt_run(input)
-
-        if let data = result?.data(using: .utf8),
-           let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
-
-            if let processed = json["processed"] as? Int {
-                let errors = json["errors"] as? Int ?? 0
-                organizeStatus = "Organized \(processed) notes (\(errors) errors)"
-            } else if let error = json["error"] as? String {
-                organizeStatus = "Error: \(error)"
+        DispatchQueue.global(qos: .userInitiated).async {
+            let response = AppState.ft.run(json_input: #"{"action":"ai-organize","limit":100}"#)
+            var status = "Failed to organize"
+            if let data = response.data(using: .utf8),
+               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                if let processed = json["processed"] as? Int {
+                    let errors = json["errors"] as? Int ?? 0
+                    status = "Organized \(processed) notes (\(errors) errors)"
+                } else if let error = json["error"] as? String {
+                    status = "Error: \(error)"
+                }
             }
-        } else {
-            organizeStatus = "Failed to organize"
+            DispatchQueue.main.async {
+                self.organizeStatus = status
+                self.isLoading = false
+                self.loadCategories()
+            }
         }
-
-        // Reload categories
-        loadCategories()
-    }
-}
-
-/// Note model for category view.
-struct Note: Hashable {
-    let rowid: Int64
-    let txt: String
-    let tags: String
-    let aiCategory: String?
-
-    func hash(into hasher: inout Hasher) {
-        hasher.combine(rowid)
     }
 }

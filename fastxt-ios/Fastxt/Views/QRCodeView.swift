@@ -10,34 +10,30 @@ import SwiftUI
 import CoreImage.CIFilterBuiltins
 
 struct QRCodeView: View {
-    @EnvironmentObject var env : Env
-    
-    let context = CIContext()
-    let filter = CIFilter.qrCodeGenerator()
-    func generateQRCode(from string: String) -> UIImage {
-        let data = Data(string.utf8)
-        filter.setValue(data, forKey: "inputMessage")
+    let text: String
 
-        if let outputImage = filter.outputImage {
-            if let cgimg = context.createCGImage(outputImage, from: outputImage.extent) {
-                return UIImage(cgImage: cgimg)
-            }
+    private let context = CIContext()
+    private let filter = CIFilter.qrCodeGenerator()
+
+    private func generate() -> UIImage {
+        filter.setValue(Data(text.utf8), forKey: "inputMessage")
+        if let outputImage = filter.outputImage,
+           let cgimg = context.createCGImage(outputImage, from: outputImage.extent) {
+            return UIImage(cgImage: cgimg)
         }
-
         return UIImage()
     }
+
     var body: some View {
-        VStack{
-            Text("Server QR Code")
-            Image(uiImage:generateQRCode(from: env.addr)).interpolation(.none)
+        Image(uiImage: generate()).interpolation(.none)
             .resizable()
             .aspectRatio(contentMode: .fit)
-        }
+            .frame(maxWidth: 200)
     }
 }
 
 struct QRCodeView_Previews: PreviewProvider {
     static var previews: some View {
-        QRCodeView()
+        QRCodeView(text: "FASTXT1:192.168.1.1:3456:0123456789abcdef0123456789abcdef:ABCDEFGHIJ")
     }
 }

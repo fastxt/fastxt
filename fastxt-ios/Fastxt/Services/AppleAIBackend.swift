@@ -2,15 +2,15 @@
 //  AppleAIBackend.swift
 //  Fastxt
 //
-//  On-device AI using Apple Foundation Models for iOS 18.1+ / macOS 15.1+
-//  Provides smart tagging, summarization, and semantic search using
-//  Apple's native AI capabilities.
-//
-//  Created for Fastxt AI integration.
+//  On-device AI: Apple Foundation Models on iOS 26+ where available,
+//  Natural Language heuristics everywhere else. All processing stays on-device.
 //
 
 import Foundation
 import NaturalLanguage
+#if canImport(FoundationModels)
+import FoundationModels
+#endif
 
 /// Response type for AI tag suggestions.
 struct AiTagsResponse: Codable {
@@ -26,80 +26,27 @@ struct AiSummaryResponse: Codable {
     let error: String?
 }
 
-/// Apple Foundation Models backend for on-device AI.
-/// Gracefully degrades on older devices or when Apple Intelligence is unavailable.
-@available(iOS 18.1, macOS 15.1, *)
-class AppleAIBackend {
+#if canImport(FoundationModels)
+/// Structured tag output for guided generation on iOS 26+.
+@available(iOS 26.0, macOS 26.0, *)
+@Generable
+struct TagSuggestions {
+    @Guide(description: "3 to 7 short lowercase tags, 1-3 words each", .count(5))
+    var tags: [String]
+}
+#endif
 
-    /// Check if Apple Foundation Models are available on this device.
-    /// Returns true only on Apple Silicon devices with iOS 18.1+ / macOS 15.1+.
-    static func isAvailable() -> Bool {
-        // Check if we're on a supported platform
-        #if os(iOS)
-        if #available(iOS 18.1, *) {
-            // Check for Apple Silicon (A17 Pro or later for iPhone, M-series for iPad)
-            // This is a best-effort check; actual availability may vary
-            return true
-        }
-        #elseif os(macOS)
-        if #available(macOS 15.1, *) {
-            // Check for Apple Silicon Mac
-            var sysinfo = utsname()
-            _ = uname(&sysinfo)
-            let machine = withUnsafePointer(to: &sysinfo.machine) {
-                $0.withMemoryRebound(to: CChar.self, capacity: Int(_SYS_NAMELEN)) {
-                    String(cString: $0)
-                }
-            }
-            return machine.hasPrefix("arm64")
-        }
-        #endif
-        return false
-    }
-
-    /// Suggest tags for the given text using on-device NLP.
-    /// Uses NLTagger for entity extraction and keyword identification.
-    static func suggestTags(text: String, completion: @escaping (AiTagsResponse) -> Void) {
-        DispatchQueue.global(qos: .userInitiated).async {
-            let tags = extractTags(from: text)
-            let response = AiTagsResponse(
-                tags: tags,
-                available: true,
-                error: nil
-            )
-            DispatchQueue.main.async {
-                completion(response)
-            }
-        }
-    }
-
-    /// Synchronous version for FFI compatibility.
-    static func suggestTagsSync(text: String) -> String {
-        let tags = extractTags(from: text)
-        let response = AiTagsResponse(
-            tags: tags,
-            available: true,
-            error: nil
-        )
-
-        let encoder = JSONEncoder()
-        if let data = try? encoder.encode(response),
-           let json = String(data: data, encoding: .utf8) {
-            return json
-        }
-        return "{\"tags\":[],\"available\":false,\"error\":\"Encoding error\"}"
-    }
-
-    /// Extract tags from text using Natural Language framework.
-    private static func extractTags(from text: String) -> [String] {
+/// Heuristic on-device backend (works on every device the app runs on).
+private enum HeuristicAI {
+    /// Extract tags with the Natural Language framework.
+    static func extractTags(from text: String) -> [String] {
         var tags: Set<String> = []
-
-        // Use NLTagger for entity extraction
-        let tagger = NLTagger(tagSchemes: [.nameType, .sentimentScore, .language])
+        // .lexicalClass must be enabled here; the old build asked for it below
+        // without enabling it, so noun/adjective extraction silently did nothing.
+        let tagger = NLTagger(tagSchemes: [.nameType, .lexicalClass, .language])
         tagger.string = text
-
-        // Extract named entities
         let options: NLTagger.Options = [.omitPunctuation, .omitWhitespace, .joinNames]
+
         tagger.enumerateTags(in: text.startIndex..<text.endIndex, unit: .word, scheme: .nameType, options: options) { tag, range in
             if let tag = tag {
                 let word = String(text[range]).lowercased()
@@ -115,28 +62,91 @@ class AppleAIBackend {
             return true
         }
 
-        // Extract keywords using lexical class
         tagger.enumerateTags(in: text.startIndex..<text.endIndex, unit: .word, scheme: .lexicalClass, options: options) { tag, range in
             if tag == .noun || tag == .adjective {
                 let word = String(text[range]).lowercased()
-                // Filter out common words and short words
-                if word.count > 3 && word.count < 20 && !isCommonWord(word) {
+                if word.count > 3 && word.count < 24 && !isCommonWord(word) {
                     tags.insert(word)
                 }
             }
             return true
         }
 
-        // Detect language for language-specific tags
+        // CJK has no spaces: slide a 2-character window over CJK runs.
+        for run in cjkRuns(in: text).prefix(6) {
+            if run.count >= 2 {
+                tags.insert(String(run.prefix(4)))
+            }
+        }
+
         if let language = tagger.tag(at: text.startIndex, unit: .paragraph, scheme: .language).0 {
             tags.insert(language.rawValue)
         }
 
-        // Limit to 7 tags
         return Array(tags.prefix(7))
     }
 
-    /// Check if a word is a common English word that should be excluded.
+    /// Contiguous CJK runs (Hiragana/Katakana/CJK Unified) of length >= 2.
+    static func cjkRuns(in text: String) -> [String] {
+        var runs: [String] = []
+        var current = ""
+        for ch in text {
+            if ch.unicodeScalars.contains(where: { scalar in
+                (0x3040...0x30FF).contains(scalar.value) || (0x4E00...0x9FFF).contains(scalar.value)
+            }) {
+                current.append(ch)
+            } else if current.count >= 2 {
+                runs.append(current)
+                current = ""
+            } else {
+                current = ""
+            }
+        }
+        if current.count >= 2 {
+            runs.append(current)
+        }
+        return runs
+    }
+
+    /// Score-based extractive summary (top sentences by word frequency).
+    static func generateSummary(from text: String) -> String? {
+        let sentences = text.components(separatedBy: CharacterSet(charactersIn: ".!?\n。！？"))
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { $0.count > 20 }
+
+        guard !sentences.isEmpty else { return nil }
+        if text.count < 200 || sentences.count <= 2 { return sentences.first }
+
+        let wordFrequency = calculateWordFrequency(in: text)
+        let scored = sentences
+            .map { ($0, scoreSentence($0, wordFrequency: wordFrequency)) }
+            .sorted { $0.1 > $1.1 }
+        return scored.prefix(2).map { $0.0 }.joined(separator: ". ") + "."
+    }
+
+    private static func calculateWordFrequency(in text: String) -> [String: Double] {
+        let words = tokenize(text)
+        var frequency: [String: Int] = [:]
+        for word in words { frequency[word, default: 0] += 1 }
+        let total = Double(words.count)
+        return frequency.mapValues { Double($0) / total }
+    }
+
+    private static func scoreSentence(_ sentence: String, wordFrequency: [String: Double]) -> Double {
+        let words = tokenize(sentence)
+        guard !words.isEmpty else { return 0 }
+        return words.reduce(0.0) { $0 + (wordFrequency[$1] ?? 0) } / sqrt(Double(words.count))
+    }
+
+    private static func tokenize(_ text: String) -> [String] {
+        let words = text.lowercased()
+            .components(separatedBy: CharacterSet.letters.inverted)
+            .filter { $0.count > 3 && !isCommonWord($0) }
+        return words + cjkRuns(in: text).flatMap { run in
+            (0..<max(0, run.count - 1)).map { String(run[run.index(run.startIndex, offsetBy: $0)..<run.index(run.startIndex, offsetBy: $0 + 2)]) }
+        }
+    }
+
     private static func isCommonWord(_ word: String) -> Bool {
         let commonWords: Set<String> = [
             "this", "that", "these", "those", "with", "from", "have", "been",
@@ -152,145 +162,104 @@ class AppleAIBackend {
         ]
         return commonWords.contains(word)
     }
+}
 
-    /// Generate a summary of the text.
-    /// For now, uses extractive summarization by finding key sentences.
-    static func summarize(text: String, completion: @escaping (AiSummaryResponse) -> Void) {
-        DispatchQueue.global(qos: .userInitiated).async {
-            let summary = generateSummary(from: text)
-            let response = AiSummaryResponse(
-                summary: summary,
-                available: true,
-                error: nil
-            )
-            DispatchQueue.main.async {
-                completion(response)
+#if canImport(FoundationModels)
+/// Apple Foundation Models on iOS 26+: true on-device generative AI.
+@available(iOS 26.0, macOS 26.0, *)
+private enum FoundationModelAI {
+    static var isAvailable: Bool {
+        if case .available = SystemLanguageModel.default.availability {
+            return true
+        }
+        return false
+    }
+
+    static func suggestTags(text: String, completion: @escaping (AiTagsResponse) -> Void) {
+        Task {
+            do {
+                let session = LanguageModelSession(
+                    instructions: "You tag notes. Suggest short lowercase tags (1-3 words each)."
+                )
+                let prompt = "Suggest 3 to 7 tags for this note:\n\n\(text.prefix(4000))"
+                let response = try await session.respond(to: prompt, generating: TagSuggestions.self)
+                completion(AiTagsResponse(tags: response.content.tags, available: true, error: nil))
+            } catch {
+                completion(AiTagsResponse(tags: HeuristicAI.extractTags(from: text), available: true, error: nil))
             }
         }
     }
 
-    /// Synchronous version for FFI compatibility.
-    static func summarizeSync(text: String) -> String {
-        let summary = generateSummary(from: text)
-        let response = AiSummaryResponse(
-            summary: summary,
-            available: true,
-            error: nil
-        )
-
-        let encoder = JSONEncoder()
-        if let data = try? encoder.encode(response),
-           let json = String(data: data, encoding: .utf8) {
-            return json
+    static func summarize(text: String, completion: @escaping (AiSummaryResponse) -> Void) {
+        Task {
+            do {
+                let session = LanguageModelSession(
+                    instructions: "You summarize notes in 1-2 plain sentences."
+                )
+                let response = try await session.respond(to: "Summarize:\n\n\(text.prefix(6000))")
+                completion(AiSummaryResponse(summary: response.content, available: true, error: nil))
+            } catch {
+                let summary = HeuristicAI.generateSummary(from: text)
+                completion(AiSummaryResponse(summary: summary, available: summary != nil, error: summary == nil ? "Summarization failed" : nil))
+            }
         }
-        return "{\"summary\":null,\"available\":false,\"error\":\"Encoding error\"}"
-    }
-
-    /// Generate a summary using extractive summarization.
-    private static func generateSummary(from text: String) -> String? {
-        let sentences = text.components(separatedBy: CharacterSet(charactersIn: ".!?"))
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { !$0.isEmpty && $0.count > 20 }
-
-        guard !sentences.isEmpty else { return nil }
-
-        // For short text, return the first sentence
-        if text.count < 200 || sentences.count <= 2 {
-            return sentences.first
-        }
-
-        // Score sentences by word importance
-        let wordFrequency = calculateWordFrequency(in: text)
-        var scoredSentences: [(String, Double)] = sentences.map { sentence in
-            let score = scoreSentence(sentence, wordFrequency: wordFrequency)
-            return (sentence, score)
-        }
-
-        // Sort by score and take top sentences
-        scoredSentences.sort { $0.1 > $1.1 }
-
-        // Return top 1-2 sentences, preferring earlier ones
-        let topSentences = scoredSentences.prefix(2).map { $0.0 }
-        return topSentences.joined(separator: ". ") + "."
-    }
-
-    /// Calculate word frequency for scoring.
-    private static func calculateWordFrequency(in text: String) -> [String: Double] {
-        let words = text.lowercased()
-            .components(separatedBy: .whitespacesAndNewlines)
-            .filter { $0.count > 3 && !isCommonWord($0) }
-
-        var frequency: [String: Int] = [:]
-        for word in words {
-            frequency[word, default: 0] += 1
-        }
-
-        let total = Double(words.count)
-        return frequency.mapValues { Double($0) / total }
-    }
-
-    /// Score a sentence based on word importance.
-    private static func scoreSentence(_ sentence: String, wordFrequency: [String: Double]) -> Double {
-        let words = sentence.lowercased()
-            .components(separatedBy: .whitespacesAndNewlines)
-            .filter { $0.count > 3 && !isCommonWord($0) }
-
-        guard !words.isEmpty else { return 0 }
-
-        let totalScore = words.reduce(0.0) { sum, word in
-            sum + (wordFrequency[word] ?? 0)
-        }
-
-        // Normalize by sentence length to avoid favoring long sentences
-        return totalScore / sqrt(Double(words.count))
     }
 }
+#endif
 
-// MARK: - Fallback for older iOS versions
-
-/// Fallback AI backend that returns "not available" status.
-/// Used on devices that don't support Apple Foundation Models.
-struct FallbackAIBackend {
-    static func suggestTagsSync(text: String) -> String {
-        return "{\"tags\":[],\"available\":false,\"error\":\"Apple Foundation Models not available on this device\"}"
-    }
-
-    static func summarizeSync(text: String) -> String {
-        return "{\"summary\":null,\"available\":false,\"error\":\"Apple Foundation Models not available on this device\"}"
-    }
-}
-
-// MARK: - Unified AI Service
-
-/// Unified AI service that uses Apple Foundation Models when available,
-/// or returns "not available" on older devices.
+/// Unified AI service: Foundation Models where available, heuristics otherwise.
 class FastxtAI {
 
-    /// Suggest tags for the given text.
-    /// Returns JSON string compatible with the Rust FFI interface.
+    /// Suggest tags for the given text; returns the JSON the FFI contract uses.
     static func suggestTags(text: String) -> String {
-        if #available(iOS 18.1, macOS 15.1, *) {
-            return AppleAIBackend.suggestTagsSync(text: text)
-        } else {
-            return FallbackAIBackend.suggestTagsSync(text: text)
+        if #available(iOS 26.0, macOS 26.0, *) {
+            #if canImport(FoundationModels)
+            if FoundationModelAI.isAvailable {
+                let box = DispatchGroup()
+                var result = AiTagsResponse(tags: [], available: false, error: "timeout")
+                box.enter()
+                FoundationModelAI.suggestTags(text: text) { response in
+                    result = response
+                    box.leave()
+                }
+                _ = box.wait(timeout: .now() + 30)
+                return encode(result)
+            }
+            #endif
         }
+        return encode(AiTagsResponse(tags: HeuristicAI.extractTags(from: text), available: true, error: nil))
     }
 
-    /// Summarize the given text.
-    /// Returns JSON string compatible with the Rust FFI interface.
+    /// Summarize the given text; returns the JSON the FFI contract uses.
     static func summarize(text: String) -> String {
-        if #available(iOS 18.1, macOS 15.1, *) {
-            return AppleAIBackend.summarizeSync(text: text)
-        } else {
-            return FallbackAIBackend.summarizeSync(text: text)
+        if #available(iOS 26.0, macOS 26.0, *) {
+            #if canImport(FoundationModels)
+            if FoundationModelAI.isAvailable {
+                let box = DispatchGroup()
+                var result = AiSummaryResponse(summary: nil, available: false, error: "timeout")
+                box.enter()
+                FoundationModelAI.summarize(text: text) { response in
+                    result = response
+                    box.leave()
+                }
+                _ = box.wait(timeout: .now() + 60)
+                return encode(result)
+            }
+            #endif
         }
+        let summary = HeuristicAI.generateSummary(from: text)
+        return encode(AiSummaryResponse(summary: summary, available: summary != nil, error: summary == nil ? "Could not summarize this text" : nil))
     }
 
-    /// Check if AI is available on this device.
+    /// Whether on-device AI works here (heuristics always do).
     static func isAvailable() -> Bool {
-        if #available(iOS 18.1, macOS 15.1, *) {
-            return AppleAIBackend.isAvailable()
+        return true
+    }
+
+    private static func encode<T: Encodable>(_ value: T) -> String {
+        if let data = try? JSONEncoder().encode(value), let json = String(data: data, encoding: .utf8) {
+            return json
         }
-        return false
+        return "{\"error\":\"encoding failed\"}"
     }
 }
