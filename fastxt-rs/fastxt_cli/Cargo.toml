@@ -1,6 +1,6 @@
 [package]
 name = "fastxt_cli"
-version = "0.1.0"
+version = "0.2.0"
 authors = ["Yi Wang"]
 license = "AGPL-3.0"
 edition = "2024"
@@ -12,3 +12,12 @@ path = "../fastxt_core"
 clap = { version = "4", features = ["derive"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+ctrlc = "3"
+
+[[bin]]
+name = "fastxt-server"
+path = "src/bin/fastxt-server.rs"
+
+[[bin]]
+name = "fastxt-sync"
+path = "src/bin/fastxt-sync.rs"
