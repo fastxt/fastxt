@@ -26,7 +26,7 @@ Fastxt App stores your information locally on your own device.
 Fastxt App developer does not run any service to collect or store any personal information about you.
 </li>
 <li>
-If you choose to sync data via LAN/WiFi to other devices, be aware that is you voluntarily share your data with other peers.
+If you choose to sync data between devices, notes travel directly between your devices over an authenticated, TLS-encrypted connection (the pairing code carries a certificate fingerprint and a one-time session token). No Fastxt server relays or stores your data. Be aware that syncing shares your data with the devices you pair with.
 </li>
 <li>
 Platform providers and underlying operating systems (android, ios, web browsers, app store) may collect information about the application (crash reports, usage stats) and make those avaliable to Fastxt App developer, who may use those data to improve the application.
@@ -42,19 +42,19 @@ Fastxt includes AI-powered features (smart tagging, summarization, semantic sear
 <strong>All AI processing happens on your device.</strong> Your notes are never sent to cloud servers for AI analysis. The AI models run entirely on your hardware.
 </li>
 <li>
-<strong>Desktop (Ollama):</strong> When using Ollama for AI features, the language model runs locally on your computer. No data is transmitted to external servers. You have full control over which model to use and where it runs.
+<strong>Desktop:</strong> AI features use a local LLM backend (Ollama by default, or any OpenAI-compatible server such as llama.cpp). The default endpoint is your own machine; if you point the endpoint at another machine, your note text is sent to that machine for inference — you are in control of where it runs.
 </li>
 <li>
-<strong>iOS/macOS (Apple Foundation Models):</strong> AI features use Apple's on-device Neural Engine. Apple's privacy protections apply — your data is processed on-device and not uploaded to Apple's servers.
+<strong>iOS/macOS (Apple Foundation Models and Natural Language):</strong> AI features use Apple's on-device frameworks. Apple's privacy protections apply — your data is processed on-device and not uploaded to Apple's servers.
 </li>
 <li>
-<strong>Android:</strong> AI features use on-device ML models provided by the Android platform. All processing happens locally on your device.
+<strong>Android:</strong> AI features use on-device heuristics. All processing happens locally on your device.
 </li>
 <li>
 <strong>No training on your data:</strong> We do not use your notes to train AI models. The models are pre-trained and used only for inference on your device.
 </li>
 <li>
-<strong>AI-generated metadata syncs with your notes:</strong> When you sync notes between devices, AI-generated tags, summaries, and embeddings are included. This data is treated the same as your note content — stored locally and synced peer-to-peer.
+<strong>AI-generated metadata syncs with your notes:</strong> When you sync notes between devices, AI-generated tags, summaries, and embeddings travel along with them over the same encrypted channel.
 </li>
 </ul>
 

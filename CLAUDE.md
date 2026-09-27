@@ -4,115 +4,115 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Fastxt is a decentralized, cross-platform application for saving and syncing text in a local SQLite database without going through any centralized service. It leverages native on-device AI models to help users organize their text information — privately, without sending data to the cloud. It is a sister project to [Local Native](https://localnative.app) with similar design and toolchain.
+Fastxt is a decentralized, cross-platform application for saving and syncing text in a local SQLite database without going through any centralized service. It uses on-device AI to help users organize their text — privately, without sending data to the cloud. It is a sister project to [Local Native](https://localnative.app) with similar design and toolchain.
 
 **License**: AGPL-3.0
-
-## On-Device AI Vision
-
-Fastxt integrates native AI capabilities on each platform to help users organize, tag, summarize, and search their text notes — all processed locally on-device:
-
-- **Apple (iOS/macOS)**: Apple Foundation Models via the Foundation framework — on-device language understanding, summarization, and smart organization
-- **Android**: Android App Functions / on-device ML models (e.g., Gemini Nano) for text intelligence
-- **Desktop (Linux/Windows)**: Self-hosted LLMs (e.g., llama.cpp, Ollama) for local inference without cloud dependency
-
-### Key AI Features (Roadmap)
-- **Smart Tagging**: Auto-suggest tags for saved text based on content
-- **Semantic Search**: Find notes by meaning, not just keyword matching
-- **Summarization**: Condense long text entries into concise summaries
-- **Organization**: AI-assisted grouping and categorization of notes
-- **Cross-Device Sync**: AI-generated metadata syncs alongside text via the existing P2P RPC protocol
 
 ## Repository Layout
 
 ```
 fastxt-rs/                    # Rust workspace (core library + apps)
-├── fastxt_core/              # Shared core: SQLite, RPC sync, FFI for mobile
+├── fastxt_core/              # Everything: notes, search, vectors, AI, sync
 │   └── src/
-│       ├── lib.rs            # FFI exports (fastxt_run, fastxt_free)
-│       ├── exe.rs            # Command dispatcher and database logic
-│       ├── cmd/              # CRUD operations, search, sync
-│       └── rpc/              # tarpc-based P2P sync protocol
-├── fastxt_cli/               # CLI binaries for RPC server/client
-└── fastxt_desktop/           # Desktop GUI (Iced) — app.rs (view), commands.rs (logic)
+│       ├── store.rs          # Fastxt typed handle: CRUD, settings, sync merge
+│       ├── schema.rs         # DDL + migrations (v0.6: HLC stamps, tombstones)
+│       ├── search.rs         # FTS5 trigram text search, LIKE fallback, hybrid RRF
+│       ├── vector.rs         # Embeddings: per-model sqlite-vec index, semantic search
+│       ├── ai/               # AiBackend transports (ollama, openai_compatible, mock)
+│       │                       + orchestrator: prompts, voting, batch jobs
+│       ├── sync/             # tarpc service, TLS server, pairing client
+│       ├── pairing.rs        # FASTXT1:host:port:<cert-fingerprint>:<token> codes
+│       ├── clock.rs          # Hybrid logical clock stamps for merge
+│       ├── tags.rs           # Tag normalization (commas only; multi-word tags)
+│       ├── json.rs           # JSON command dispatcher (mobile FFI contract)
+│       ├── ffi.rs            # C ABI: fastxt_run / fastxt_free / fastxt_set_db_dir
+│       └── error.rs          # thiserror; nothing in core panics on bad input
+├── fastxt_cli/               # fastxt-server (pairing code), fastxt-sync (client)
+├── fastxt_desktop/           # Iced GUI (app.rs view, commands.rs typed logic)
+├── fastxt_mcp/               # MCP server: notes + AI + agent-memory tools
+└── fastxt_ffi/               # staticlib (iOS) + cdylib (Android/JNI), include/fastxt.h
 
-fastxt-android/               # Native Android app (Kotlin)
+fastxt-android/               # Android app (Kotlin, AGP 9, JNI to fastxt_ffi)
+fastxt-ios/                   # iOS app (SwiftUI, Fastxt.xcframework from fastxt_ffi)
 website/                      # Docusaurus website (fastxt.app)
 archive/                      # Dormant prototypes (fastxt-mac, fastxt-win, fastxt-flutter) — not built
+script/                       # build-android-libs.sh, build-ios-libs.sh
 ```
 
 ## Build Commands
 
-### Rust Core & Desktop
+### Rust workspace
+
 ```bash
 cd fastxt-rs
-
-# Build all workspace members
 cargo build --release
-
-# Run tests
-cargo test --workspace
-
-# Run desktop GUI
-cargo run -p fastxt_desktop --release
-
-# Run CLI tools
-cargo run -p fastxt_cli --bin fastxt-rpc-server
-cargo run -p fastxt_cli --bin fastxt-rpc-client-sync
-cargo run -p fastxt_cli --bin fastxt-rpc-client-stop-server
-cargo run -p fastxt_cli --bin fastxt-upgrade
+cargo test --workspace                              # no AI deps
+cargo test --workspace --features fastxt_core/ai    # with AI backends
+cargo clippy --workspace --all-targets --features fastxt_core/ai -- -D warnings
+cargo run -p fastxt_cli --bin fastxt-server          # sync server + pairing code
+cargo run -p fastxt_cli --bin fastxt-sync -- FASTXT1:192.168.1.5:3456:…:…
+cargo run -p fastxt_desktop --release                # desktop GUI
+cargo run -p fastxt_mcp                              # MCP server (stdio)
 ```
 
-### Website (Docusaurus)
+### Desktop releases (CI)
+
+Plain `vX.Y.Z` tags build .dmg/.msi/.zip/.deb/.tar.gz via `.github/workflows/release.yml`.
+
+### Mobile
+
 ```bash
-cd website
-npm install
-npm start        # Development server
-npm run build    # Production build
+script/build-android-libs.sh   # cargo-ndk → fastxt-android/app/src/main/jniLibs
+cd fastxt-android && ./gradlew assembleDebug        # needs JDK 17
+
+script/build-ios-libs.sh       # staticlibs + lipo → fastxt-ios/Fastxt.xcframework
+cd fastxt-ios && xcodebuild -project Fastxt.xcodeproj -scheme Fastxt \
+  -destination 'generic/platform=iOS Simulator' build
 ```
 
-### Desktop Releases (CI)
-Cut a release by pushing a plain-numeric tag — `.github/workflows/release.yml` builds
-a universal `.dmg` (macOS, both arches), `.msi` + portable `.zip` (Windows, WiX v3),
-and `.deb` + `.tar.gz` (Linux, cargo-deb), then publishes them to a GitHub Release:
-```bash
-git tag v0.1.0 && git push origin v0.1.0   # tags MUST be vX.Y.Z (MSI requirement)
-```
-The workflow also runs on `workflow_dispatch` (Actions tab → Release → Run) as a
-build-only smoke test — it versions from `fastxt_desktop/Cargo.toml` and skips
-publishing. Packaging assets live in `fastxt-rs/fastxt_desktop/packaging/` and
-icons in `fastxt-rs/fastxt_desktop/icons/`. macOS artifacts are ad-hoc signed
-(not notarized) until a Developer ID certificate is configured.
+### Website
 
-### Android App
-Open `fastxt-android/` in Android Studio or run:
 ```bash
-cd fastxt-android
-./gradlew assembleDebug
+cd website && npm install && npm start
 ```
 
 ## Architecture
 
-### Core Data Flow
-- All commands pass through `exe::run(text: &str)` which parses JSON input
-- Commands: `select`, `search`, `insert`, `delete`, `server`, `server-addr`, `client-sync`, `client-stop-server`
-- Database: SQLite with `note` table (rowid, uuid4, txt, tags, created_at) and `meta` table
+### Layers
 
-### FFI Bridge
-- `fastxt_run(json_input: *const c_char) -> *mut c_char` - Main entry point for mobile FFI
-- `fastxt_free(s: *mut c_char)` - Free allocated strings from FFI calls
+- **`fastxt_core::store::Fastxt`** is the typed API every client uses (desktop, MCP, CLI). It owns one SQLite connection (WAL), the device clock and migrations, and returns `Result` — never panics on bad input.
+- **`fastxt_core::json`** is the JSON command protocol used by the mobile apps over the FFI. Responses are serde-built; errors are `{"error": ...}`. Keep it backwards compatible with the Swift/Kotlin callers.
+- **Desktop** (`fastxt_desktop`) calls the typed API from background threads; `commands.rs` has no GUI types, `app.rs` has no core types.
 
-### RPC Sync Protocol
-- Uses tarpc for async RPC between Fastxt instances
-- Services: `is_version_match`, `diff_uuid4_to_server`, `diff_uuid4_from_server`, `send_note`, `receive_note`, `stop`
-- Default server port: 3456
+### Sync (protocol v2)
 
-### Database Location
-- macOS: `~/Library/Containers/app.fastxt.Fastxt/Data/Fastxt/fastxt.sqlite3`
-- Android: `/sdcard/Fastxt/fastxt.sqlite3`
-- iOS: `~/Documents/fastxt.sqlite3`
-- Desktop/Linux: `~/Fastxt/fastxt.sqlite3`
+- TLS with a per-session self-signed server certificate; the client pins its fingerprint from the **pairing code** (`FASTXT1:host:port:<16 hex>:<10 base32>`). A session token authorizes every RPC; there is no remote stop.
+- Each note has two hybrid-logical-clock stamps: `updated_at` (text/tags) and `ai_updated_at` (AI fields). Merge is per group, newest wins; deletes are tombstones and propagate.
+- `PROTOCOL_VERSION` in `sync/mod.rs` is independent of the schema version.
+- Sync server: `sync::server::serve(db, port)` (also a process-global server for the JSON API). Client: `sync::client::sync(code, db)`.
 
-## Related Projects
+### Database
 
-- **Local Native** (`/Users/yi/repos/murky-swamp/localnative`) - Similar local-first notes app with P2P sync. Fastxt shares similar architecture patterns but is focused on text notes.
+- Migrations in `schema.rs` run in one transaction; pre-0.6 DBs are rebuilt in place (FTS rebuilt, embeddings re-keyed by UUID, legacy stamps backfilled from `created_at`).
+- `note` holds text/tags + AI fields + stamps + `deleted`. `embedding` holds one vector per (note, model) with its dim and note version; `vec_<dim>` sqlite-vec tables (cosine, partition-keyed by model) are rebuilt from it.
+- FTS5 trigram index covers txt/tags/ai_tags (CJK-capable; short terms fall back to LIKE).
+
+### AI
+
+- Settings live in the DB `meta` table (`Settings`), shared by all clients.
+- `AiBackend` = transport; `Ai` orchestrator = prompts, JSON-schema output, majority voting, model selection. Default backend `ollama`; `llamacpp`/`foundry-local`/`openai` share the OpenAI-compatible transport.
+- Chat model (tags/summaries/categories) and embedding model are separate settings.
+- Without the `ai` feature, HTTP backends are absent and `Ai::check()` reports unavailable.
+
+## Conventions
+
+- Conventional commits (`feat:`, `fix:`, `docs:`, `chore:`, `refactor:`). No Co-Author trailers.
+- `cargo clippy` and `cargo fmt` before committing; run `cargo test --workspace` (both feature sets when touching core) and fix all errors before reporting completion.
+- Never edit Rust files with sed — use the Edit tool.
+- Keep the no-leak policy: this repo is public; do not reference closed-source sibling projects by name.
+
+## Key References
+
+- **localnative/** — sister app with the same JSON/FFI and sync lineage
+- **docs/TODO.md** — phase tracker (only end-to-end-done items ticked)
+- **docs/on-device-ai-plan.md** — original design doc (the deferred roadmap now lives in the review tracker)
