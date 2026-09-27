@@ -16,235 +16,104 @@
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
 
-//! Mock AI backend for testing.
-//!
-//! This module provides a mock implementation of `AiBackend` that returns
-//! predictable results without requiring an actual AI model. Useful for
-//! unit tests and integration tests.
+//! A deterministic backend for tests and previews: no network, no model.
 
-use super::{AiBackend, AiConfig, AiError, AiResult};
-use std::sync::Arc;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use super::{AiBackend, AiCheck, GenerateRequest};
+use crate::model::AiSettings;
 
-/// A mock AI backend for testing purposes.
-///
-/// Returns predictable responses based on the input text,
-/// allowing tests to verify AI-dependent code without a real backend.
-pub struct MockBackend {
-    /// Whether the backend reports as available
-    available: bool,
-    /// Tags to return for any input
-    default_tags: Vec<String>,
-    /// Call counter for varying output in self-consistency tests.
-    /// Each call to `suggest_tags` increments this counter and
-    /// slightly varies the returned tags.
-    call_counter: Arc<AtomicUsize>,
-    /// When true, vary tags on each call for consistency testing
-    vary_tags: bool,
-}
+/// Answers the orchestrator's prompts with predictable, parseable output.
+pub struct MockBackend;
 
-impl Default for MockBackend {
-    fn default() -> Self {
-        MockBackend {
-            available: true,
-            default_tags: vec!["mock-tag".to_string()],
-            call_counter: Arc::new(AtomicUsize::new(0)),
-            vary_tags: false,
-        }
+/// Answers "unavailable" to every probe (the no-`ai`-feature backend).
+pub struct UnavailableBackend;
+
+fn hash(text: &str) -> u64 {
+    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+    for byte in text.bytes() {
+        hash ^= u64::from(byte);
+        hash = hash.wrapping_mul(0x100_0000_01b3);
     }
-}
-
-impl MockBackend {
-    /// Create a new mock backend with default settings.
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    /// Create a mock backend that reports as unavailable.
-    pub fn unavailable() -> Self {
-        MockBackend {
-            available: false,
-            default_tags: vec![],
-            call_counter: Arc::new(AtomicUsize::new(0)),
-            vary_tags: false,
-        }
-    }
-
-    /// Create a mock backend with custom tags.
-    pub fn with_tags(tags: Vec<&str>) -> Self {
-        MockBackend {
-            available: true,
-            default_tags: tags.into_iter().map(|s| s.to_string()).collect(),
-            call_counter: Arc::new(AtomicUsize::new(0)),
-            vary_tags: false,
-        }
-    }
-
-    /// Create a mock backend that varies tags on each call.
-    ///
-    /// Uses the provided base tags and swaps some out on each call.
-    /// Useful for testing self-consistency voting:
-    /// - Call 0: base tags as-is
-    /// - Call 1: replaces last tag with "variant-1"
-    /// - Call 2: replaces second-to-last tag with "variant-2"
-    ///
-    /// Tags that appear in all calls will pass majority voting,
-    /// while variant tags will be filtered out.
-    pub fn with_varying_tags(tags: Vec<&str>) -> Self {
-        MockBackend {
-            available: true,
-            default_tags: tags.into_iter().map(|s| s.to_string()).collect(),
-            call_counter: Arc::new(AtomicUsize::new(0)),
-            vary_tags: true,
-        }
-    }
+    hash
 }
 
 impl AiBackend for MockBackend {
-    fn is_available(&self) -> bool {
-        self.available
-    }
-
-    fn suggest_tags(&self, text: &str, _config: &AiConfig) -> AiResult<Vec<String>> {
-        if !self.available {
-            return Err(AiError::Unavailable);
-        }
-
-        let call_num = self.call_counter.fetch_add(1, Ordering::Relaxed);
-
-        // Return default tags plus any words that look like keywords (>4 chars, capitalized)
-        let mut tags = self.default_tags.clone();
-
-        // When vary_tags is enabled, swap out some tags based on call number
-        if self.vary_tags && !tags.is_empty() {
-            match call_num % 3 {
-                0 => {
-                    // Call 0: base tags as-is
-                }
-                1 => {
-                    // Call 1: replace last tag with a variant
-                    if let Some(last) = tags.last_mut() {
-                        *last = "variant-1".to_string();
-                    }
-                }
-                2 => {
-                    // Call 2: replace second-to-last tag with a variant
-                    let len = tags.len();
-                    if len >= 2 {
-                        tags[len - 2] = "variant-2".to_string();
-                    } else if let Some(last) = tags.last_mut() {
-                        *last = "variant-2".to_string();
-                    }
-                }
-                _ => {}
-            }
-        }
-
-        for word in text.split_whitespace() {
-            let cleaned = word.trim_matches(|c: char| !c.is_alphanumeric());
-            if cleaned.len() > 4
-                && let Some(first) = cleaned.chars().next()
-                && first.is_uppercase()
-            {
-                tags.push(cleaned.to_lowercase());
-            }
-        }
-
-        // Deduplicate and limit
-        tags.sort();
-        tags.dedup();
-        tags.truncate(10);
-
-        Ok(tags)
-    }
-
-    fn summarize(&self, text: &str, _config: &AiConfig) -> AiResult<String> {
-        if !self.available {
-            return Err(AiError::Unavailable);
-        }
-
-        // Return first sentence or first 100 chars
-        let first_sentence = text.split(['.', '!', '?']).next().unwrap_or(text);
-
-        if first_sentence.chars().count() > 100 {
-            let truncated: String = first_sentence.chars().take(100).collect();
-            Ok(format!("{}...", truncated))
-        } else {
-            Ok(first_sentence.to_string())
-        }
-    }
-
-    fn embed(&self, text: &str, _config: &AiConfig) -> AiResult<Vec<f32>> {
-        if !self.available {
-            return Err(AiError::Unavailable);
-        }
-
-        // Generate a deterministic pseudo-embedding based on text hash
-        // This is NOT a real embedding, just a predictable vector for testing
-        let hash = Self::simple_hash(text);
-        let dimension = 384; // Common embedding dimension
-
-        Ok((0..dimension)
-            .map(|i| ((hash.wrapping_add(i as u64)) % 1000) as f32 / 1000.0)
-            .collect())
-    }
-
-    fn categorize(&self, texts: &[&str], _config: &AiConfig) -> AiResult<Vec<String>> {
-        if !self.available {
-            return Err(AiError::Unavailable);
-        }
-
-        // Simple keyword-based categorization for testing
-        Ok(texts
-            .iter()
-            .map(|text| {
-                let lower = text.to_lowercase();
-                if lower.contains("code") || lower.contains("programming") {
-                    "programming"
-                } else if lower.contains("meeting") || lower.contains("schedule") {
-                    "work"
-                } else if lower.contains("buy") || lower.contains("shop") {
-                    "shopping"
-                } else {
-                    "general"
-                }
-                .to_string()
-            })
-            .collect())
-    }
-
-    fn simplify(&self, text: &str, _config: &AiConfig) -> AiResult<String> {
-        if !self.available {
-            return Err(AiError::Unavailable);
-        }
-        Ok(text.to_lowercase())
-    }
-
-    fn key_points(&self, text: &str, _config: &AiConfig) -> AiResult<Vec<String>> {
-        if !self.available {
-            return Err(AiError::Unavailable);
-        }
-        Ok(text
-            .split(['.', '!', '?'])
-            .map(|s| s.trim().to_string())
-            .filter(|s| !s.is_empty())
-            .take(5)
-            .collect())
-    }
-
-    fn backend_name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "mock"
+    }
+
+    fn check(&self, _settings: &AiSettings) -> AiCheck {
+        AiCheck::ok("mock backend")
+    }
+
+    fn generate(
+        &self,
+        request: &GenerateRequest<'_>,
+        _settings: &AiSettings,
+    ) -> std::result::Result<String, String> {
+        let prompt = request.prompt;
+        if prompt.contains("tags for") || (prompt.contains("Suggest") && prompt.contains("tags")) {
+            return Ok(r#"{"tags": ["mock", "notes"]}"#.into());
+        }
+        if prompt.contains("categories") || prompt.contains("categor") {
+            // The prompt numbers the notes "1. …"; answer one category each.
+            let count = prompt
+                .lines()
+                .filter(|l| l.starts_with(|c: char| c.is_ascii_digit()) && l.contains(". "))
+                .count();
+            let categories: Vec<String> = (0..count)
+                .map(|i| if i % 2 == 0 { "work" } else { "other" }.to_string())
+                .collect();
+            return Ok(serde_json::json!({ "categories": categories }).to_string());
+        }
+        if prompt.contains("Summarize") || prompt.contains("summar") {
+            return Ok("A mock summary of the note.".into());
+        }
+        Ok("mock generation".into())
+    }
+
+    fn embed(
+        &self,
+        text: &str,
+        _model: &str,
+        _settings: &AiSettings,
+    ) -> std::result::Result<Vec<f32>, String> {
+        // Deterministic 8-dimensional unit vector from the text.
+        let h = hash(text);
+        let mut v: Vec<f32> = (0..8).map(|i| ((h >> (i * 8)) & 0xff) as f32).collect();
+        let norm: f32 = v.iter().map(|x| x * x).sum::<f32>().sqrt();
+        if norm > 0.0 {
+            for x in &mut v {
+                *x /= norm;
+            }
+        }
+        Ok(v)
     }
 }
 
-impl MockBackend {
-    /// Simple string hash for deterministic test embeddings.
-    fn simple_hash(s: &str) -> u64 {
-        let mut hash: u64 = 5381;
-        for byte in s.bytes() {
-            hash = hash.wrapping_mul(33).wrapping_add(byte as u64);
-        }
-        hash
+impl AiBackend for UnavailableBackend {
+    fn name(&self) -> &'static str {
+        "unavailable"
+    }
+
+    fn check(&self, _settings: &AiSettings) -> AiCheck {
+        AiCheck::fail("this build has no AI backends (rebuild with --features ai)")
+    }
+
+    fn generate(
+        &self,
+        _request: &GenerateRequest<'_>,
+        _settings: &AiSettings,
+    ) -> std::result::Result<String, String> {
+        Err("no AI backends in this build".into())
+    }
+
+    fn embed(
+        &self,
+        _text: &str,
+        _model: &str,
+        _settings: &AiSettings,
+    ) -> std::result::Result<Vec<f32>, String> {
+        Err("no AI backends in this build".into())
     }
 }
 
@@ -253,110 +122,54 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_mock_backend_available() {
-        let backend = MockBackend::new();
-        assert!(backend.is_available());
-    }
-
-    #[test]
-    fn test_mock_backend_unavailable() {
-        let backend = MockBackend::unavailable();
-        assert!(!backend.is_available());
-    }
-
-    #[test]
-    fn test_mock_suggest_tags() {
-        let backend = MockBackend::with_tags(vec!["test"]);
-        let config = AiConfig::default();
-        let tags = backend.suggest_tags("Hello World Python", &config).unwrap();
-        assert!(tags.contains(&"test".to_string()));
-    }
-
-    #[test]
-    fn test_mock_summarize() {
-        let backend = MockBackend::new();
-        let config = AiConfig::default();
-        let summary = backend
-            .summarize("This is a test sentence. And another one.", &config)
+    fn mock_answers_every_prompt_shape() {
+        let s = AiSettings::default();
+        let b = MockBackend;
+        assert_eq!(
+            b.generate(
+                &GenerateRequest {
+                    prompt: "Suggest 3 to 7 tags for the note below.\nNote:\nrust note",
+                    system: None,
+                    json_schema: None,
+                    model: "m",
+                    max_tokens: 64,
+                },
+                &s
+            )
+            .unwrap(),
+            r#"{"tags": ["mock", "notes"]}"#
+        );
+        let summary = b
+            .generate(
+                &GenerateRequest {
+                    prompt: "Summarize this note in 1-2 plain sentences:\n\nhello",
+                    system: None,
+                    json_schema: None,
+                    model: "m",
+                    max_tokens: 64,
+                },
+                &s,
+            )
             .unwrap();
-        assert_eq!(summary, "This is a test sentence");
+        assert!(summary.contains("mock summary"));
     }
 
     #[test]
-    fn test_mock_embed() {
-        let backend = MockBackend::new();
-        let config = AiConfig::default();
-        let embedding = backend.embed("test text", &config).unwrap();
-        assert_eq!(embedding.len(), 384);
-        // Same text should produce same embedding
-        let embedding2 = backend.embed("test text", &config).unwrap();
-        assert_eq!(embedding, embedding2);
+    fn mock_embeddings_are_deterministic_unit_vectors() {
+        let s = AiSettings::default();
+        let a = MockBackend.embed("same text", "m", &s).unwrap();
+        let b = MockBackend.embed("same text", "m", &s).unwrap();
+        let c = MockBackend.embed("other text", "m", &s).unwrap();
+        assert_eq!(a, b);
+        assert_ne!(a, c);
+        let norm: f32 = a.iter().map(|x| x * x).sum::<f32>().sqrt();
+        assert!((norm - 1.0).abs() < 1e-5);
     }
 
     #[test]
-    fn test_mock_categorize() {
-        let backend = MockBackend::new();
-        let config = AiConfig::default();
-        let categories = backend
-            .categorize(&["code review", "meeting notes", "buy milk"], &config)
-            .unwrap();
-        assert_eq!(categories, vec!["programming", "work", "shopping"]);
-    }
-
-    #[test]
-    fn test_mock_unavailable_errors() {
-        let backend = MockBackend::unavailable();
-        let config = AiConfig::default();
-
-        assert!(matches!(
-            backend.suggest_tags("test", &config),
-            Err(AiError::Unavailable)
-        ));
-        assert!(matches!(
-            backend.summarize("test", &config),
-            Err(AiError::Unavailable)
-        ));
-        assert!(matches!(
-            backend.embed("test", &config),
-            Err(AiError::Unavailable)
-        ));
-        assert!(matches!(
-            backend.categorize(&["test"], &config),
-            Err(AiError::Unavailable)
-        ));
-        assert!(matches!(
-            backend.simplify("test", &config),
-            Err(AiError::Unavailable)
-        ));
-        assert!(matches!(
-            backend.key_points("test", &config),
-            Err(AiError::Unavailable)
-        ));
-    }
-
-    #[test]
-    fn test_mock_simplify() {
-        let backend = MockBackend::new();
-        let config = AiConfig::default();
-        let result = backend.simplify("Hello World", &config).unwrap();
-        assert_eq!(result, "hello world");
-    }
-
-    #[test]
-    fn test_mock_key_points() {
-        let backend = MockBackend::new();
-        let config = AiConfig::default();
-        let points = backend
-            .key_points("First point. Second point. Third point.", &config)
-            .unwrap();
-        assert_eq!(points, vec!["First point", "Second point", "Third point"]);
-    }
-
-    #[test]
-    fn test_mock_key_points_limits_to_five() {
-        let backend = MockBackend::new();
-        let config = AiConfig::default();
-        let points = backend.key_points("A. B. C. D. E. F. G.", &config).unwrap();
-        assert_eq!(points.len(), 5);
+    fn unavailable_backend_refuses_everything() {
+        let s = AiSettings::default();
+        assert!(!UnavailableBackend.check(&s).ok);
+        assert!(UnavailableBackend.embed("x", "m", &s).is_err());
     }
 }

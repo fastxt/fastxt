@@ -1,6 +1,6 @@
 [package]
 name = "fastxt_core"
-version = "0.2.0"
+version = "0.3.0"
 authors = ["Yi Wang"]
 license = "AGPL-3.0"
 edition = "2024"
@@ -18,31 +18,29 @@ sqlite-vec = "0.1"
 zerocopy = "0.8"
 chrono = "0.4"
 semver = "1"
-serde = "1"
-serde_derive = "1"
+serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-tarpc = { version = "0.38", features = ["full"]}
+thiserror = "2"
+tarpc = { version = "0.38", features = ["full"] }
 dirs = "7"
-regex = "1"
-linked_hash_set = "0.1"
 uuid = { version = "1", features = ["v4"] }
 tokio = { version = "1", features = ["full"] }
 futures = "0.3"
 if-addrs = "0.15"
-tokio-serde = { version = "0.9", features = ["bincode"] }
 tracing = "0.1"
+
+# Sync transport security: TLS with a per-device self-signed certificate that
+# peers pin by fingerprint (exchanged in the pairing code).
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12", "logging"] }
+tokio-rustls = { version = "0.26", default-features = false, features = ["ring", "tls12", "logging"] }
+rcgen = { version = "0.13", default-features = false, features = ["crypto", "ring"] }
+ring = "0.17"
 
 # AI feature dependencies (optional)
 reqwest = { version = "0.13", features = ["blocking", "json"], optional = true }
 
+[dev-dependencies]
+tempfile = "3"
+
 [lib]
 name = "fastxt_core"
-
-# mac and ios
-# crate-type = ["staticlib"]
-
-# android only need this
-# crate-type = ["cdylib"]
-
-# rust library
-# crate-type = ["rlib"]
