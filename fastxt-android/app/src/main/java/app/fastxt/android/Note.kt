@@ -28,7 +28,10 @@ data class Note(
     val uuid4: String,
     val txt: String,
     val tags: String,
-    val createdAt: String
+    val createdAt: String,
+    val aiTags: String? = null,
+    val aiSummary: String? = null,
+    val aiCategory: String? = null
 ) {
     companion object {
         fun fromJson(json: JSONObject): Note {
@@ -37,7 +40,10 @@ data class Note(
                 uuid4 = json.optString("uuid4", ""),
                 txt = json.optString("txt", ""),
                 tags = json.optString("tags", ""),
-                createdAt = json.optString("created_at", "")
+                createdAt = json.optString("created_at", ""),
+                aiTags = json.optString("ai_tags").takeIf { it.isNotEmpty() },
+                aiSummary = json.optString("ai_summary").takeIf { it.isNotEmpty() },
+                aiCategory = json.optString("ai_category").takeIf { it.isNotEmpty() }
             )
         }
     }

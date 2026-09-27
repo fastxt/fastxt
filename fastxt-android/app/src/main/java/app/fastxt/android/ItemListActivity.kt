@@ -11,9 +11,6 @@ import android.widget.TextView
 import org.json.JSONObject
 
 import app.fastxt.android.dummy.DummyContent
-import kotlinx.android.synthetic.main.activity_item_list.*
-import kotlinx.android.synthetic.main.item_list_content.view.*
-import kotlinx.android.synthetic.main.item_list.*
 
 /**
  * An activity representing a list of Notes. This activity
@@ -36,25 +33,41 @@ class ItemListActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_item_list)
+        RustBridge.configure(this)
 
+        val toolbar = findViewById<androidx.appcompat.widget.Toolbar>(R.id.toolbar)
         setSupportActionBar(toolbar)
         toolbar.title = title
 
-        fab.setOnClickListener {
+        findViewById<View>(R.id.fab).setOnClickListener {
             CreateNoteDialog(this) {
                 refreshNotes()
             }.show()
         }
 
-        if (item_detail_container != null) {
+        if (findViewById<View>(R.id.item_detail_container) != null) {
             twoPane = true
         }
 
         adapter = NoteRecyclerViewAdapter(this, notes, twoPane)
-        item_list.adapter = adapter
+        findViewById<RecyclerView>(R.id.item_list).adapter = adapter
 
         refreshNotes()
     }
+
+    override fun onCreateOptionsMenu(menu: android.view.Menu): Boolean {
+        menuInflater.inflate(R.menu.menu_main, menu)
+        return true
+    }
+
+    override fun onOptionsItemSelected(item: android.view.MenuItem): Boolean =
+        when (item.itemId) {
+            R.id.action_categories -> {
+                startActivity(Intent(this, CategoryActivity::class.java))
+                true
+            }
+            else -> super.onOptionsItemSelected(item)
+        }
 
     /**
      * Refresh the notes list from the database.
@@ -136,8 +149,8 @@ class ItemListActivity : AppCompatActivity() {
         override fun getItemCount() = values.size
 
         inner class ViewHolder(view: View) : RecyclerView.ViewHolder(view) {
-            val idView: TextView = view.id_text
-            val contentView: TextView = view.content
+            val idView: TextView = view.findViewById(R.id.id_text)
+            val contentView: TextView = view.findViewById(R.id.content)
         }
     }
 }

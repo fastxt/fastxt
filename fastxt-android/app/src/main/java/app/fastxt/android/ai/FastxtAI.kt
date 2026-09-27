@@ -68,11 +68,12 @@ object FastxtAI {
     private fun extractTags(text: String): List<String> {
         val tags = mutableSetOf<String>()
 
-        // Extract keywords by splitting on common delimiters and filtering
+        // Extract keywords: letters/digits of any script; CJK runs become
+        // 2-character bigrams so non-spaced languages still yield tags.
         val words = text.lowercase()
-            .replace(Regex("[^a-z0-9\\s]"), " ")
             .split(Regex("\\s+"))
-            .filter { it.length > 3 && !isCommonWord(it) }
+            .flatMap { token -> tokenize(token) }
+            .filter { it.length > 1 && !isCommonWord(it) }
 
         // Count word frequency
         val frequency = words.groupingBy { it }.eachCount()
@@ -96,6 +97,35 @@ object FastxtAI {
         tags.addAll(namedEntities)
 
         return tags.take(7)
+    }
+
+    /**
+     * Split a whitespace-free token into keywords. CJK runs become 2-character
+     * bigrams; other scripts keep their letter/digit runs; punctuation drops.
+     */
+    private fun tokenize(token: String): List<String> {
+        val keywords = mutableListOf<String>()
+        val run = StringBuilder()
+        fun flush() {
+            val word = run.toString()
+            run.clear()
+            when {
+                word.isEmpty() -> {}
+                word.length > 3 && word.any { it.code in 0x4E00..0x9FFF } -> {
+                    // CJK without spaces: emit overlapping bigrams.
+                    for (i in 0 until word.length - 1) keywords.add(word.substring(i, i + 2))
+                }
+                word.length in 2..24 -> keywords.add(word)
+            }
+        }
+        for (ch in token) {
+            when {
+                ch.isLetterOrDigit() -> run.append(ch)
+                else -> flush()
+            }
+        }
+        flush()
+        return keywords
     }
 
     /**
@@ -143,9 +173,9 @@ object FastxtAI {
      */
     private fun calculateWordFrequency(text: String): Map<String, Double> {
         val words = text.lowercase()
-            .replace(Regex("[^a-z0-9\\s]"), " ")
             .split(Regex("\\s+"))
-            .filter { it.length > 3 && !isCommonWord(it) }
+            .flatMap { tokenize(it) }
+            .filter { it.length > 1 && !isCommonWord(it) }
 
         val frequency = words.groupingBy { it }.eachCount()
         val total = words.size.toDouble()
@@ -158,9 +188,9 @@ object FastxtAI {
      */
     private fun scoreSentence(sentence: String, wordFrequency: Map<String, Double>): Double {
         val words = sentence.lowercase()
-            .replace(Regex("[^a-z0-9\\s]"), " ")
             .split(Regex("\\s+"))
-            .filter { it.length > 3 && !isCommonWord(it) }
+            .flatMap { tokenize(it) }
+            .filter { it.length > 1 && !isCommonWord(it) }
 
         if (words.isEmpty()) return 0.0
 

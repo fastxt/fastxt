@@ -18,71 +18,75 @@
 
 package app.fastxt.android
 
+import android.content.Context
 import org.json.JSONObject
 
 /**
- * JNI bridge to the Rust fastxt_core library.
+ * JNI bridge to the Rust fastxt_ffi library.
  */
 object RustBridge {
     init {
-        System.loadLibrary("fastxt_core")
+        System.loadLibrary("fastxt_ffi")
     }
 
-    private external fun fastxtRun(pattern: String): String
+    private external fun fastxtRun(input: String): String
+    private external fun setDbDir(path: String)
 
     /**
-     * Run a command against the Rust core and return the JSON response.
+     * Point the database at the app's private storage. Call once before any
+     * command (scoped storage forbids the old /sdcard location).
+     */
+    fun configure(context: Context) {
+        setDbDir(context.filesDir.absolutePath)
+    }
+
+    /**
+     * Run a JSON command against the Rust core and return the JSON response.
      */
     fun run(input: String): String {
         return fastxtRun(input)
     }
 
     /**
-     * Insert a new note with text and tags.
+     * Insert a new note with text and tags. Returns the rowid, or null on failure.
      */
-    fun insert(txt: String, tags: String): Boolean {
+    fun insert(txt: String, tags: String): Long? {
         val cmd = JSONObject().apply {
             put("action", "insert")
             put("txt", txt)
             put("tags", tags)
-            put("limit", 10)
-            put("offset", 0)
         }
         return try {
-            run(cmd.toString())
-            true
+            val response = JSONObject(run(cmd.toString()))
+            if (response.has("error")) null else response.optJSONObject("note")?.optLong("rowid")
         } catch (e: Exception) {
-            false
+            null
         }
     }
 
     /**
      * Search notes with query.
      */
-    fun search(query: String, offset: Long = 0): String {
+    fun search(query: String, offset: Long = 0, limit: Long = 50): String {
         val cmd = JSONObject().apply {
             put("action", "search")
             put("query", query)
-            put("limit", 10)
+            put("limit", limit)
             put("offset", offset)
         }
         return run(cmd.toString())
     }
 
     /**
-     * Delete a note by rowid.
+     * Delete a note by rowid. The deletion syncs to other devices.
      */
     fun delete(rowid: Long): Boolean {
         val cmd = JSONObject().apply {
             put("action", "delete")
-            put("query", "")
             put("rowid", rowid)
-            put("limit", 10)
-            put("offset", 0)
         }
         return try {
-            run(cmd.toString())
-            true
+            !JSONObject(run(cmd.toString())).has("error")
         } catch (e: Exception) {
             false
         }

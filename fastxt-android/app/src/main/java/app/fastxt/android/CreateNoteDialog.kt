@@ -125,7 +125,7 @@ class CreateNoteDialog(
                 val tags = tagsInput.text.toString()
 
                 if (txt.isNotBlank()) {
-                    val success = RustBridge.insert(txt, tags)
+                    val success = RustBridge.insert(txt, tags) != null
                     if (success) {
                         Toast.makeText(context, "Note saved", Toast.LENGTH_SHORT).show()
                         onNoteCreated()

@@ -5,7 +5,6 @@ import android.os.Bundle
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.NavUtils
 import android.view.MenuItem
-import kotlinx.android.synthetic.main.activity_item_detail.*
 
 /**
  * An activity representing a single Note detail screen. This
@@ -18,7 +17,7 @@ class ItemDetailActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_item_detail)
-        setSupportActionBar(detail_toolbar)
+        setSupportActionBar(findViewById(R.id.detail_toolbar))
 
         // Show the Up button in the action bar.
         supportActionBar?.setDisplayHomeAsUpEnabled(true)
