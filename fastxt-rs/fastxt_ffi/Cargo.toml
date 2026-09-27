@@ -1,0 +1,18 @@
+[package]
+name = "fastxt_ffi"
+version = "0.1.0"
+edition = "2024"
+license = "AGPL-3.0"
+description = "C and JNI bindings for the Fastxt core (iOS/macOS static lib, Android shared lib)"
+publish = false
+
+[lib]
+name = "fastxt_ffi"
+# iOS/macOS link the static lib; Android loads the shared lib.
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[dependencies]
+fastxt_core = { path = "../fastxt_core" }
+
+[target.'cfg(target_os = "android")'.dependencies]
+jni = "0.21"
