@@ -1,12 +1,15 @@
 [package]
 name = "fastxt_mcp"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 license = "AGPL-3.0"
 description = "MCP server exposing Fastxt note operations as tools"
 
+[dependencies.fastxt_core]
+path = "../fastxt_core"
+features = ["ai"]
+
 [dependencies]
-fastxt_core = { path = "../fastxt_core" }
 rmcp = { version = "3", features = ["server", "transport-io"] }
 tokio = { version = "1", features = ["full"] }
 serde = { version = "1", features = ["derive"] }
