@@ -1,0 +1,42 @@
+name: iOS CI
+
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - 'fastxt-ios/**'
+      - 'fastxt-rs/**'
+      - '.github/workflows/ios.yml'
+  pull_request:
+    branches: [main, master]
+    paths:
+      - 'fastxt-ios/**'
+      - 'fastxt-rs/**'
+      - '.github/workflows/ios.yml'
+
+jobs:
+  build:
+    name: Build for iOS Simulator
+    runs-on: macos-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain with iOS targets
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-ios,aarch64-apple-ios-sim,x86_64-apple-ios
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: fastxt-rs
+
+      - name: Build Rust core XCFramework
+        run: script/build-ios-libs.sh
+
+      - name: Build the app
+        working-directory: fastxt-ios
+        run: |
+          xcodebuild -project Fastxt.xcodeproj -scheme Fastxt \
+            -destination 'generic/platform=iOS Simulator' \
+            -configuration Debug CODE_SIGNING_ALLOWED=NO build
