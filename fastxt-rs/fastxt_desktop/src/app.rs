@@ -64,8 +64,9 @@ struct Fastxt {
     tags: String,
     ai_suggested_tags: Vec<String>,
     ai_summary: String,
-    /// True while `ai_summary` was generated from the form's current text.
-    ai_summary_matches_form: bool,
+    /// The form text `ai_summary` was generated from. The summary is saved
+    /// with the note only while the text still matches it.
+    ai_summary_source: String,
     status: String,
     save_busy: bool,
 
@@ -130,7 +131,11 @@ enum Message {
     UseAiTags,
     ReplaceAiTags,
     RequestSummary,
-    SummaryReady(Result<String, String>),
+    /// `source` is the text that was summarized.
+    SummaryReady {
+        source: String,
+        result: Result<String, String>,
+    },
     DismissSummary,
 
     // Search + list.
@@ -276,7 +281,7 @@ impl Fastxt {
             tags: String::new(),
             ai_suggested_tags: Vec::new(),
             ai_summary: String::new(),
-            ai_summary_matches_form: false,
+            ai_summary_source: String::new(),
             status: String::new(),
             save_busy: false,
             editing: None,
@@ -372,6 +377,7 @@ impl Fastxt {
                 self.tags.clear();
                 self.ai_suggested_tags.clear();
                 self.ai_summary.clear();
+                self.ai_summary_source.clear();
                 self.status.clear();
                 Task::none()
             }
@@ -381,9 +387,11 @@ impl Fastxt {
                     self.status = "Enter some text first".into();
                     return Task::none();
                 }
-                // An AI summary generated before saving is stored with the note.
+                // An AI summary generated before saving is stored with the
+                // note, but only if it describes the text being saved.
                 let summary = self.ai_summary.clone();
-                let summary_is_for_this_text = !summary.is_empty() && self.ai_summary_matches_form;
+                let summary_is_for_this_text =
+                    !summary.is_empty() && self.ai_summary_source == content;
                 let tags = self.tags.clone();
                 self.save_busy = true;
                 self.status = "Saving…".into();
@@ -407,7 +415,7 @@ impl Fastxt {
                         self.tags.clear();
                         self.ai_suggested_tags.clear();
                         self.ai_summary.clear();
-                        self.ai_summary_matches_form = false;
+                        self.ai_summary_source.clear();
                         self.status = "Saved".into();
                         let query = fresh_query(&self.list_query);
                         self.list_query = query.clone();
@@ -468,29 +476,31 @@ impl Fastxt {
                 self.status = "Generating summary… (not saved until you Save)".into();
                 let db = self.db.clone();
                 run_blocking(
-                    move || commands::ai_summarize(&db, &content),
-                    Message::SummaryReady,
+                    move || {
+                        let result = commands::ai_summarize(&db, &content);
+                        (content, result)
+                    },
+                    |(source, result)| Message::SummaryReady { source, result },
                 )
             }
-            Message::SummaryReady(result) => {
-                self.ai_summary_matches_form = true;
+            Message::SummaryReady { source, result } => {
                 match result {
                     Ok(summary) => {
                         self.ai_summary = summary;
+                        self.ai_summary_source = source;
                         self.status.clear();
-                        Task::none()
                     }
                     Err(e) => {
                         self.ai_summary.clear();
-                        self.ai_summary_matches_form = false;
+                        self.ai_summary_source.clear();
                         self.status = format!("AI unavailable: {e}");
-                        Task::none()
                     }
                 }
+                Task::none()
             }
             Message::DismissSummary => {
                 self.ai_summary.clear();
-                self.ai_summary_matches_form = false;
+                self.ai_summary_source.clear();
                 Task::none()
             }
 
@@ -735,16 +745,18 @@ impl Fastxt {
                 Task::none()
             }
             Message::SaveSettings => {
-                let mut settings = fastxt_core::Settings::default();
-                settings.ai.backend = self.backend.to_string();
-                settings.ai.endpoint = self.endpoint.trim().to_string();
-                settings.ai.model = self.model.trim().to_string();
-                settings.ai.embedding_model = self.embedding_model.trim().to_string();
-                settings.ai.timeout_secs = self.timeout.trim().parse().unwrap_or(60);
+                let ai = fastxt_core::model::AiSettings {
+                    backend: self.backend.to_string(),
+                    endpoint: self.endpoint.trim().to_string(),
+                    model: self.model.trim().to_string(),
+                    embedding_model: self.embedding_model.trim().to_string(),
+                    timeout_secs: self.timeout.trim().parse().unwrap_or(60),
+                    ..Default::default()
+                };
                 self.settings_busy = true;
                 let db = self.db.clone();
                 run_blocking(
-                    move || commands::save_settings(&db, &settings),
+                    move || commands::save_ai_settings(&db, ai),
                     Message::SettingsSaved,
                 )
             }
@@ -1057,9 +1069,14 @@ impl Fastxt {
         let mut col = column![actions].spacing(10);
 
         if !self.ai_summary.is_empty() {
+            let label = if self.ai_summary_source == self.content.text() {
+                "Summary (saved with the note when you Save):"
+            } else {
+                "Summary of an earlier draft — not saved unless you Summarize again:"
+            };
             col = col.push(
                 row![
-                    text("Summary (saved with the note when you Save):").size(11),
+                    text(label).size(11),
                     Space::new().width(Length::Fill),
                     button(text("×")).on_press(Message::DismissSummary),
                 ]
@@ -1221,8 +1238,7 @@ impl Fastxt {
     }
 }
 
-/// Whether the current summary belongs to the current form text.
-/// Reset whenever the form is edited? Simplified: tracked by flag.
+/// The same list query from its first page, for refreshing after a change.
 fn fresh_query(current: &ListQuery) -> ListQuery {
     match current {
         ListQuery::Browse { category, .. } => ListQuery::Browse {
@@ -1239,7 +1255,8 @@ fn fresh_query(current: &ListQuery) -> ListQuery {
     }
 }
 
-/// A search-mode toggle button with a check mark when selected.
+/// One note in the list: preview, tags, summary and category; opens the
+/// detail editor when pressed.
 fn note_card(note: &NoteCard) -> Element<'_, Message> {
     let mut col = column![].spacing(2);
     if let Some(similarity) = note.similarity {

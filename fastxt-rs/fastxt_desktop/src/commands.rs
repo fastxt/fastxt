@@ -22,7 +22,7 @@
 //! background threads. GUI types stay out.
 
 use fastxt_core::ai::JobReport;
-use fastxt_core::model::{CategoryCount, Filter, Note, Page, ScoredNote, Settings};
+use fastxt_core::model::{AiSettings, CategoryCount, Filter, Note, Page, ScoredNote, Settings};
 pub use fastxt_core::sync::client::SyncReport;
 pub use fastxt_core::sync::server::ServerHandle;
 use fastxt_core::{Fastxt, Result};
@@ -323,9 +323,17 @@ pub fn settings(db: &AppDb) -> Settings {
     lock(db, |db| db.settings()).unwrap_or_default()
 }
 
-/// Persist settings.
-pub fn save_settings(db: &AppDb, settings: &Settings) -> std::result::Result<(), String> {
-    lock(db, |db| db.save_settings(settings).map(|_| ()))
+/// Save the AI settings the settings page shows. Fields it doesn't show
+/// (such as `consistency_rounds`) keep their stored values.
+pub fn save_ai_settings(db: &AppDb, ai: AiSettings) -> std::result::Result<(), String> {
+    lock(db, |db| {
+        let mut settings = db.settings()?;
+        settings.ai = AiSettings {
+            consistency_rounds: settings.ai.consistency_rounds,
+            ..ai
+        };
+        db.save_settings(&settings)
+    })
 }
 
 /// Categories with counts.
