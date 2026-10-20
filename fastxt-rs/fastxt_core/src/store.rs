@@ -297,7 +297,7 @@ impl Fastxt {
 
     /// Change a note's text and tags. Unchanged input leaves the note (and its
     /// version stamp) untouched. Changing the text drops its embeddings, which
-    /// no longer describe it.
+    /// no longer describe it; a tags-only change keeps them current.
     ///
     /// # Errors
     /// [`Error::NotFound`] for a missing or deleted note; [`Error::Invalid`]
@@ -317,7 +317,9 @@ impl Fastxt {
             "UPDATE note SET txt = ?1, tags = ?2, updated_at = ?3 WHERE rowid = ?4",
             params![txt, tags, stamp, note.rowid],
         )?;
-        if note.txt != txt {
+        if note.txt == txt {
+            crate::vector::carry_embeddings(&tx, &note.uuid4, &stamp)?;
+        } else {
             crate::vector::delete_embeddings(&tx, &note.uuid4)?;
         }
         tx.commit()?;
@@ -486,7 +488,15 @@ impl Fastxt {
     }
 
     fn recategorize(&mut self, from: &str, to: Option<&str>) -> Result<usize> {
-        let stamp = self.clock.tick();
+        // The new stamp must outrank every stamp on the affected notes,
+        // including ones written through another handle on the same file
+        // (the sync server's) that this clock has never observed.
+        let latest: Option<String> = self.conn.query_row(
+            "SELECT max(ai_updated_at) FROM note WHERE deleted = 0 AND ai_category = ?1",
+            [from],
+            |r| r.get(0),
+        )?;
+        let stamp = self.clock.tick_after(latest.as_deref().unwrap_or(""));
         Ok(self.conn.execute(
             "UPDATE note SET ai_category = ?1, ai_updated_at = ?2
              WHERE deleted = 0 AND ai_category = ?3",
@@ -519,6 +529,18 @@ impl Fastxt {
     /// # Errors
     /// Fails on a database error.
     pub fn tag_vocabulary(&self, limit: usize) -> Result<Vec<TagCount>> {
+        self.count_tags(true, limit)
+    }
+
+    /// The most-used user tags (AI tags excluded), most frequent first.
+    ///
+    /// # Errors
+    /// Fails on a database error.
+    pub fn user_tag_vocabulary(&self, limit: usize) -> Result<Vec<TagCount>> {
+        self.count_tags(false, limit)
+    }
+
+    fn count_tags(&self, include_ai: bool, limit: usize) -> Result<Vec<TagCount>> {
         let mut stmt = self
             .conn
             .prepare("SELECT tags, ai_tags FROM note WHERE deleted = 0")?;
@@ -529,7 +551,9 @@ impl Fastxt {
         for row in rows {
             let (tags, ai_tags) = row?;
             let mut all = split_tags(&tags);
-            all.extend(ai_tags.as_deref().map(parse_ai_tags).unwrap_or_default());
+            if include_ai {
+                all.extend(ai_tags.as_deref().map(parse_ai_tags).unwrap_or_default());
+            }
             let mut seen_in_note = std::collections::HashSet::new();
             for tag in all {
                 let key = tag.to_lowercase();
@@ -697,6 +721,10 @@ impl Fastxt {
             }
             if merged.deleted || merged.txt != local.txt {
                 crate::vector::delete_embeddings(&tx, &merged.uuid4)?;
+            } else if user_newer {
+                // The peer changed only the tags: local vectors still describe
+                // the text, so they follow the note to its new version.
+                crate::vector::carry_embeddings(&tx, &merged.uuid4, &merged.updated_at)?;
             }
             tx.execute(
                 "UPDATE note SET txt = ?1, tags = ?2, created_at = ?3, ai_tags = ?4,
@@ -874,6 +902,38 @@ mod tests {
             }
         );
         assert_eq!(vocab.len(), 3);
+        let user_only = db.user_tag_vocabulary(10).unwrap();
+        assert_eq!(user_only[0].count, 2);
+        assert_eq!(user_only.len(), 2, "AI tag `db` excluded");
+    }
+
+    #[test]
+    fn category_rename_outranks_stamps_written_through_another_handle() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("shared.sqlite3");
+        let mut app = Fastxt::open(&path).unwrap();
+        let n = add(&mut app, "note", "");
+        let key = NoteKey::Uuid(n.uuid4.clone());
+        app.set_ai_category(&key, Some("work")).unwrap();
+
+        // A sync server handle on the same file merges a peer's AI stamp an
+        // hour ahead; the app's clock never sees it.
+        let mut server = Fastxt::open(&path).unwrap();
+        let mut rec = server
+            .records(std::slice::from_ref(&n.uuid4))
+            .unwrap()
+            .remove(0);
+        let (millis, _) = crate::clock::parse(&rec.ai_updated_at).unwrap();
+        rec.ai_updated_at = format!("{:013x}-0000-ffff", millis + 3_600_000);
+        server.apply_remote(std::slice::from_ref(&rec)).unwrap();
+
+        assert_eq!(app.rename_category("work", "job").unwrap(), 1);
+        let renamed = app.get(&key).unwrap().unwrap();
+        assert_eq!(renamed.ai_category.as_deref(), Some("job"));
+        assert!(
+            renamed.ai_updated_at > rec.ai_updated_at,
+            "an older stamp would lose the rename on the next sync"
+        );
     }
 
     #[test]
@@ -974,6 +1034,34 @@ mod tests {
             assert_eq!(rec.ai_summary, None, "no content survives a delete");
         }
         assert_eq!(a.manifest().unwrap(), b.manifest().unwrap());
+    }
+
+    #[test]
+    fn a_remote_tag_edit_carries_local_embeddings_forward() {
+        let (mut a, mut b) = pair();
+        let n = add(&mut a, "v1", "x");
+        sync_all(&a, &mut b);
+        let key = NoteKey::Uuid(n.uuid4.clone());
+        a.store_embedding(&key, "m", &[1.0, 0.0]).unwrap();
+
+        // B changes only the tags; A merges the new version.
+        b.update(&key, "v1", "x, y").unwrap();
+        sync_all(&b, &mut a);
+        let merged = a.get(&key).unwrap().unwrap();
+        assert_eq!(merged.tags, "x,y");
+        assert_eq!(a.count_without_embedding("m").unwrap(), 0);
+        let manifest = a.embedding_manifest("m").unwrap();
+        assert_eq!(manifest[0].note_updated_at, merged.updated_at);
+        // B, which never had the vector, now accepts it for that version.
+        let recs = a
+            .embedding_records("m", std::slice::from_ref(&n.uuid4))
+            .unwrap();
+        assert_eq!(b.apply_remote_embeddings(&recs).unwrap(), 1);
+
+        // A text change from the peer still drops the vector.
+        b.update(&key, "v2", "x, y").unwrap();
+        sync_all(&b, &mut a);
+        assert_eq!(a.embedding(&key, "m").unwrap(), None);
     }
 
     #[test]

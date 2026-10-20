@@ -97,6 +97,21 @@ pub(crate) fn delete_embeddings(conn: &Connection, note_uuid: &str) -> Result<()
     Ok(())
 }
 
+/// Re-stamp a note's embeddings with its new version. After an edit that
+/// left the text as it was (a tag change), the vectors still describe the
+/// note, so they must not count as stale, be recomputed, or drop out of sync.
+pub(crate) fn carry_embeddings(
+    conn: &Connection,
+    note_uuid: &str,
+    note_updated_at: &str,
+) -> Result<()> {
+    conn.execute(
+        "UPDATE embedding SET note_updated_at = ?1 WHERE note_uuid = ?2",
+        params![note_updated_at, note_uuid],
+    )?;
+    Ok(())
+}
+
 fn store_row(
     conn: &Connection,
     note_uuid: &str,
@@ -579,6 +594,24 @@ mod tests {
             vec![rows[2]]
         );
         assert_eq!(db.count_without_embedding("test:model").unwrap(), 1);
+    }
+
+    #[test]
+    fn a_tags_only_edit_keeps_the_embedding_current() {
+        let (mut db, rows) = setup(8);
+        let key = NoteKey::Rowid(rows[0]);
+        let edited = db.update(&key, "rust basics", "beginner").unwrap();
+        assert_eq!(db.count_without_embedding("test:model").unwrap(), 0);
+        let manifest = db.embedding_manifest("test:model").unwrap();
+        let stamp = manifest
+            .iter()
+            .find(|e| e.note_uuid == edited.uuid4)
+            .expect("still offered to peers");
+        assert_eq!(stamp.note_updated_at, edited.updated_at);
+        let hits = db
+            .semantic_search(&unit(8, 0, 1.0), "test:model", 1, 0.5)
+            .unwrap();
+        assert_eq!(hits[0].note.rowid, rows[0]);
     }
 
     #[test]

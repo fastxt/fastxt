@@ -149,8 +149,8 @@ impl AiBackend for OpenAiCompatibleBackend {
             "max_tokens": request.max_tokens,
             "stream": false,
         });
-        if !settings.model.is_empty() {
-            body["model"] = serde_json::json!(settings.model);
+        if !request.model.is_empty() {
+            body["model"] = serde_json::json!(request.model);
         }
         if request.json_schema.is_some() {
             body["response_format"] = serde_json::json!({ "type": "json_object" });
