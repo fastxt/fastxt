@@ -24,8 +24,9 @@ use crate::pairing::{PairingInfo, cert_fingerprint, constant_time_eq, generate_t
 use crate::store::SharedDb;
 use futures::future::{AbortHandle, Abortable};
 use futures::prelude::*;
-use std::net::{IpAddr, SocketAddr};
+use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::sync::Arc;
+use std::time::Duration;
 use tarpc::serde_transport as transport;
 use tarpc::server::{BaseChannel, Channel};
 use tarpc::tokio_serde::formats::Bincode;
@@ -33,7 +34,10 @@ use tokio::net::TcpStream;
 use tokio_rustls::TlsAcceptor;
 use tokio_rustls::rustls;
 use tokio_rustls::server::TlsStream;
-use tracing::{info, warn};
+use tracing::{debug, info, warn};
+
+/// How long a peer gets to finish the TLS handshake after connecting.
+const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// A running sync server. Stopping it (or dropping every clone) invalidates
 /// the pairing code.
@@ -101,15 +105,28 @@ impl std::fmt::Debug for ServerHandle {
 }
 
 /// The LAN IPv4 address most likely reachable from a phone on the same
-/// network (first non-loopback IPv4 interface).
+/// network: a private (RFC 1918) address when there is one, otherwise the
+/// first address that is neither loopback nor link-local.
 #[must_use]
 pub fn lan_ip() -> Option<IpAddr> {
     let addrs = if_addrs::get_if_addrs().ok()?;
-    addrs
+    pick_lan_ip(addrs.iter().filter_map(|i| match i.ip() {
+        IpAddr::V4(v4) => Some(v4),
+        IpAddr::V6(_) => None,
+    }))
+    .map(IpAddr::V4)
+}
+
+/// [`lan_ip`]'s choice among candidate addresses, in interface order.
+fn pick_lan_ip(candidates: impl Iterator<Item = Ipv4Addr>) -> Option<Ipv4Addr> {
+    let usable: Vec<Ipv4Addr> = candidates
+        .filter(|a| !a.is_loopback() && !a.is_link_local() && !a.is_unspecified())
+        .collect();
+    usable
         .iter()
-        .filter(|i| !i.is_loopback())
-        .map(|i| i.ip())
-        .find(IpAddr::is_ipv4)
+        .find(|a| a.is_private())
+        .or_else(|| usable.first())
+        .copied()
 }
 
 /// Start the sync server in the background, advertised on the LAN address.
@@ -193,14 +210,30 @@ pub fn serve_on(db: SharedDb, bind: SocketAddr, advertised_ip: IpAddr) -> Result
                     info!(%bound, "sync server listening");
                     let accept_loop = async move {
                         loop {
-                            let conn = listener.accept().await;
-                            let Ok((stream, _peer)) = conn else {
-                                continue;
+                            let (stream, peer) = match listener.accept().await {
+                                Ok(conn) => conn,
+                                Err(e) => {
+                                    // Out of descriptors or a transient fault:
+                                    // retry without spinning.
+                                    warn!(error = %e, "accept failed");
+                                    tokio::time::sleep(Duration::from_millis(250)).await;
+                                    continue;
+                                }
                             };
-                            let Ok(tls) = acceptor.accept(stream).await else {
-                                continue;
-                            };
-                            spawn_channel(tls, db.clone(), token.clone());
+                            // The handshake runs on its own task with a
+                            // deadline, so a peer that connects and goes quiet
+                            // never holds up the next one.
+                            let acceptor = acceptor.clone();
+                            let db = db.clone();
+                            let token = token.clone();
+                            tokio::spawn(async move {
+                                let handshake = acceptor.accept(stream);
+                                match tokio::time::timeout(HANDSHAKE_TIMEOUT, handshake).await {
+                                    Ok(Ok(tls)) => serve_connection(tls, db, token).await,
+                                    Ok(Err(e)) => debug!(%peer, error = %e, "TLS handshake failed"),
+                                    Err(_) => debug!(%peer, "TLS handshake timed out"),
+                                }
+                            });
                         }
                     };
                     let _ = Abortable::new(accept_loop, registration).await;
@@ -224,20 +257,19 @@ pub fn serve_on(db: SharedDb, bind: SocketAddr, advertised_ip: IpAddr) -> Result
     })
 }
 
-fn spawn_channel(tls: TlsStream<TcpStream>, db: SharedDb, token: Arc<String>) {
-    tokio::spawn(async move {
-        let framed = tarpc::tokio_util::codec::length_delimited::Builder::new()
-            .max_frame_length(MAX_FRAME_BYTES)
-            .new_framed(tls);
-        let io = transport::new(framed, Bincode::default());
-        let service = SyncService { db, token };
-        BaseChannel::with_defaults(io)
-            .execute(service.serve())
-            .for_each(|response| async {
-                tokio::spawn(response);
-            })
-            .await;
-    });
+/// Answer RPCs on one established connection until the peer hangs up.
+async fn serve_connection(tls: TlsStream<TcpStream>, db: SharedDb, token: Arc<String>) {
+    let framed = tarpc::tokio_util::codec::length_delimited::Builder::new()
+        .max_frame_length(MAX_FRAME_BYTES)
+        .new_framed(tls);
+    let io = transport::new(framed, Bincode::default());
+    let service = SyncService { db, token };
+    BaseChannel::with_defaults(io)
+        .execute(service.serve())
+        .for_each(|response| async {
+            tokio::spawn(response);
+        })
+        .await;
 }
 
 #[derive(Clone)]
@@ -356,5 +388,38 @@ impl FastxtSync for SyncService {
             .apply_remote_embeddings(&records)
             .ok()
             .map(|n| n as u32)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn lan_ip_prefers_private_addresses_and_skips_link_local() {
+        let pick = |list: &[[u8; 4]]| pick_lan_ip(list.iter().map(|o| Ipv4Addr::from(*o)));
+        assert_eq!(
+            pick(&[
+                [127, 0, 0, 1],
+                [169, 254, 1, 2],
+                [203, 0, 113, 9],
+                [192, 168, 1, 5]
+            ]),
+            Some(Ipv4Addr::new(192, 168, 1, 5))
+        );
+        assert_eq!(
+            pick(&[[10, 0, 0, 2], [192, 168, 1, 5]]),
+            Some(Ipv4Addr::new(10, 0, 0, 2)),
+            "interface order decides among private addresses"
+        );
+        assert_eq!(
+            pick(&[[127, 0, 0, 1], [203, 0, 113, 9]]),
+            Some(Ipv4Addr::new(203, 0, 113, 9)),
+            "a public address beats none"
+        );
+        assert_eq!(
+            pick(&[[127, 0, 0, 1], [169, 254, 1, 2], [0, 0, 0, 0]]),
+            None
+        );
     }
 }

@@ -25,6 +25,7 @@ use crate::pairing::{PairingInfo, cert_fingerprint, constant_time_eq};
 use crate::store::Fastxt;
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::time::Duration;
 use tarpc::client;
 use tarpc::serde_transport as transport;
 use tarpc::tokio_serde::formats::Bincode;
@@ -41,6 +42,10 @@ pub struct SyncReport {
     pub embeddings_pulled: u32,
     pub embeddings_pushed: u32,
 }
+
+/// How long to wait for the TCP connection and, separately, the TLS
+/// handshake. Without it a mistyped LAN address hangs for minutes.
+const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// Sync with the server named in a pairing code. Notes first (so both sides
 /// agree on note versions), then embeddings per model. Safe to re-run.
@@ -76,13 +81,19 @@ async fn connect(info: &PairingInfo) -> Result<FastxtSyncClient> {
     let name = rustls::pki_types::ServerName::try_from("fastxt".to_string())
         .map_err(|e| Error::Sync(format!("internal: bad server name: {e}")))?;
 
-    let addr = (info.host.as_str(), info.port);
-    let tcp = TcpStream::connect(addr)
+    let (host, port) = (info.host.as_str(), info.port);
+    let tcp = tokio::time::timeout(CONNECT_TIMEOUT, TcpStream::connect((host, port)))
         .await
-        .map_err(|e| Error::Sync(format!("cannot reach {addr:?}: {e}")))?;
-    let tls = connector
-        .connect(name, tcp)
+        .map_err(|_| {
+            Error::Sync(format!(
+                "no answer from {host}:{port} after {}s; is the server running on this network?",
+                CONNECT_TIMEOUT.as_secs()
+            ))
+        })?
+        .map_err(|e| Error::Sync(format!("cannot reach {host}:{port}: {e}")))?;
+    let tls = tokio::time::timeout(CONNECT_TIMEOUT, connector.connect(name, tcp))
         .await
+        .map_err(|_| Error::Sync("TLS handshake timed out".into()))?
         .map_err(|e| Error::Sync(format!("TLS failed (wrong pairing code?): {e}")))?;
     let framed = tarpc::tokio_util::codec::length_delimited::Builder::new()
         .max_frame_length(super::MAX_FRAME_BYTES)
@@ -404,6 +415,19 @@ mod tests {
         );
         let err = sync(&evil, &mut b).unwrap_err();
         assert!(err.to_string().contains("TLS"), "{err}");
+        handle.stop();
+    }
+
+    #[test]
+    fn a_peer_that_never_finishes_its_handshake_does_not_block_others() {
+        let dir = tempfile::tempdir().unwrap();
+        let handle = start_server(&dir.path().join("s.sqlite3"));
+        // A raw TCP connection that never starts TLS. With the handshake on
+        // the accept loop this stalled every later client.
+        let stalled = std::net::TcpStream::connect(handle.addr()).unwrap();
+        let mut b = Fastxt::open_in_memory().unwrap();
+        sync(&handle.pairing_code, &mut b).unwrap();
+        drop(stalled);
         handle.stop();
     }
 

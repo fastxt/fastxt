@@ -89,7 +89,16 @@ pub fn generate_token() -> String {
 #[must_use]
 pub fn constant_time_eq(a: &str, b: &str) -> bool {
     let (a, b) = (a.as_bytes(), b.as_bytes());
-    a.len() == b.len() && a.iter().zip(b).fold(0u8, |diff, (x, y)| diff | (x ^ y)) == 0
+    if a.len() != b.len() {
+        return false;
+    }
+    // `black_box` keeps the optimizer from turning the OR-accumulation into
+    // an early exit on the first differing byte.
+    let diff = a
+        .iter()
+        .zip(b)
+        .fold(0u8, |diff, (x, y)| std::hint::black_box(diff | (x ^ y)));
+    diff == 0
 }
 
 impl PairingInfo {
