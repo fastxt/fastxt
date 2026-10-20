@@ -206,7 +206,7 @@ impl FastxtMcpServer {
 
     #[tool(
         name = "search_notes",
-        description = "Search notes by text. Terms match note text, tags and AI tags; all terms must match. Empty query lists recent notes."
+        description = "Search notes by text. Terms match note text, tags and AI tags; all terms must match. Empty query lists recent notes. Optionally restricted to one AI category."
     )]
     async fn search_notes(
         &self,
@@ -215,14 +215,12 @@ impl FastxtMcpServer {
         let query = params.query;
         let limit = params.limit.unwrap_or(20);
         let offset = params.offset.unwrap_or(0);
-        let category = params.category;
+        let filter = Filter {
+            category: params.category,
+            tags: Vec::new(),
+        };
         with_db(&self.db, move |db| {
-            let mut page = db.search(&query, limit, offset)?;
-            if let Some(category) = category {
-                page.notes
-                    .retain(|n| n.ai_category.as_deref() == Some(category.as_str()));
-                page.count = page.notes.len() as u32;
-            }
+            let page = db.search(&query, limit, offset, &filter)?;
             serde_json::to_string(&page).map_err(fastxt_core::Error::from)
         })
         .await
@@ -240,6 +238,7 @@ impl FastxtMcpServer {
         let offset = params.offset.unwrap_or(0);
         let filter = Filter {
             category: params.category,
+            tags: Vec::new(),
         };
         with_db(&self.db, move |db| {
             let page = db.list(limit, offset, &filter)?;
@@ -433,23 +432,22 @@ impl FastxtMcpServer {
     async fn recall(&self, Parameters(params): Parameters<RecallParams>) -> DynResult<String> {
         let query = params.query;
         let limit = params.limit.unwrap_or(10);
-        let agent = params.agent_id.map(|a| format!("agent:{a}"));
-        let topic = params.topic.map(|t| format!("topic:{t}"));
+        let agent = params
+            .agent_id
+            .filter(|a| !a.trim().is_empty())
+            .map(|a| format!("agent:{a}"));
+        let topic = params
+            .topic
+            .filter(|t| !t.trim().is_empty())
+            .map(|t| format!("topic:{t}"));
+        // Exact tag membership, applied in SQL so the count is real.
+        let filter = Filter {
+            category: None,
+            tags: [agent, topic].into_iter().flatten().collect(),
+        };
         with_db(&self.db, move |db| {
-            // Fetch more than asked, filter on exact tag membership, re-limit.
-            let page = db.search(&query, limit.saturating_mul(5), 0)?;
-            let notes: Vec<_> = page
-                .notes
-                .into_iter()
-                .filter(|note| {
-                    let tags = note.tag_list();
-                    let agent_ok = agent.as_ref().is_none_or(|a| tags.contains(a));
-                    let topic_ok = topic.as_ref().is_none_or(|t| tags.contains(t));
-                    agent_ok && topic_ok
-                })
-                .take(limit as usize)
-                .collect();
-            Ok(serde_json::json!({ "notes": notes }).to_string())
+            let page = db.search(&query, limit, 0, &filter)?;
+            Ok(serde_json::json!({ "notes": page.notes, "count": page.count }).to_string())
         })
         .await
     }
@@ -473,16 +471,18 @@ impl FastxtMcpServer {
     )]
     async fn list_topics(&self) -> DynResult<String> {
         with_db(&self.db, move |db| {
-            let mut counts: std::collections::BTreeMap<String, u32> =
-                std::collections::BTreeMap::new();
-            for note in db.list(u32::MAX, 0, &Filter::default())?.notes {
-                for tag in note.tag_list() {
-                    if let Some(topic) = tag.strip_prefix("topic:") {
-                        *counts.entry(topic.to_string()).or_insert(0) += 1;
-                    }
-                }
-            }
-            let topics: Vec<_> = counts
+            // Tag counts come from the tags column alone: no note bodies.
+            let mut topics: Vec<(String, u32)> = db
+                .user_tag_vocabulary(usize::MAX)?
+                .into_iter()
+                .filter_map(|t| {
+                    t.tag
+                        .strip_prefix("topic:")
+                        .map(|topic| (topic.to_string(), t.count))
+                })
+                .collect();
+            topics.sort();
+            let topics: Vec<_> = topics
                 .into_iter()
                 .map(|(topic, count)| serde_json::json!({ "topic": topic, "count": count }))
                 .collect();
@@ -502,8 +502,12 @@ impl FastxtMcpServer {
         let topic = params.topic;
         let max_notes = params.max_notes.unwrap_or(20);
         with_db(&self.db, move |db| {
-            let tag = format!("topic:{topic}");
-            let page = db.search(&tag, max_notes, 0)?;
+            // Exact tag membership, not a text search for "topic:…".
+            let filter = Filter {
+                category: None,
+                tags: vec![format!("topic:{topic}")],
+            };
+            let page = db.list(max_notes, 0, &filter)?;
             let texts: Vec<&str> = page.notes.iter().map(|n| n.txt.as_str()).collect();
             if texts.is_empty() {
                 return Ok(serde_json::json!({

@@ -191,6 +191,7 @@ fn page_outcome(page: Page, offset: u32, verb: &str) -> ListOutcome {
 pub fn list(db: &AppDb, limit: u32, offset: u32, category: Option<&str>) -> ListOutcome {
     let filter = Filter {
         category: category.map(str::to_string),
+        tags: Vec::new(),
     };
     match lock(db, |db| db.list(limit, offset, &filter)) {
         Ok(page) => page_outcome(page, offset, "listed"),
@@ -203,7 +204,7 @@ pub fn list(db: &AppDb, limit: u32, offset: u32, category: Option<&str>) -> List
 
 /// Full-text search (FTS5 trigram index, LIKE fallback for short terms).
 pub fn text_search(db: &AppDb, query: &str, limit: u32, offset: u32) -> ListOutcome {
-    match lock(db, |db| db.search(query, limit, offset)) {
+    match lock(db, |db| db.search(query, limit, offset, &Filter::default())) {
         Ok(page) => page_outcome(page, offset, "found"),
         Err(e) => ListOutcome {
             error: Some(e),

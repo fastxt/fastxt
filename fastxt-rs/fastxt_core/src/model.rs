@@ -163,11 +163,15 @@ pub struct EmbeddingModelInfo {
     pub count: u32,
 }
 
-/// Optional filters for listing and searching notes.
+/// Optional filters for listing and searching notes; conditions combine
+/// with AND.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Filter {
     /// Only notes with this AI category.
     pub category: Option<String>,
+    /// Only notes carrying every one of these user tags. Whole tags only
+    /// (`go` does not match `golang`), ASCII case-insensitive.
+    pub tags: Vec<String>,
 }
 
 // ---------------------------------------------------------------------------

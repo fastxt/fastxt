@@ -28,7 +28,8 @@ fn is_separator(c: char) -> bool {
     matches!(c, ',' | '，' | '\n' | '\r')
 }
 
-fn clean(tag: &str) -> String {
+/// Trim a tag and collapse its inner whitespace to single spaces.
+pub(crate) fn clean(tag: &str) -> String {
     tag.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 

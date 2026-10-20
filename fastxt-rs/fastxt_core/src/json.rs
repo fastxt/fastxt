@@ -23,8 +23,13 @@
 //! strings — and every failure is `{"error": "…"}`.
 //!
 //! ```text
-//! {"action": "search", "query": "rust", "limit": 20, "offset": 0}
+//! {"action": "search", "query": "rust", "limit": 20, "offset": 0,
+//!  "category": "work", "tags": ["topic:sync"]}
 //! ```
+//!
+//! `select` and `search` take the same optional filters: `category` (one AI
+//! category) and `tag` / `tags` (user tags the note must carry; `tags` is an
+//! array or a comma-separated string).
 
 use crate::ai;
 use crate::error::{Error, Result};
@@ -85,17 +90,32 @@ fn page_json(page: &Page) -> String {
     ok(&json!({ "count": page.count, "notes": page.notes }))
 }
 
+/// The `category`, `tag` and `tags` fields of a list or search request.
+fn filter_of(request: &Value) -> crate::model::Filter {
+    let mut tags: Vec<String> = match request.get("tags") {
+        Some(Value::Array(items)) => items
+            .iter()
+            .filter_map(|v| v.as_str().map(str::to_string))
+            .collect(),
+        Some(Value::String(joined)) => crate::tags::split_tags(joined),
+        _ => Vec::new(),
+    };
+    if let Some(tag) = opt_str(request, "tag") {
+        tags.push(tag);
+    }
+    crate::model::Filter {
+        category: opt_str(request, "category"),
+        tags,
+    }
+}
+
 fn dispatch(db: &mut Fastxt, action: &str, request: &Value) -> String {
     match action {
         // ---- notes ------------------------------------------------------
         "select" => {
             let limit = u32(request, "limit").unwrap_or(20);
             let offset = u32(request, "offset").unwrap_or(0);
-            let category = request.get("category").and_then(Value::as_str);
-            let filter = crate::model::Filter {
-                category: category.map(str::to_string),
-            };
-            match db.list(limit, offset, &filter) {
+            match db.list(limit, offset, &filter_of(request)) {
                 Ok(page) => page_json(&page),
                 Err(e) => err(e),
             }
@@ -104,7 +124,7 @@ fn dispatch(db: &mut Fastxt, action: &str, request: &Value) -> String {
             let query = str(request, "query");
             let limit = u32(request, "limit").unwrap_or(20);
             let offset = u32(request, "offset").unwrap_or(0);
-            match db.search(&query, limit, offset) {
+            match db.search(&query, limit, offset, &filter_of(request)) {
                 Ok(page) => page_json(&page),
                 Err(e) => err(e),
             }
@@ -465,6 +485,37 @@ mod tests {
 
         let categories = run_json(&shared, json!({"action": "categories"}));
         assert_eq!(categories["categories"].as_array().unwrap().len(), 0);
+    }
+
+    #[test]
+    fn select_and_search_accept_category_and_tag_filters() {
+        let shared = db();
+        let synced = run_json(
+            &shared,
+            json!({"action": "insert", "txt": "rust sync notes", "tags": "topic:sync, agent:x"}),
+        );
+        run_json(
+            &shared,
+            json!({"action": "insert", "txt": "rust cooking notes", "tags": "topic:food"}),
+        );
+        let by_array = run_json(
+            &shared,
+            json!({"action": "search", "query": "rust", "tags": ["topic:sync"]}),
+        );
+        assert_eq!(by_array["count"], 1);
+        assert_eq!(by_array["notes"][0]["uuid4"], synced["note"]["uuid4"]);
+        let by_string = run_json(
+            &shared,
+            json!({"action": "select", "tags": "agent:x,topic:sync"}),
+        );
+        assert_eq!(by_string["count"], 1);
+        let by_tag = run_json(&shared, json!({"action": "select", "tag": "topic:food"}));
+        assert_eq!(by_tag["notes"][0]["txt"], "rust cooking notes");
+        let none = run_json(
+            &shared,
+            json!({"action": "select", "tag": "topic:sync", "category": "work"}),
+        );
+        assert_eq!(none["count"], 0);
     }
 
     #[test]

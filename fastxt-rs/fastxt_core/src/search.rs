@@ -20,8 +20,10 @@
 //!
 //! Text search uses the FTS5 trigram index (which matches inside words and
 //! inside CJK text). Trigram indexes need terms of at least 3 characters, so
-//! queries with shorter terms fall back to LIKE. Hybrid search fuses full-text
-//! rank and vector similarity with Reciprocal Rank Fusion.
+//! queries with shorter terms fall back to LIKE. Listing and search both take
+//! a [`Filter`] (AI category, user tags) that is applied in SQL, so counts
+//! and pages stay right. Hybrid search fuses full-text rank and vector
+//! similarity with Reciprocal Rank Fusion.
 
 use crate::error::Result;
 use crate::model::{Filter, Note, Page, ScoredNote};
@@ -51,6 +53,42 @@ fn fts_match_expr(q: &[String]) -> String {
         .map(|t| format!("\"{}\"", t.replace('"', "\"\"")))
         .collect::<Vec<_>>()
         .join(" AND ")
+}
+
+/// Escape `%`, `_` and `\` so a LIKE pattern matches `text` literally.
+fn like_escape(text: &str) -> String {
+    text.replace('\\', "\\\\")
+        .replace('%', "\\%")
+        .replace('_', "\\_")
+}
+
+/// SQL for a [`Filter`]: a condition on the `note n` row (never empty) and
+/// its parameter values, numbered `?{first}` onwards.
+fn filter_sql(filter: &Filter, first: usize) -> (String, Vec<String>) {
+    let mut clauses: Vec<String> = Vec::new();
+    let mut values: Vec<String> = Vec::new();
+    if let Some(category) = &filter.category {
+        values.push(category.clone());
+        clauses.push(format!("n.ai_category = ?{}", first + values.len() - 1));
+    }
+    for tag in &filter.tags {
+        let tag = crate::tags::clean(tag);
+        if tag.is_empty() {
+            continue;
+        }
+        // Tags are stored comma-joined, so wrapping both sides in commas makes
+        // membership an exact (ASCII case-insensitive) LIKE match: `go` does
+        // not match `golang`.
+        values.push(format!("%,{},%", like_escape(&tag)));
+        clauses.push(format!(
+            "(',' || n.tags || ',') LIKE ?{} ESCAPE '\\'",
+            first + values.len() - 1
+        ));
+    }
+    if clauses.is_empty() {
+        clauses.push("1 = 1".into());
+    }
+    (clauses.join(" AND "), values)
 }
 
 fn fetch_page(
@@ -90,43 +128,49 @@ impl Fastxt {
     /// # Errors
     /// Fails on a database error.
     pub fn list(&self, limit: u32, offset: u32, filter: &Filter) -> Result<Page> {
-        match &filter.category {
-            Some(c) => fetch_page(
-                &self.conn,
-                "n.ai_category = ?1",
-                &[c as &dyn ToSql],
-                limit,
-                offset,
-            ),
-            None => fetch_page(&self.conn, "1 = 1", &[], limit, offset),
-        }
+        let (clause, values) = filter_sql(filter, 1);
+        let params: Vec<&dyn ToSql> = values.iter().map(|v| v as &dyn ToSql).collect();
+        fetch_page(&self.conn, &clause, &params, limit, offset)
     }
 
-    /// Search text, user tags and AI tags. Every term must match. An empty
-    /// query lists all notes (same as [`Fastxt::list`] with no filter).
+    /// Search text, user tags and AI tags. Every term must match, and so must
+    /// `filter`. An empty query lists notes, as [`Fastxt::list`] does.
     ///
     /// # Errors
     /// Fails on a database error.
-    pub fn search(&self, query: &str, limit: u32, offset: u32) -> Result<Page> {
+    pub fn search(&self, query: &str, limit: u32, offset: u32, filter: &Filter) -> Result<Page> {
         let q = terms(query);
         if q.is_empty() {
-            return self.list(limit, offset, &Filter::default());
+            return self.list(limit, offset, filter);
         }
         if q.iter().all(|t| t.chars().count() >= TRIGRAM_MIN) {
             let expr = fts_match_expr(&q);
-            if let Some(page) = self.fts_page(&expr, limit, offset)? {
+            if let Some(page) = self.fts_page(&expr, filter, limit, offset)? {
                 return Ok(page);
             }
         }
-        self.like_page(&q, limit, offset)
+        self.like_page(&q, filter, limit, offset)
     }
 
     /// FTS search over the trigram index; `None` means the index is unusable.
-    fn fts_page(&self, expr: &str, limit: u32, offset: u32) -> Result<Option<Page>> {
+    fn fts_page(
+        &self,
+        expr: &str,
+        filter: &Filter,
+        limit: u32,
+        offset: u32,
+    ) -> Result<Option<Page>> {
+        let (clause, values) = filter_sql(filter, 2);
+        let condition = format!("note_fts MATCH ?1 AND n.deleted = 0 AND ({clause})");
+        let mut params: Vec<&dyn ToSql> = Vec::with_capacity(values.len() + 3);
+        params.push(&expr);
+        params.extend(values.iter().map(|v| v as &dyn ToSql));
         let Ok(count) = self.conn.query_row(
-            "SELECT count(*) FROM note_fts f JOIN note n ON n.rowid = f.rowid
-             WHERE note_fts MATCH ?1 AND n.deleted = 0",
-            [expr],
+            &format!(
+                "SELECT count(*) FROM note_fts f JOIN note n ON n.rowid = f.rowid
+                 WHERE {condition}"
+            ),
+            params.as_slice(),
             |r| r.get::<_, u32>(0),
         ) else {
             return Ok(None);
@@ -137,18 +181,16 @@ impl Fastxt {
                 notes: Vec::new(),
             }));
         }
-        let mut stmt = match self.conn.prepare(
-            "SELECT {NOTE_COLS} FROM note_fts f
-             JOIN note n ON n.rowid = f.rowid
-             WHERE note_fts MATCH ?1 AND n.deleted = 0
-             ORDER BY f.rank LIMIT :limit OFFSET :offset"
-                .replace("{NOTE_COLS}", NOTE_COLUMNS)
-                .as_str(),
-        ) {
+        params.push(&limit);
+        params.push(&offset);
+        let mut stmt = match self.conn.prepare(&format!(
+            "SELECT {NOTE_COLUMNS} FROM note_fts f JOIN note n ON n.rowid = f.rowid
+             WHERE {condition} ORDER BY f.rank LIMIT ? OFFSET ?"
+        )) {
             Ok(s) => s,
             Err(_) => return Ok(None),
         };
-        match stmt.query_map(params![expr, limit, offset], note_from_row) {
+        match stmt.query_map(params.as_slice(), note_from_row) {
             Ok(rows) => {
                 let notes = rows.collect::<rusqlite::Result<Vec<_>>>()?;
                 Ok(Some(Page { count, notes }))
@@ -159,10 +201,15 @@ impl Fastxt {
 
     /// LIKE fallback for terms too short for the trigram index.
     /// `%`, `_` and `\` are escaped so terms match literally.
-    fn like_page(&self, q: &[String], limit: u32, offset: u32) -> Result<Page> {
-        let clause = like_clause(q.len());
+    fn like_page(&self, q: &[String], filter: &Filter, limit: u32, offset: u32) -> Result<Page> {
         let values = like_values(q);
-        let params: Vec<&dyn ToSql> = values.iter().map(|v| v as &dyn ToSql).collect();
+        let (filter_clause, filter_values) = filter_sql(filter, q.len() + 1);
+        let clause = format!("{} AND ({filter_clause})", like_clause(q.len()));
+        let params: Vec<&dyn ToSql> = values
+            .iter()
+            .chain(filter_values.iter())
+            .map(|v| v as &dyn ToSql)
+            .collect();
         fetch_page(&self.conn, &clause, &params, limit, offset)
     }
 
@@ -275,26 +322,18 @@ fn like_clause(num_terms: usize) -> String {
 /// Wrapped, escaped parameter values for [`like_clause`].
 fn like_values(q: &[String]) -> Vec<String> {
     q.iter()
-        .map(|term| {
-            let escaped = term
-                .replace('\\', "\\\\")
-                .replace('%', "\\%")
-                .replace('_', "\\_");
-            format!("%{escaped}%")
-        })
+        .map(|term| format!("%{}%", like_escape(term)))
         .collect()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::NewNote;
+    use crate::model::{NewNote, NoteKey};
 
     fn db() -> Fastxt {
         Fastxt::open_in_memory().unwrap()
     }
-
-    use crate::model::NoteKey;
 
     fn add(db: &mut Fastxt, txt: &str, tags: &str, category: Option<&str>) {
         let n = db.insert(NewNote::new(txt, tags)).unwrap();
@@ -304,12 +343,24 @@ mod tests {
         }
     }
 
+    /// Matches for `query` with no filter.
+    fn hits(db: &Fastxt, query: &str) -> u32 {
+        db.search(query, 10, 0, &Filter::default()).unwrap().count
+    }
+
+    fn tagged(tags: &[&str]) -> Filter {
+        Filter {
+            tags: tags.iter().map(|t| (*t).to_string()).collect(),
+            ..Default::default()
+        }
+    }
+
     #[test]
     fn empty_query_lists_all_newest_first_with_count() {
         let mut db = db();
         add(&mut db, "one", "", None);
         add(&mut db, "two", "", None);
-        let page = db.search("", 1, 0).unwrap();
+        let page = db.search("", 1, 0, &Filter::default()).unwrap();
         assert_eq!(page.count, 2);
         assert_eq!(page.notes.len(), 1);
         assert_eq!(page.notes[0].txt, "two");
@@ -324,10 +375,10 @@ mod tests {
         add(&mut db, "rust programming notes", "code", None);
         add(&mut db, "unrelated", "", None);
 
-        assert_eq!(db.search("向量数据", 10, 0).unwrap().count, 1);
-        assert_eq!(db.search("向量", 10, 0).unwrap().count, 1, "CJK term");
-        assert_eq!(db.search("gramm", 10, 0).unwrap().count, 1, "substring");
-        assert_eq!(db.search("rust 学习", 10, 0).unwrap().count, 0, "AND terms");
+        assert_eq!(hits(&db, "向量数据"), 1);
+        assert_eq!(hits(&db, "向量"), 1, "CJK term");
+        assert_eq!(hits(&db, "gramm"), 1, "substring");
+        assert_eq!(hits(&db, "rust 学习"), 0, "AND terms");
     }
 
     #[test]
@@ -335,9 +386,9 @@ mod tests {
         let mut db = db();
         add(&mut db, "db design notes", "go", None);
         add(&mut db, "other", "", None);
-        assert_eq!(db.search("db", 10, 0).unwrap().count, 1);
-        assert_eq!(db.search("go", 10, 0).unwrap().count, 1, "tag match");
-        assert_eq!(db.search("zz", 10, 0).unwrap().count, 0);
+        assert_eq!(hits(&db, "db"), 1);
+        assert_eq!(hits(&db, "go"), 1, "tag match");
+        assert_eq!(hits(&db, "zz"), 0);
     }
 
     #[test]
@@ -348,16 +399,16 @@ mod tests {
             .unwrap();
         db.set_ai_tags(&NoteKey::Rowid(n.rowid), &["database".into()])
             .unwrap();
-        assert_eq!(db.search("database", 10, 0).unwrap().count, 1);
+        assert_eq!(hits(&db, "database"), 1);
     }
 
     #[test]
     fn search_ignores_deleted_notes() {
         let mut db = db();
         let n = db.insert(NewNote::new("unique needle", "")).unwrap();
-        assert_eq!(db.search("needle", 10, 0).unwrap().count, 1);
+        assert_eq!(hits(&db, "needle"), 1);
         db.delete(&NoteKey::Rowid(n.rowid)).unwrap();
-        assert_eq!(db.search("needle", 10, 0).unwrap().count, 0);
+        assert_eq!(hits(&db, "needle"), 0);
     }
 
     #[test]
@@ -366,17 +417,58 @@ mod tests {
         add(&mut db, "a", "", Some("work"));
         add(&mut db, "b", "", Some("home"));
         add(&mut db, "c", "", None);
-        let page = db
-            .list(
-                10,
-                0,
-                &Filter {
-                    category: Some("work".into()),
-                },
-            )
-            .unwrap();
+        let work = Filter {
+            category: Some("work".into()),
+            ..Default::default()
+        };
+        let page = db.list(10, 0, &work).unwrap();
         assert_eq!(page.count, 1);
         assert_eq!(page.notes[0].txt, "a");
+    }
+
+    #[test]
+    fn tag_filter_matches_whole_tags_on_every_path() {
+        let mut db = db();
+        add(&mut db, "alpha note", "go, topic:rust async", None);
+        add(&mut db, "beta note", "golang", Some("work"));
+        add(&mut db, "gamma note", "Go", None);
+
+        // Listing: whole tags, case-insensitive, no substring matches.
+        let page = db.list(10, 0, &tagged(&["go"])).unwrap();
+        assert_eq!(page.count, 2);
+        assert!(page.notes.iter().all(|n| n.txt != "beta note"));
+        assert_eq!(
+            db.list(10, 0, &tagged(&["topic:rust async"]))
+                .unwrap()
+                .count,
+            1
+        );
+        // Every listed tag must be present.
+        assert_eq!(
+            db.list(10, 0, &tagged(&["go", "topic:rust async"]))
+                .unwrap()
+                .count,
+            1
+        );
+        assert_eq!(db.list(10, 0, &tagged(&["go", "golang"])).unwrap().count, 0);
+        // Combined with a category.
+        let mut both = tagged(&["golang"]);
+        both.category = Some("work".into());
+        assert_eq!(db.list(10, 0, &both).unwrap().count, 1);
+        both.category = Some("home".into());
+        assert_eq!(db.list(10, 0, &both).unwrap().count, 0);
+
+        // The same filter on the FTS path (long term) and the LIKE path.
+        assert_eq!(db.search("note", 10, 0, &tagged(&["go"])).unwrap().count, 2);
+        assert_eq!(db.search("no", 10, 0, &tagged(&["go"])).unwrap().count, 2);
+        assert_eq!(db.search("beta", 10, 0, &tagged(&["go"])).unwrap().count, 0);
+        assert_eq!(db.search("be", 10, 0, &tagged(&["go"])).unwrap().count, 0);
+
+        // LIKE metacharacters inside a tag are literal; blanks are ignored.
+        add(&mut db, "delta", "100%_done", None);
+        assert_eq!(db.list(10, 0, &tagged(&["100%_done"])).unwrap().count, 1);
+        assert_eq!(db.list(10, 0, &tagged(&["100_done"])).unwrap().count, 0);
+        assert_eq!(db.list(10, 0, &tagged(&["  "])).unwrap().count, 4);
     }
 
     #[test]
@@ -416,7 +508,7 @@ mod tests {
     fn special_characters_do_not_break_queries() {
         let mut db = db();
         add(&mut db, "50% of 100_users", "", None);
-        assert_eq!(db.search("100_users", 10, 0).unwrap().count, 1);
-        assert_eq!(db.search("50%", 10, 0).unwrap().count, 1);
+        assert_eq!(hits(&db, "100_users"), 1);
+        assert_eq!(hits(&db, "50%"), 1);
     }
 }
