@@ -16,7 +16,7 @@ fastxt-rs/                    # Rust workspace (core library + apps)
 │   └── src/
 │       ├── store.rs          # Fastxt typed handle: CRUD, settings, sync merge
 │       ├── schema.rs         # DDL + migrations (v0.6: HLC stamps, tombstones)
-│       ├── search.rs         # FTS5 trigram text search, LIKE fallback, hybrid RRF
+│       ├── search.rs         # FTS5 trigram text search, LIKE fallback, category/tag filters, hybrid RRF
 │       ├── vector.rs         # Embeddings: per-model sqlite-vec index, semantic search
 │       ├── ai/               # AiBackend transports (ollama, openai_compatible, mock)
 │       │                       + orchestrator: prompts, voting, batch jobs
@@ -86,7 +86,7 @@ cd website && npm install && npm start
 
 ### Sync (protocol v2)
 
-- TLS with a per-session self-signed server certificate; the client pins its fingerprint from the **pairing code** (`FASTXT1:host:port:<16 hex>:<10 base32>`). A session token authorizes every RPC; there is no remote stop.
+- TLS with a per-session self-signed server certificate; the client pins its fingerprint from the **pairing code** (`FASTXT1:host:port:<32 hex>:<10 base32>`, the first 128 bits of the certificate's SHA-256). A session token authorizes every RPC; there is no remote stop.
 - Each note has two hybrid-logical-clock stamps: `updated_at` (text/tags) and `ai_updated_at` (AI fields). Merge is per group, newest wins; deletes are tombstones and propagate.
 - `PROTOCOL_VERSION` in `sync/mod.rs` is independent of the schema version.
 - Sync server: `sync::server::serve(db, port)` (also a process-global server for the JSON API). Client: `sync::client::sync(code, db)`.
