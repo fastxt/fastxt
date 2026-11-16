@@ -30,7 +30,7 @@ use tracing::info;
 
 /// Schema version written by this build. Independent of the sync protocol
 /// version ([`crate::sync::PROTOCOL_VERSION`]).
-pub const SCHEMA_VERSION: &str = "0.6.0";
+pub const SCHEMA_VERSION: &str = "0.7.0";
 
 const CREATE_META: &str = "CREATE TABLE IF NOT EXISTS meta (
     meta_key   TEXT PRIMARY KEY,
@@ -67,6 +67,21 @@ const CREATE_EMBEDDING: &str = "CREATE TABLE IF NOT EXISTS embedding (
     created_at      TEXT NOT NULL,
     UNIQUE (note_uuid, model_id)
 )";
+
+/// One row per time a note was typed into a coding-agent session. Rows are
+/// written once and never changed. No foreign key to `note`: a record can
+/// reach a device before its note does.
+const CREATE_SENT: &str = "CREATE TABLE IF NOT EXISTS sent (
+    uuid4     TEXT PRIMARY KEY,
+    note_uuid TEXT NOT NULL,
+    sent_at   TEXT NOT NULL,
+    host      TEXT NOT NULL,
+    agent     TEXT NOT NULL,
+    session   TEXT NOT NULL,
+    cwd       TEXT NOT NULL,
+    started   INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_sent_note ON sent (note_uuid, sent_at);";
 
 /// Full-text index over text, user tags and AI tags. The trigram tokenizer
 /// matches substrings, which also makes it work for CJK text that has no
@@ -180,9 +195,15 @@ pub(crate) fn migrate(conn: &mut Connection) -> Result<bool> {
             )));
         }
         if current < target {
-            migrate_to_0_6(&tx)?;
+            // One step per version. Only the step to 0.6 changes what the
+            // embeddings are keyed by, so only it asks for the index rebuild.
+            let before_0_6 = current < Version::new(0, 6, 0);
+            if before_0_6 {
+                migrate_to_0_6(&tx)?;
+            }
+            migrate_to_0_7(&tx)?;
             info!(from = %current, to = SCHEMA_VERSION, "database migrated");
-            true
+            before_0_6
         } else {
             false
         }
@@ -204,6 +225,13 @@ fn create_fresh(tx: &Transaction<'_>) -> Result<()> {
     tx.execute_batch(CREATE_INDEXES)?;
     tx.execute_batch(CREATE_EMBEDDING)?;
     tx.execute_batch(CREATE_FTS)?;
+    tx.execute_batch(CREATE_SENT)?;
+    Ok(())
+}
+
+/// 0.6 to 0.7: the table of what was sent to coding-agent sessions.
+fn migrate_to_0_7(tx: &Transaction<'_>) -> Result<()> {
+    tx.execute_batch(CREATE_SENT)?;
     Ok(())
 }
 
@@ -330,9 +358,37 @@ mod tests {
         assert!(!migrate(&mut conn).unwrap());
         assert_eq!(get_meta(&conn, "version").unwrap().unwrap(), SCHEMA_VERSION);
         assert!(get_meta(&conn, "device_id").unwrap().is_some());
-        for t in ["note", "meta", "embedding", "note_fts"] {
+        for t in ["note", "meta", "embedding", "note_fts", "sent"] {
             assert!(table_exists(&conn, t).unwrap(), "{t} missing");
         }
+        // Idempotent.
+        assert!(!migrate(&mut conn).unwrap());
+    }
+
+    #[test]
+    fn upgrades_a_0_6_database_without_touching_its_notes_or_vectors() {
+        let mut conn = open();
+        migrate(&mut conn).unwrap();
+        // What 0.6.0 left behind: everything but the sent table.
+        conn.execute_batch(
+            "DROP INDEX idx_sent_note;
+             DROP TABLE sent;
+             INSERT INTO note (uuid4, txt, tags, created_at, updated_at)
+                 VALUES ('u1', 'kept', 'a', '2026-01-01 00:00:00', '0000000000001-0000-n');",
+        )
+        .unwrap();
+        set_meta(&conn, "version", "0.6.0").unwrap();
+
+        assert!(
+            !migrate(&mut conn).unwrap(),
+            "nothing the vector index is built from changed"
+        );
+        assert_eq!(get_meta(&conn, "version").unwrap().unwrap(), SCHEMA_VERSION);
+        assert!(table_exists(&conn, "sent").unwrap());
+        let txt: String = conn
+            .query_row("SELECT txt FROM note WHERE uuid4 = 'u1'", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(txt, "kept");
         // Idempotent.
         assert!(!migrate(&mut conn).unwrap());
     }
@@ -362,6 +418,10 @@ mod tests {
             .unwrap();
         assert_eq!((model.as_str(), dim), ("ollama:llama3.2", 3));
         assert!(!table_exists(&conn, "note_embedding").unwrap());
+        assert!(
+            table_exists(&conn, "sent").unwrap(),
+            "every later step ran too"
+        );
 
         // FTS rebuilt with the trigram tokenizer: CJK substring search works.
         let hits: i64 = conn

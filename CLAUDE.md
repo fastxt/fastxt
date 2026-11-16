@@ -85,16 +85,18 @@ cd website && npm install && npm start
 - **`fastxt_core::json`** is the JSON command protocol used by the mobile apps over the FFI. Responses are serde-built; errors are `{"error": ...}`. Keep it backwards compatible with the Swift/Kotlin callers.
 - **Desktop** (`fastxt_desktop`) calls the typed API from background threads; `commands.rs` has no GUI types, `app.rs` has no core types.
 
-### Sync (protocol v2)
+### Sync (protocol v3)
 
 - TLS with a per-session self-signed server certificate; the client pins its fingerprint from the **pairing code** (`FASTXT1:host:port:<32 hex>:<10 base32>`, the first 128 bits of the certificate's SHA-256). A session token authorizes every RPC; there is no remote stop.
 - Each note has two hybrid-logical-clock stamps: `updated_at` (text/tags) and `ai_updated_at` (AI fields). Merge is per group, newest wins; deletes are tombstones and propagate.
-- `PROTOCOL_VERSION` in `sync/mod.rs` is independent of the schema version.
+- Sent records (`sent.rs`, table `sent`): one per time a note was typed into a coding-agent session. Written once by the computer that typed it, merged by id after the notes, and deleted with their note (a tombstone clears them on every device).
+- `PROTOCOL_VERSION` in `sync/mod.rs` is independent of the schema version. Clients require an exact match, so a v3 device can't sync with a v2 one.
 - Sync server: `sync::server::serve(db, port)` (also a process-global server for the JSON API). Client: `sync::client::sync(code, db)`.
+- Agent sessions (v3): `sync::server::serve_with(db, port, Some(host))` also offers the coding-agent sessions open on that computer, through an `AgentHost` (`fastxt::dispatch::Dispatcher` is the one for Orca). A paired device calls `sync::client::agent_sessions(code)` and `sync::client::send_note(code, db, key, handle)`, which types the note's text as it is on that device and stores the returned record on both sides. Without a host, both calls are refused with `SendRefusal::UNAVAILABLE`; every refusal carries a reason (`unavailable`, `gone`, `asking`, `not-an-agent`, `invalid`, `failed`) and a message. The JSON protocol has `agent-sessions`, `send-to-session` and `sent` for the phones.
 
 ### Database
 
-- Migrations in `schema.rs` run in one transaction; pre-0.6 DBs are rebuilt in place (FTS rebuilt, embeddings re-keyed by UUID, legacy stamps backfilled from `created_at`).
+- Migrations in `schema.rs` run in one transaction, one step per version (schema 0.7: the `sent` table); pre-0.6 DBs are rebuilt in place (FTS rebuilt, embeddings re-keyed by UUID, legacy stamps backfilled from `created_at`).
 - `note` holds text/tags + AI fields + stamps + `deleted`. `embedding` holds one vector per (note, model) with its dim and note version; `vec_<dim>` sqlite-vec tables (cosine, partition-keyed by model) are rebuilt from it.
 - FTS5 trigram index covers txt/tags/ai_tags (CJK-capable; short terms fall back to LIKE).
 

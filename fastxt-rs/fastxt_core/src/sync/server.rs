@@ -18,9 +18,11 @@
 
 //! The sync server: TLS listener, token auth, no remote shutdown.
 
-use super::{FastxtSync, MAX_FRAME_BYTES, PROTOCOL_VERSION};
+use super::{AgentHost, FastxtSync, MAX_FRAME_BYTES, PROTOCOL_VERSION};
 use crate::error::{Error, Result};
+use crate::model::{AgentSession, SendRefusal, Sent};
 use crate::pairing::{PairingInfo, cert_fingerprint, constant_time_eq, generate_token};
+use crate::sent::NewSent;
 use crate::store::SharedDb;
 use futures::future::{AbortHandle, Abortable};
 use futures::prelude::*;
@@ -133,15 +135,29 @@ fn pick_lan_ip(candidates: impl Iterator<Item = Ipv4Addr>) -> Option<Ipv4Addr> {
 /// Binds 0.0.0.0 on `port` (0 picks a free port).
 ///
 /// Every connection needs TLS with this session's certificate plus the
-/// session token; there is no remote shutdown.
+/// session token; there is no remote shutdown. It offers no agent sessions;
+/// [`serve_with`] does.
 ///
 /// # Errors
 /// Fails if no LAN address exists, the port is taken, or TLS setup fails.
 pub fn serve(db: SharedDb, port: u16) -> Result<ServerHandle> {
+    serve_with(db, port, None)
+}
+
+/// Like [`serve`], and with an [`AgentHost`] it also lets paired devices see
+/// the coding-agent sessions open on this computer and type notes into them.
+///
+/// # Errors
+/// See [`serve`].
+pub fn serve_with(
+    db: SharedDb,
+    port: u16,
+    agents: Option<Arc<dyn AgentHost>>,
+) -> Result<ServerHandle> {
     let ip = lan_ip().ok_or_else(|| {
         Error::Sync("no LAN address found; are you connected to a network?".into())
     })?;
-    serve_on(db, SocketAddr::from(([0, 0, 0, 0], port)), ip)
+    serve_on_with(db, SocketAddr::from(([0, 0, 0, 0], port)), ip, agents)
 }
 
 /// Like [`serve`], but on an explicit bind address (tests, loopback setups).
@@ -150,6 +166,19 @@ pub fn serve(db: SharedDb, port: u16) -> Result<ServerHandle> {
 /// # Errors
 /// See [`serve`].
 pub fn serve_on(db: SharedDb, bind: SocketAddr, advertised_ip: IpAddr) -> Result<ServerHandle> {
+    serve_on_with(db, bind, advertised_ip, None)
+}
+
+/// [`serve_on`] with an optional [`AgentHost`], as [`serve_with`].
+///
+/// # Errors
+/// See [`serve`].
+pub fn serve_on_with(
+    db: SharedDb,
+    bind: SocketAddr,
+    advertised_ip: IpAddr,
+    agents: Option<Arc<dyn AgentHost>>,
+) -> Result<ServerHandle> {
     // Bind synchronously so the real port (0 → assigned) is known now.
     let std_listener = std::net::TcpListener::bind(bind)
         .map_err(|e| Error::Sync(format!("cannot listen on {bind}: {e}")))?;
@@ -224,12 +253,15 @@ pub fn serve_on(db: SharedDb, bind: SocketAddr, advertised_ip: IpAddr) -> Result
                             // deadline, so a peer that connects and goes quiet
                             // never holds up the next one.
                             let acceptor = acceptor.clone();
-                            let db = db.clone();
-                            let token = token.clone();
+                            let service = SyncService {
+                                db: db.clone(),
+                                token: token.clone(),
+                                agents: agents.clone(),
+                            };
                             tokio::spawn(async move {
                                 let handshake = acceptor.accept(stream);
                                 match tokio::time::timeout(HANDSHAKE_TIMEOUT, handshake).await {
-                                    Ok(Ok(tls)) => serve_connection(tls, db, token).await,
+                                    Ok(Ok(tls)) => serve_connection(tls, service).await,
                                     Ok(Err(e)) => debug!(%peer, error = %e, "TLS handshake failed"),
                                     Err(_) => debug!(%peer, "TLS handshake timed out"),
                                 }
@@ -258,12 +290,11 @@ pub fn serve_on(db: SharedDb, bind: SocketAddr, advertised_ip: IpAddr) -> Result
 }
 
 /// Answer RPCs on one established connection until the peer hangs up.
-async fn serve_connection(tls: TlsStream<TcpStream>, db: SharedDb, token: Arc<String>) {
+async fn serve_connection(tls: TlsStream<TcpStream>, service: SyncService) {
     let framed = tarpc::tokio_util::codec::length_delimited::Builder::new()
         .max_frame_length(MAX_FRAME_BYTES)
         .new_framed(tls);
     let io = transport::new(framed, Bincode::default());
-    let service = SyncService { db, token };
     BaseChannel::with_defaults(io)
         .execute(service.serve())
         .for_each(|response| async {
@@ -276,12 +307,36 @@ async fn serve_connection(tls: TlsStream<TcpStream>, db: SharedDb, token: Arc<St
 struct SyncService {
     db: SharedDb,
     token: Arc<String>,
+    agents: Option<Arc<dyn AgentHost>>,
 }
 
 impl SyncService {
     fn authorized(&self, token: &str) -> bool {
         constant_time_eq(token, &self.token)
     }
+
+    fn agents(&self) -> std::result::Result<Arc<dyn AgentHost>, SendRefusal> {
+        self.agents.clone().ok_or_else(|| {
+            SendRefusal::new(
+                SendRefusal::UNAVAILABLE,
+                "this computer does not offer its agent sessions to paired devices (run `fastxt serve --agents` there)",
+            )
+        })
+    }
+}
+
+/// Runs a host's blocking call off the network thread.
+async fn blocking<T, F>(what: &str, f: F) -> std::result::Result<T, SendRefusal>
+where
+    T: Send + 'static,
+    F: FnOnce() -> std::result::Result<T, SendRefusal> + Send + 'static,
+{
+    tokio::task::spawn_blocking(f).await.unwrap_or_else(|e| {
+        Err(SendRefusal::new(
+            SendRefusal::FAILED,
+            format!("{what} stopped unexpectedly: {e}"),
+        ))
+    })
 }
 
 impl FastxtSync for SyncService {
@@ -388,6 +443,113 @@ impl FastxtSync for SyncService {
             .apply_remote_embeddings(&records)
             .ok()
             .map(|n| n as u32)
+    }
+
+    async fn sent_manifest(self, _: tarpc::context::Context, token: String) -> Option<Vec<String>> {
+        if !self.authorized(&token) {
+            return None;
+        }
+        self.db.lock().ok()?.sent_manifest().ok()
+    }
+
+    async fn sent_records(
+        self,
+        _: tarpc::context::Context,
+        token: String,
+        uuids: Vec<String>,
+    ) -> Option<Vec<Sent>> {
+        if !self.authorized(&token) {
+            return None;
+        }
+        self.db.lock().ok()?.sent_records(&uuids).ok()
+    }
+
+    async fn send_sent(
+        self,
+        _: tarpc::context::Context,
+        token: String,
+        records: Vec<Sent>,
+    ) -> Option<u32> {
+        if !self.authorized(&token) {
+            return None;
+        }
+        self.db
+            .lock()
+            .ok()?
+            .apply_remote_sent(&records)
+            .ok()
+            .map(|n| n as u32)
+    }
+
+    async fn agent_sessions(
+        self,
+        _: tarpc::context::Context,
+        token: String,
+    ) -> Option<std::result::Result<Vec<AgentSession>, SendRefusal>> {
+        if !self.authorized(&token) {
+            return None;
+        }
+        let agents = match self.agents() {
+            Ok(agents) => agents,
+            Err(refusal) => return Some(Err(refusal)),
+        };
+        Some(blocking("listing the sessions", move || agents.sessions()).await)
+    }
+
+    async fn send_to_session(
+        self,
+        _: tarpc::context::Context,
+        token: String,
+        note_uuid: String,
+        text: String,
+        handle: String,
+    ) -> Option<std::result::Result<Sent, SendRefusal>> {
+        if !self.authorized(&token) {
+            return None;
+        }
+        Some(self.type_note(note_uuid, text, handle).await)
+    }
+}
+
+impl SyncService {
+    async fn type_note(
+        &self,
+        note_uuid: String,
+        text: String,
+        handle: String,
+    ) -> std::result::Result<Sent, SendRefusal> {
+        let agents = self.agents()?;
+        if note_uuid.trim().is_empty() {
+            return Err(SendRefusal::new(
+                SendRefusal::INVALID,
+                "the note to send has no id",
+            ));
+        }
+        let typed = blocking("typing the note", move || agents.send(&handle, &text)).await?;
+        let sent = NewSent {
+            note_uuid,
+            host: typed.host,
+            agent: typed.agent,
+            session: typed.session,
+            cwd: typed.cwd,
+            started: typed.started,
+        }
+        .into_record();
+        // Kept here, where it happened. Should that fail, the note was typed
+        // all the same: the caller keeps the record, and the next sync
+        // brings it back here.
+        let stored = self
+            .db
+            .lock()
+            .map_err(|_| "the database is locked".to_string())
+            .and_then(|mut db| {
+                db.apply_remote_sent(std::slice::from_ref(&sent))
+                    .map_err(|e| e.to_string())
+            });
+        if let Err(e) = stored {
+            warn!(error = %e, "a sent record could not be stored here");
+        }
+        Ok(sent)
     }
 }
 

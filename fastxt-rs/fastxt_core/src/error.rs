@@ -44,6 +44,10 @@ pub enum Error {
     /// The AI backend was reached but the request failed.
     #[error("AI request failed: {0}")]
     Ai(String),
+    /// A paired computer did not type a note into one of its coding-agent
+    /// sessions, or could not list them; it says why.
+    #[error("{0}")]
+    Refused(crate::model::SendRefusal),
 }
 
 /// `Result` with [`Error`] as the default error type.

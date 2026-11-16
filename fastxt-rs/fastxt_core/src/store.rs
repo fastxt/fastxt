@@ -340,6 +340,7 @@ impl Fastxt {
         let stamp = self.clock.tick_after(prev);
         let tx = self.conn.transaction()?;
         crate::vector::delete_embeddings(&tx, &note.uuid4)?;
+        crate::sent::delete_for_note(&tx, &note.uuid4)?;
         tx.execute(
             "UPDATE note SET txt = '', tags = '', ai_tags = NULL, ai_summary = NULL,
                  ai_category = NULL, deleted = 1, updated_at = ?1, ai_updated_at = ?1
@@ -659,6 +660,8 @@ impl Fastxt {
                 .optional()?;
             let Some(local) = local else {
                 let (txt, tags, ai_tags, ai_summary, ai_category) = if rec.deleted {
+                    // What was sent can arrive before its note's tombstone.
+                    crate::sent::delete_for_note(&tx, &rec.uuid4)?;
                     (String::new(), String::new(), None, None, None)
                 } else {
                     (
@@ -718,6 +721,9 @@ impl Fastxt {
                 merged.ai_tags = None;
                 merged.ai_summary = None;
                 merged.ai_category = None;
+            }
+            if merged.deleted {
+                crate::sent::delete_for_note(&tx, &merged.uuid4)?;
             }
             if merged.deleted || merged.txt != local.txt {
                 crate::vector::delete_embeddings(&tx, &merged.uuid4)?;
@@ -1023,6 +1029,10 @@ mod tests {
         sync_all(&a, &mut b);
         let key = NoteKey::Uuid(n.uuid4.clone());
         b.update(&key, "edit on B", "").unwrap();
+        // The two devices keep separate clocks, and stamps made in the same
+        // millisecond with the same counter are ordered by device id, which
+        // is random here. A millisecond apart, the delete is the later one.
+        std::thread::sleep(std::time::Duration::from_millis(2));
         a.delete(&key).unwrap(); // later stamp than B's edit
         b.set_ai_summary(&key, "late summary").unwrap(); // even later AI stamp
         sync_all(&a, &mut b);

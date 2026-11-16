@@ -30,6 +30,22 @@
 //! `select` and `search` take the same optional filters: `category` (one AI
 //! category) and `tag` / `tags` (user tags the note must carry; `tags` is an
 //! array or a comma-separated string).
+//!
+//! A paired computer's coding-agent sessions, through its pairing code:
+//!
+//! ```text
+//! {"action": "agent-sessions", "code": "FASTXT1:…"}
+//!     → {"sessions": [{"handle", "agent", "name", "cwd", "state", …}]}
+//! {"action": "send-to-session", "code": "FASTXT1:…", "rowid": 7, "handle": "term_…"}
+//!     → {"sent": {"uuid4", "note_uuid", "sent_at", "agent", "session", "cwd", "started", …}}
+//! {"action": "sent", "rowid": 7, "limit": 20}      (no rowid/uuid4: every note's)
+//!     → {"sent": […]}
+//! ```
+//!
+//! When the other computer types nothing, or can't list its sessions, the
+//! error carries its reason too: `{"error": "…", "reason": "asking"}`, with
+//! `reason` one of `unavailable`, `gone`, `asking`, `not-an-agent`,
+//! `invalid` or `failed`.
 
 use crate::ai;
 use crate::error::{Error, Result};
@@ -54,6 +70,14 @@ pub fn run(db: &SharedDb, input: &str) -> String {
         .to_string();
 
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        // These wait on another computer for seconds: they take the database
+        // only for the moments they need it, so the app's other commands (a
+        // search while a note is being sent) don't wait with them.
+        match action.as_str() {
+            "agent-sessions" => return agent_sessions(&request),
+            "send-to-session" => return send_to_session(db, &request),
+            _ => {}
+        }
         let mut guard = match db.lock() {
             Ok(g) => g,
             Err(_) => return error_json("the database is locked by another operation"),
@@ -63,13 +87,62 @@ pub fn run(db: &SharedDb, input: &str) -> String {
     .unwrap_or_else(|_| error_json("the command panicked; this is a bug"))
 }
 
+fn agent_sessions(request: &Value) -> String {
+    match sync::client::agent_sessions(&str(request, "code")) {
+        Ok(sessions) => ok(&json!({ "sessions": sessions })),
+        Err(e) => err(e),
+    }
+}
+
+fn send_to_session(db: &SharedDb, request: &Value) -> String {
+    let locked = |what: &str| {
+        error_json(format!(
+            "the database is locked by another operation ({what})"
+        ))
+    };
+    let key = match key_of(request) {
+        Ok(k) => k,
+        Err(e) => return err(e),
+    };
+    let note = match db.lock() {
+        Ok(guard) => guard.get(&key),
+        Err(_) => return locked("reading the note"),
+    };
+    let note = match note {
+        Ok(Some(note)) => note,
+        Ok(None) => return err(Error::NotFound(key.to_string())),
+        Err(e) => return err(e),
+    };
+    let sent = match sync::client::send_text(
+        &str(request, "code"),
+        &note.uuid4,
+        &note.txt,
+        &str(request, "handle"),
+    ) {
+        Ok(sent) => sent,
+        Err(e) => return err(e),
+    };
+    // Typed already: a record that can't be kept here still comes back, and
+    // the next sync brings it from the other computer.
+    if let Ok(mut guard) = db.lock() {
+        let _ = guard.apply_remote_sent(std::slice::from_ref(&sent));
+    }
+    ok(&json!({ "sent": sent }))
+}
+
 fn error_json(message: impl std::fmt::Display) -> String {
     serde_json::to_string(&json!({ "error": message.to_string() }))
         .unwrap_or_else(|_| r#"{"error":"response failed to serialize"}"#.into())
 }
 
 fn err(error: Error) -> String {
-    error_json(error)
+    match error {
+        Error::Refused(refusal) => {
+            serde_json::to_string(&json!({ "error": refusal.message, "reason": refusal.reason }))
+                .unwrap_or_else(|_| error_json("response failed to serialize"))
+        }
+        other => error_json(other),
+    }
 }
 
 fn ok<T: Serialize>(value: &T) -> String {
@@ -331,6 +404,26 @@ fn dispatch(db: &mut Fastxt, action: &str, request: &Value) -> String {
             sync::server::stop_global();
             ok(&json!({ "ok": true }))
         }
+
+        // ---- agent sessions on a paired computer -------------------------
+        // `agent-sessions` and `send-to-session` run before the lock: see `run`.
+        "sent" => {
+            let limit = u32(request, "limit").unwrap_or(50);
+            // One note's records, or every note's without a key.
+            let note_uuid = match key_of(request) {
+                Ok(NoteKey::Uuid(uuid)) => Some(uuid),
+                Ok(key @ NoteKey::Rowid(_)) => match db.get(&key) {
+                    Ok(Some(note)) => Some(note.uuid4),
+                    Ok(None) => return err(Error::NotFound("no such note".into())),
+                    Err(e) => return err(e),
+                },
+                Err(_) => None,
+            };
+            match db.sent(note_uuid.as_deref(), limit) {
+                Ok(sent) => ok(&json!({ "sent": sent })),
+                Err(e) => err(e),
+            }
+        }
         "server-status" => match sync::server::global() {
             Some(handle) => ok(&json!({
                 "running": true,
@@ -574,6 +667,80 @@ mod tests {
         assert_eq!(out["used_embedding"], false);
         assert_eq!(out["results"].as_array().unwrap().len(), 1);
         assert!(out["error"].is_string());
+    }
+
+    #[test]
+    fn sent_lists_one_notes_records_or_everyones() {
+        let shared = db();
+        let a = run_json(&shared, json!({"action": "insert", "txt": "Fix login"}));
+        let b = run_json(&shared, json!({"action": "insert", "txt": "Port parser"}));
+        let a_uuid = a["note"]["uuid4"].as_str().unwrap().to_string();
+        let b_uuid = b["note"]["uuid4"].as_str().unwrap().to_string();
+        {
+            let mut guard = shared.lock().unwrap();
+            for (note, session) in [(&a_uuid, "one"), (&a_uuid, "two"), (&b_uuid, "three")] {
+                guard
+                    .record_sent(crate::sent::NewSent {
+                        note_uuid: note.clone(),
+                        host: "orca".into(),
+                        agent: "claude".into(),
+                        session: session.into(),
+                        cwd: "/code/api".into(),
+                        started: true,
+                    })
+                    .unwrap();
+            }
+        }
+        let by_rowid = run_json(
+            &shared,
+            json!({"action": "sent", "rowid": a["note"]["rowid"]}),
+        );
+        assert_eq!(by_rowid["sent"].as_array().unwrap().len(), 2);
+        assert_eq!(by_rowid["sent"][0]["session"], "two", "newest first");
+        assert_eq!(by_rowid["sent"][0]["started"], true);
+        let by_uuid = run_json(&shared, json!({"action": "sent", "uuid4": b_uuid}));
+        assert_eq!(by_uuid["sent"].as_array().unwrap().len(), 1);
+        let all = run_json(&shared, json!({"action": "sent", "limit": 2}));
+        assert_eq!(all["sent"].as_array().unwrap().len(), 2);
+        let missing = run_json(&shared, json!({"action": "sent", "rowid": 999}));
+        assert!(missing.get("error").is_some());
+    }
+
+    #[test]
+    fn agent_session_commands_fail_as_json_without_a_reachable_computer() {
+        let shared = db();
+        let bad = run_json(
+            &shared,
+            json!({"action": "agent-sessions", "code": "nonsense"}),
+        );
+        assert!(
+            bad["error"].as_str().unwrap().contains("pairing code"),
+            "{bad}"
+        );
+        let no_key = run_json(
+            &shared,
+            json!({"action": "send-to-session", "code": "nonsense", "handle": "term_a"}),
+        );
+        assert!(no_key.get("error").is_some());
+        let no_note = run_json(
+            &shared,
+            json!({"action": "send-to-session", "code": "nonsense", "rowid": 5, "handle": "term_a"}),
+        );
+        assert!(no_note.get("error").is_some());
+    }
+
+    #[test]
+    fn a_refusal_carries_its_reason() {
+        let out: Value =
+            serde_json::from_str(&err(Error::Refused(crate::model::SendRefusal::new(
+                crate::model::SendRefusal::ASKING,
+                "session aaaa is asking a question",
+            ))))
+            .unwrap();
+        assert_eq!(out["error"], "session aaaa is asking a question");
+        assert_eq!(out["reason"], "asking");
+        let plain: Value = serde_json::from_str(&err(Error::Invalid("x".into()))).unwrap();
+        assert!(plain.get("reason").is_none());
     }
 
     #[test]

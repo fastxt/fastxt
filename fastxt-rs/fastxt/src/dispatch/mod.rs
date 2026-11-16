@@ -40,12 +40,16 @@
 //!   before every send, and a receipt that names no agent is an error.
 //!
 //! This module has no part in the notes database: a caller looks the prompt
-//! up and passes the text.
+//! up and passes the text. [`Dispatcher`] is also the sync server's
+//! `AgentHost`, which is what lets a paired phone use these sessions.
 
 pub mod error;
 pub mod exec;
+mod link;
 pub mod model;
 pub mod orca;
+
+pub use link::wire;
 
 pub use error::{Error, Result};
 pub use exec::CommandSpec;

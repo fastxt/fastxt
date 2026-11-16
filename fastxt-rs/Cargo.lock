@@ -1129,6 +1129,7 @@ name = "fastxt"
 version = "0.1.0"
 dependencies = [
  "dirs",
+ "fastxt_core",
  "serde",
  "serde_json",
  "tempfile",

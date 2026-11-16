@@ -220,6 +220,94 @@ pub struct EmbeddingStamp {
 }
 
 // ---------------------------------------------------------------------------
+// Sending a note to a coding-agent session
+// ---------------------------------------------------------------------------
+
+/// A coding-agent session open in a window on the computer a server runs on:
+/// one its user started and can see.
+#[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq, Eq)]
+pub struct AgentSession {
+    /// The program that hosts its window, e.g. `orca`.
+    pub host: String,
+    /// The host's handle for that window. It lasts until the host or the
+    /// window restarts, so ask for the list again rather than keep one.
+    pub handle: String,
+    /// The agent, as the host names it: `claude`, `codex`, `kimi`, …
+    pub agent: String,
+    /// What the session is called there.
+    pub name: String,
+    /// The project folder it works in.
+    pub cwd: String,
+    pub branch: Option<String>,
+    /// `ready`, `working`, `asking`, or empty when the host doesn't say.
+    pub state: String,
+    /// The start of the last prompt it was given, to tell sessions apart.
+    pub last_prompt: Option<String>,
+    /// When it last changed, in milliseconds since 1970.
+    pub updated_at: Option<u64>,
+}
+
+/// Why a note wasn't typed into a session, or the sessions couldn't be
+/// listed. `reason` is for programs, `message` for people.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+pub struct SendRefusal {
+    /// One of the `SendRefusal::*` words.
+    pub reason: String,
+    pub message: String,
+}
+
+impl SendRefusal {
+    /// This server doesn't send to sessions, or the program that hosts them
+    /// isn't installed.
+    pub const UNAVAILABLE: &'static str = "unavailable";
+    /// The session closed since it was listed.
+    pub const GONE: &'static str = "gone";
+    /// The session is asking its user a question; nothing was typed.
+    pub const ASKING: &'static str = "asking";
+    /// The text went to a shell, not an agent. Someone should look.
+    pub const NOT_AN_AGENT: &'static str = "not-an-agent";
+    /// The request can't be carried out as given (empty text, bad handle).
+    pub const INVALID: &'static str = "invalid";
+    /// Anything else, in the host's words.
+    pub const FAILED: &'static str = "failed";
+
+    #[must_use]
+    pub fn new(reason: &str, message: impl Into<String>) -> Self {
+        SendRefusal {
+            reason: reason.to_string(),
+            message: message.into(),
+        }
+    }
+}
+
+impl std::fmt::Display for SendRefusal {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.message)
+    }
+}
+
+/// A record that a note was typed into a session: where and when it went.
+/// Written once and never changed; it goes when its note is deleted.
+#[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq, Eq)]
+pub struct Sent {
+    /// The record's own id.
+    pub uuid4: String,
+    /// The note that was sent.
+    pub note_uuid: String,
+    /// UTC, `%Y-%m-%d %H:%M:%S`.
+    pub sent_at: String,
+    /// The program that hosted the session.
+    pub host: String,
+    pub agent: String,
+    /// What the session was called.
+    pub session: String,
+    /// The project folder the session worked in.
+    pub cwd: String,
+    /// Whether the agent was seen starting on it.
+    pub started: bool,
+}
+
+// ---------------------------------------------------------------------------
 // Settings
 // ---------------------------------------------------------------------------
 

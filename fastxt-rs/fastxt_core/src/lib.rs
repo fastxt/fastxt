@@ -25,7 +25,10 @@
 //! - [`ai`] tags, summarizes and categorizes through a local backend
 //!   (Ollama or any OpenAI-compatible server such as llama.cpp).
 //! - [`sync`] syncs devices over TLS with QR-code pairing: fingerprints
-//!   pin the certificate, a token authorizes every request.
+//!   pin the certificate, a token authorizes every request. A server can
+//!   also offer the coding-agent sessions open on its computer
+//!   ([`sync::AgentHost`]), so a paired device can type a note into one.
+//! - [`sent`] records what was sent to which session, and syncs it.
 //! - [`json`] + [`ffi`] expose the same operations to the mobile apps
 //!   as a JSON-over-C-ABI protocol.
 //!
@@ -41,6 +44,7 @@ pub mod model;
 pub mod pairing;
 pub mod schema;
 pub mod search;
+pub mod sent;
 pub mod store;
 pub mod sync;
 pub mod tags;
