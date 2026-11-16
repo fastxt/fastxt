@@ -25,10 +25,11 @@
 import Foundation
 
 class AppState {
-    static let LIMIT :Int64 = 10
+    static let LIMIT :Int64 = 50
     static var offset :Int64 = 0
     static var count :Int64 = 0
     static var query = ""
+    @discardableResult
     static func makePaginationText()-> String {
         let start = count > 0 ? offset + 1 : 0
         let end : Int64 = offset + LIMIT > count ? count : offset + LIMIT
@@ -79,17 +80,22 @@ class AppState {
     static func search(input: String, offset: Int64) {
         AppState.setOffset(offset: offset)
         AppState.setQuery(query: input)
+        loadSentMarks()
+        if env.filter == .sent {
+            loadSentNotes(matching: input)
+            return
+        }
         let encoder = JSONEncoder()
         let cmd = CmdSearch(
             action: "search",
             query: input,
-            limit: 10,
-            offset: offset
+            limit: LIMIT,
+            offset: offset,
+            tags: env.filter.tag.map { [$0] }
         )
         do {
             let data = try encoder.encode(cmd)
             let input = String(data: data, encoding: .utf8)!
-            print(input)
             let txt = AppState.ft.run(json_input: input)
             let data1 = txt.data(using: .utf8)!
             let decoder = JSONDecoder()
@@ -104,7 +110,52 @@ class AppState {
         } catch {
             print(error.localizedDescription)
         }
-        
+
+    }
+
+    /// The list again, from the top, as it now is.
+    static func refresh() {
+        search(input: getQuery(), offset: 0)
+    }
+
+    /// Which notes were sent somewhere, to mark them in the list.
+    static func loadSentMarks() {
+        env.sentNoteUUIDs = Set(AgentLink.sent(limit: 1000).map { $0.note_uuid })
+    }
+
+    /// The notes that were sent, the one sent last first.
+    private static func loadSentNotes(matching query: String) {
+        var seen = Set<String>()
+        var notes: [Note] = []
+        for record in AgentLink.sent(limit: 1000) where seen.insert(record.note_uuid).inserted {
+            if let note = getNote(uuid4: record.note_uuid),
+               query.isEmpty || note.txt.localizedCaseInsensitiveContains(query) {
+                notes.append(note)
+            }
+        }
+        setCount(count: Int64(notes.count))
+        env.notes = notes
+        makePaginationText()
+    }
+
+    static func getNote(uuid4: String) -> Note? {
+        run(["action": "get", "uuid4": uuid4], field: "note", as: Note.self)
+    }
+
+    /// Change a note's text and tags; returns it as it now is.
+    @discardableResult
+    static func update(note: Note, txt: String, tags: String) -> Note? {
+        run(["action": "update", "rowid": note.id, "txt": txt, "tags": tags], field: "note", as: Note.self)
+    }
+
+    /// Make a note an idea or a prompt, or neither.
+    @discardableResult
+    static func setKind(_ kind: NoteKind?, of note: Note) -> Note? {
+        update(note: note, txt: note.txt, tags: NoteKind.set(kind, in: note.tags))
+    }
+
+    private static func run<T: Decodable>(_ command: [String: Any], field: String, as type: T.Type) -> T? {
+        try? AgentLink.call(command, field: field, as: type).get()
     }
     
     static func insert(txt:String, tags:String){
@@ -119,12 +170,22 @@ class AppState {
         do {
             let data = try encoder.encode(cmd)
             let input = String(data: data, encoding: .utf8)!
-            print(input)
             AppState.ft.run(json_input: input)
-            AppState.search(input: "", offset: 0)
         } catch {
             print(error.localizedDescription)
         }
+        // Show the new note: take away what would hide it.
+        let kind = NoteKind.of(tags: tags)
+        switch env.filter {
+        case .ideas where kind != .idea, .prompts where kind != .prompt, .sent:
+            env.filter = .all
+        default:
+            break
+        }
+        if !env.searchText.isEmpty {
+            env.searchText = ""
+        }
+        refresh()
     }
     
     static func delete(rowid: Int64){
@@ -162,6 +223,36 @@ struct Note: Codable, Identifiable, Hashable {
     }
 }
 
+/// The core's time stamps (`created_at`, `sent_at`) are UTC, written
+/// `yyyy-MM-dd HH:mm:ss`; people read them in this phone's time zone.
+enum Stamp {
+    private static let parser: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(identifier: "UTC")
+        formatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
+        return formatter
+    }()
+
+    private static let shown: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .short
+        formatter.doesRelativeDateFormatting = true
+        return formatter
+    }()
+
+    static func date(_ utc: String) -> Date? {
+        parser.date(from: String(utc.prefix(19)))
+    }
+
+    /// "Today at 10:03 AM", in this phone's time zone; the stamp as it is
+    /// when it can't be read.
+    static func local(_ utc: String) -> String {
+        date(utc).map(shown.string(from:)) ?? utc
+    }
+}
+
 struct CmdInsert: Codable {
     var action: String
     var txt: String
@@ -175,6 +266,8 @@ struct CmdSearch: Codable {
     var query: String
     var limit: Int64
     var offset: Int64
+    /// Tags a note must carry, such as `kind:prompt`.
+    var tags: [String]?
 }
 
 struct CmdDelete: Codable {
@@ -215,6 +308,14 @@ class Env: ObservableObject {
             AppState.search(input: searchText, offset: 0)
         }
     }
+    /// Which notes the list shows.
+    @Published var filter: NoteFilter = .all {
+        didSet {
+            AppState.search(input: searchText, offset: 0)
+        }
+    }
+    /// The notes that were sent to a coding session.
+    @Published var sentNoteUUIDs: Set<String> = []
     @Published var isServerRunning:Bool = false
 
     // AI-related state

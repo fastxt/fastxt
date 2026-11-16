@@ -9,26 +9,145 @@
 import XCTest
 @testable import Fastxt
 
-class FastxtTests: XCTestCase {
+final class FastxtTests: XCTestCase {
 
-    override func setUp() {
-        // Put setup code here. This method is called before the invocation of each test method in the class.
+    // MARK: Ideas and prompts
+
+    func testTheKindIsReadFromTheTags() {
+        XCTAssertEqual(NoteKind.of(tags: "kind:prompt,auth"), .prompt)
+        XCTAssertEqual(NoteKind.of(tags: "auth, Kind:Idea"), .idea)
+        XCTAssertNil(NoteKind.of(tags: "auth,kind:other"))
+        XCTAssertNil(NoteKind.of(tags: ""))
     }
 
-    override func tearDown() {
-        // Put teardown code here. This method is called after the invocation of each test method in the class.
+    func testSettingAKindReplacesTheOldOne() {
+        XCTAssertEqual(NoteKind.set(.prompt, in: "kind:idea,auth"), "kind:prompt,auth")
+        XCTAssertEqual(NoteKind.set(.idea, in: ""), "kind:idea")
+        XCTAssertEqual(NoteKind.set(nil, in: "auth，kind:prompt, login   flow"), "auth,login flow")
     }
 
-    func testExample() {
-        // This is an example of a functional test case.
-        // Use XCTAssert and related functions to verify your tests produce the correct results.
+    func testTheKindIsNotAmongTheTagsShown() {
+        XCTAssertEqual(NoteKind.visibleTags("kind:prompt, auth ,  login   flow"), ["auth", "login flow"])
+        XCTAssertEqual(NoteKind.visibleTags(""), [])
     }
 
-    func testPerformanceExample() {
-        // This is an example of a performance test case.
-        self.measure {
-            // Put the code you want to measure the time of here.
+    func testEachFilterAsksForItsTag() {
+        XCTAssertEqual(NoteFilter.prompts.tag, "kind:prompt")
+        XCTAssertEqual(NoteFilter.ideas.tag, "kind:idea")
+        XCTAssertNil(NoteFilter.all.tag)
+        XCTAssertNil(NoteFilter.sent.tag)
+    }
+
+    // MARK: Time stamps
+
+    func testStampsAreReadAsUTC() {
+        var components = DateComponents()
+        (components.year, components.month, components.day) = (2026, 11, 16)
+        (components.hour, components.minute, components.second) = (15, 3, 34)
+        components.timeZone = TimeZone(identifier: "UTC")
+        let expected = Calendar(identifier: .gregorian).date(from: components)
+        XCTAssertEqual(Stamp.date("2026-11-16 15:03:34"), expected)
+        XCTAssertNil(Stamp.date("yesterday"))
+        XCTAssertEqual(Stamp.local("yesterday"), "yesterday", "an unreadable stamp is shown as it is")
+        XCTAssertNotEqual(Stamp.local("2026-11-16 15:03:34"), "2026-11-16 15:03:34")
+    }
+
+    // MARK: Pairing codes
+
+    func testAPairingCodeHasFiveParts() {
+        let fingerprint = String(repeating: "a", count: 32)
+        let code = "FASTXT1:192.168.1.5:3456:\(fingerprint):ABCDEFGHIJ"
+        XCTAssertTrue(PairedComputer.isPairingCode(code))
+        XCTAssertTrue(PairedComputer.isPairingCode("  \(code)\n"))
+        XCTAssertFalse(PairedComputer.isPairingCode("FASTXT1:192.168.1.5:3456:abc:ABCDEFGHIJ"))
+        XCTAssertFalse(PairedComputer.isPairingCode("FASTXT1:192.168.1.5:99999:\(fingerprint):ABCDEFGHIJ"))
+        XCTAssertFalse(PairedComputer.isPairingCode("FASTXT1::3456:\(fingerprint):ABCDEFGHIJ"))
+        XCTAssertFalse(PairedComputer.isPairingCode("192.168.1.5:3456"))
+        XCTAssertEqual(PairedComputer.address(code), "192.168.1.5:3456")
+    }
+
+    // MARK: Replies
+
+    func testASessionListIsRead() throws {
+        let reply = """
+        {"sessions": [{"host": "mac", "handle": "term_1", "agent": "claude", "name": "fix login",
+          "cwd": "/Users/me/app", "branch": "main", "state": "asking", "last_prompt": null,
+          "updated_at": 1}]}
+        """
+        let sessions = try AgentLink.decode(reply, field: "sessions", as: [AgentSession].self).get()
+        XCTAssertEqual(sessions.count, 1)
+        XCTAssertEqual(sessions[0].id, "term_1")
+        XCTAssertEqual(sessions[0].folderName, "app")
+        XCTAssertTrue(sessions[0].isAsking)
+    }
+
+    func testARefusalKeepsItsReason() {
+        let reply = #"{"error": "that session is asking you something", "reason": "asking"}"#
+        guard case .failure(let error) = AgentLink.decode(reply, field: "sent", as: SentRecord.self) else {
+            return XCTFail("a refusal was read as a success")
         }
+        XCTAssertEqual(error.message, "that session is asking you something")
+        XCTAssertEqual(error.reason, "asking")
+        XCTAssertFalse(error.advice.isEmpty)
     }
 
+    func testAnErrorWithoutAReasonIsAComputerNotReached() {
+        guard case .failure(let error) = AgentLink.decode(#"{"error": "timed out"}"#, field: "sessions",
+                                                          as: [AgentSession].self) else {
+            return XCTFail("an error was read as a success")
+        }
+        XCTAssertNil(error.reason)
+        XCTAssertTrue(error.advice.contains("fastxt serve --agents"))
+    }
+
+    func testAReplyWithoutTheFieldIsAnError() {
+        XCTAssertThrowsError(try AgentLink.decode(#"{"count": 0}"#, field: "sessions", as: [AgentSession].self).get())
+        XCTAssertThrowsError(try AgentLink.decode("not json", field: "sessions", as: [AgentSession].self).get())
+    }
+
+    // MARK: Through the Rust core
+
+    func testAMalformedCodeIsRefusedBeforeAnyNetwork() {
+        guard case .failure(let error) = AgentLink.sessions(code: "FASTXT1:nowhere") else {
+            return XCTFail("a malformed code was accepted")
+        }
+        XCTAssertNil(error.reason)
+        XCTAssertFalse(error.message.isEmpty)
+    }
+
+    func testPromptsAreFoundByTheirKind() throws {
+        let marker = "zq\(Int.random(in: 100_000...999_999))"
+        let idea = try insert("\(marker) an idea", tags: NoteKind.idea.tag)
+        let prompt = try insert("\(marker) a prompt", tags: NoteKind.set(.prompt, in: "tests"))
+        defer {
+            AppState.delete(rowid: idea.id)
+            AppState.delete(rowid: prompt.id)
+        }
+
+        XCTAssertEqual(try search(marker, kind: .prompt).map(\.uuid4), [prompt.uuid4])
+        XCTAssertEqual(try search(marker, kind: .idea).map(\.uuid4), [idea.uuid4])
+        XCTAssertEqual(try search(marker, kind: nil).count, 2)
+
+        // Making the prompt an idea keeps its other tags and its place.
+        let changed = try XCTUnwrap(AppState.setKind(.idea, of: prompt))
+        XCTAssertEqual(changed.id, prompt.id)
+        XCTAssertEqual(changed.tags, "kind:idea,tests")
+        XCTAssertEqual(try search(marker, kind: .prompt).count, 0)
+        XCTAssertEqual(AppState.getNote(uuid4: prompt.uuid4)?.tags, "kind:idea,tests")
+
+        // Nothing was sent anywhere.
+        XCTAssertTrue(AgentLink.sent(noteUUID: prompt.uuid4).isEmpty)
+    }
+
+    private func insert(_ txt: String, tags: String) throws -> Note {
+        try AgentLink.call(["action": "insert", "txt": txt, "tags": tags], field: "note", as: Note.self).get()
+    }
+
+    private func search(_ query: String, kind: NoteKind?) throws -> [Note] {
+        var command: [String: Any] = ["action": "search", "query": query, "limit": 10, "offset": 0]
+        if let kind = kind {
+            command["tags"] = [kind.tag]
+        }
+        return try AgentLink.call(command, field: "notes", as: [Note].self).get()
+    }
 }

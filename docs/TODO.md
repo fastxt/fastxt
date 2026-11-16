@@ -62,6 +62,9 @@ Status as of the v0.6.0 core rewrite (2026-09). Only items that are done end-to-
 
 - [x] Computer: `fastxt sessions` lists the agent sessions open in Orca and `fastxt send` types a note into one; refused while it asks a permission question or when no agent runs there (`fastxt::dispatch`)
 - [x] Link: protocol v3 offers a computer's sessions to paired devices (`fastxt serve --agents`); a record of each send, kept on both sides and synced (schema 0.7 `sent`)
+- [x] iPhone: ideas and prompts (`kind:` tags), filters (All, Ideas, Prompts, Sent), pairing with a computer (code in the Keychain), its sessions listed by project, sent history on each note; UI-tested on the simulator against a live `fastxt serve --agents`
+- [ ] iPhone: dictation in English and Chinese, on-device only (`Dictation.swift`); built, needs a real device to test
+- [ ] iPhone: a note typed into a session from the phone; built, listing tested live, not yet sent from a phone
 - [ ] MCP tool that pulls the phone's prompts into an agent
 - [ ] A bundled recognizer (SenseVoice Small) on the phone, then Android
 

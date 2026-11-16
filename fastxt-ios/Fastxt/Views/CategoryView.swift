@@ -20,7 +20,8 @@ struct CategoryView: View {
     @State private var organizeStatus = ""
 
     var body: some View {
-        NavigationView {
+        // Pushed onto the home screen's navigation stack: no stack of its own.
+        Group {
             VStack {
                 if isLoading {
                     ProgressView("Loading categories...")

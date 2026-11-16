@@ -16,6 +16,7 @@ class RustFastxt {
         }
     }
 
+    @discardableResult
     func run(json_input: String) -> String {
         let result = fastxt_run(json_input)
         let swift_result = String(cString: result!)

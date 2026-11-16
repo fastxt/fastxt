@@ -31,6 +31,12 @@ Started with `fastxt serve --agents`, a computer also shows paired devices the c
 
 On the computer itself, `fastxt sessions` lists them and `fastxt send --note <note> --to <session>` sends one; with `--on <pairing code>`, both work on a paired computer instead.
 
+## Dictating on the phone
+
+The iPhone app is a notebook for the ideas and prompts you speak. Dictation, in English or Chinese, runs on the phone only: Fastxt uses the recognizer built into iOS, on the device, and doesn't start when the phone can't recognize the language without the network, so the audio never leaves the phone and is never stored. Each note is kept as an idea or a prompt.
+
+Pair the phone with a computer running `fastxt serve --agents` (scan or paste the code it shows), and a note's **Send** lists the sessions open there, by project, and types the note into the one you pick.
+
 ## On-Device AI
 
 Per platform, today:

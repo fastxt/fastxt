@@ -80,7 +80,11 @@ cd fastxt-android && ./gradlew assembleDebug        # needs JDK 17
 script/build-ios-libs.sh       # staticlibs + lipo → fastxt-ios/Fastxt.xcframework
 cd fastxt-ios && xcodebuild -project Fastxt.xcodeproj -scheme Fastxt \
   -destination 'generic/platform=iOS Simulator' build
+cd fastxt-ios && xcodebuild -project Fastxt.xcodeproj -scheme Fastxt \
+  -destination 'platform=iOS Simulator,name=iPhone 17' test   # unit + UI tests
 ```
+
+With `TEST_RUNNER_FASTXT_PAIRING_CODE` set to the code of a running `fastxt serve --agents -d <temporary db>`, its host changed to `127.0.0.1`, the UI tests also pair with it and list its sessions; they never send to one.
 
 ### Website
 
@@ -117,6 +121,13 @@ cd website && npm install && npm start
 - `AiBackend` = transport; `Ai` orchestrator = prompts, JSON-schema output, majority voting, model selection. Default backend `ollama`; `llamacpp`/`foundry-local`/`openai` share the OpenAI-compatible transport.
 - Chat model (tags/summaries/categories) and embedding model are separate settings.
 - Without the `ai` feature, HTTP backends are absent and `Ai::check()` reports unavailable.
+
+### iPhone (`fastxt-ios`)
+
+- A note is an idea or a prompt by a `kind:idea` / `kind:prompt` tag (`Models/NoteKind.swift`), so the kind syncs and every client can filter by it.
+- Dictation (`Fastxt/Services/Dictation.swift`) is Apple's recognizer with `requiresOnDeviceRecognition`, English (`en-US`) and Chinese (`zh-CN`). When a language can't be recognized on the device, it doesn't start: never a network recognizer, and the audio is never stored.
+- `Models/AgentLink.swift` wraps the JSON actions `agent-sessions`, `send-to-session`, `sent` and `sync`; call them off the main thread. The paired computer's code is kept in the Keychain (`PairedComputer`).
+- The core's stamps are UTC; the app shows them in local time (`Stamp`, in `Models/AppState.swift`).
 
 ### Dispatch (a prompt into an open coding-agent session)
 

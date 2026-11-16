@@ -13,8 +13,6 @@
 		3CABE32B2443D459004BEB8F /* TxtDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3CABE32A2443D459004BEB8F /* TxtDetailView.swift */; };
 		3CB94AFE245258E900273476 /* CreateView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3CB94AFD245258E900273476 /* CreateView.swift */; };
 		3CD80BF923D7B34F007182F7 /* RustFastxt.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3CD80BF823D7B34F007182F7 /* RustFastxt.swift */; };
-		3CD80BFA23D7B34F007182F7 /* RustFastxt.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3CD80BF823D7B34F007182F7 /* RustFastxt.swift */; };
-		3CD80BFB23D7B34F007182F7 /* RustFastxt.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3CD80BF823D7B34F007182F7 /* RustFastxt.swift */; };
 		3CD80C0023D7B9C2007182F7 /* Fastxt.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 3CD80BFE23D7B630007182F7 /* Fastxt.xcframework */; };
 		3CD80C0123D7B9D0007182F7 /* libresolv.tbd in Frameworks */ = {isa = PBXBuildFile; fileRef = 3CD80BFF23D7B66A007182F7 /* libresolv.tbd */; };
 		3CED13ED238372810097A12B /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3CED13EC238372810097A12B /* AppDelegate.swift */; };
@@ -31,6 +29,12 @@
 		3CEF504424318E0C00D77C63 /* TxtRowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3CEF504324318E0C00D77C63 /* TxtRowView.swift */; };
 		3CF0A10326F00B1200C4A003 /* AppleAIBackend.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3CF0A10126F00B1200C4A001 /* AppleAIBackend.swift */; };
 		3CF0A10426F00B1200C4A004 /* CategoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3CF0A10226F00B1200C4A002 /* CategoryView.swift */; };
+		3CF1A01126F10A0000C4B011 /* NoteKind.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3CF1A00126F10A0000C4B001 /* NoteKind.swift */; };
+		3CF1A01226F10A0000C4B012 /* AgentLink.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3CF1A00226F10A0000C4B002 /* AgentLink.swift */; };
+		3CF1A01326F10A0000C4B013 /* Dictation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3CF1A00326F10A0000C4B003 /* Dictation.swift */; };
+		3CF1A01426F10A0000C4B014 /* DictateView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3CF1A00426F10A0000C4B004 /* DictateView.swift */; };
+		3CF1A01526F10A0000C4B015 /* PairView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3CF1A00526F10A0000C4B005 /* PairView.swift */; };
+		3CF1A01626F10A0000C4B016 /* SendSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3CF1A00626F10A0000C4B006 /* SendSheet.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -81,6 +85,12 @@
 		3CEED0A42457DA4D0015A578 /* QRCodeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QRCodeView.swift; sourceTree = "<group>"; };
 		3CEED0A62457DABD0015A578 /* ClientView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClientView.swift; sourceTree = "<group>"; };
 		3CEF504324318E0C00D77C63 /* TxtRowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TxtRowView.swift; sourceTree = "<group>"; };
+		3CF1A00126F10A0000C4B001 /* NoteKind.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = NoteKind.swift; sourceTree = "<group>"; };
+		3CF1A00226F10A0000C4B002 /* AgentLink.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = AgentLink.swift; sourceTree = "<group>"; };
+		3CF1A00326F10A0000C4B003 /* Dictation.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = Dictation.swift; path = Fastxt/Services/Dictation.swift; sourceTree = "<group>"; };
+		3CF1A00426F10A0000C4B004 /* DictateView.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = DictateView.swift; sourceTree = "<group>"; };
+		3CF1A00526F10A0000C4B005 /* PairView.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = PairView.swift; sourceTree = "<group>"; };
+		3CF1A00626F10A0000C4B006 /* SendSheet.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = SendSheet.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -114,9 +124,12 @@
 			isa = PBXGroup;
 			children = (
 				3CED13F0238372810097A12B /* ContentView.swift */,
+				3CF1A00426F10A0000C4B004 /* DictateView.swift */,
 				3CB94AFD245258E900273476 /* CreateView.swift */,
 				3CEF504324318E0C00D77C63 /* TxtRowView.swift */,
 				3CABE32A2443D459004BEB8F /* TxtDetailView.swift */,
+				3CF1A00626F10A0000C4B006 /* SendSheet.swift */,
+				3CF1A00526F10A0000C4B005 /* PairView.swift */,
 				3C9BD15524513F7100A90283 /* SyncView.swift */,
 				3CEED0A22457D9EF0015A578 /* ServerView.swift */,
 				3CEED0A62457DABD0015A578 /* ClientView.swift */,
@@ -130,6 +143,8 @@
 			isa = PBXGroup;
 			children = (
 				3C7200B2243AAF93009B3D7D /* AppState.swift */,
+				3CF1A00126F10A0000C4B001 /* NoteKind.swift */,
+				3CF1A00226F10A0000C4B002 /* AgentLink.swift */,
 			);
 			path = Models;
 			sourceTree = "<group>";
@@ -150,6 +165,7 @@
 				3CD80BF723D7B308007182F7 /* fastxt.h */,
 				3CD80BFC23D7B3F8007182F7 /* Fastxt-Bridging-Header.h */,
 				3CF0A10126F00B1200C4A001 /* AppleAIBackend.swift */,
+				3CF1A00326F10A0000C4B003 /* Dictation.swift */,
 				3CF0A10226F00B1200C4A002 /* CategoryView.swift */,
 				3CED13EB238372810097A12B /* Fastxt */,
 				3CED1402238372870097A12B /* FastxtTests */,
@@ -356,6 +372,12 @@
 				3CD80BF923D7B34F007182F7 /* RustFastxt.swift in Sources */,
 				3CF0A10326F00B1200C4A003 /* AppleAIBackend.swift in Sources */,
 				3CF0A10426F00B1200C4A004 /* CategoryView.swift in Sources */,
+				3CF1A01126F10A0000C4B011 /* NoteKind.swift in Sources */,
+				3CF1A01226F10A0000C4B012 /* AgentLink.swift in Sources */,
+				3CF1A01326F10A0000C4B013 /* Dictation.swift in Sources */,
+				3CF1A01426F10A0000C4B014 /* DictateView.swift in Sources */,
+				3CF1A01526F10A0000C4B015 /* PairView.swift in Sources */,
+				3CF1A01626F10A0000C4B016 /* SendSheet.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -364,7 +386,6 @@
 			buildActionMask = 2147483647;
 			files = (
 				3CED1404238372870097A12B /* FastxtTests.swift in Sources */,
-				3CD80BFA23D7B34F007182F7 /* RustFastxt.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -373,7 +394,6 @@
 			buildActionMask = 2147483647;
 			files = (
 				3CED140F238372870097A12B /* FastxtUITests.swift in Sources */,
-				3CD80BFB23D7B34F007182F7 /* RustFastxt.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

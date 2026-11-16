@@ -13,10 +13,21 @@ struct CreateView: View {
     @State var tags: String = ""
     @State var txt: String = ""
     @State var textHeight: CGFloat = 150
+    /// Idea or prompt; a prompt when the list shows prompts.
+    @State var kind: NoteKind? = AppState.getEnv().filter == .prompts ? .prompt : .idea
     @ObservedObject var env = AppState.getEnv()
 
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
+
+            Picker("Kind", selection: $kind) {
+                Text("Note").tag(NoteKind?.none)
+                ForEach(NoteKind.allCases) { kind in
+                    Text(kind.label).tag(NoteKind?.some(kind))
+                }
+            }
+            .pickerStyle(.segmented)
+            .accessibilityIdentifier("create-kind")
 
             HStack{
                 Button(action:{
@@ -39,12 +50,13 @@ struct CreateView: View {
                 .disabled(txt.isEmpty)
                 Spacer()
                 Button(action:{
-                    AppState.insert(txt: self.txt, tags: self.tags)
+                    AppState.insert(txt: self.txt, tags: NoteKind.set(self.kind, in: self.tags))
                     self.isPresented = false
-                    AppState.search(input: "", offset: 0)
                 }){
                     Text("Save")
                 }
+                .disabled(txt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .accessibilityIdentifier("create-save")
             }
 
             // AI Suggested Tags Section
@@ -102,7 +114,7 @@ struct CreateView: View {
                     .foregroundColor(.orange)
             }
 
-            TextField("enter tags: comma or space as tag seperator", text: $tags)
+            TextField("tags, separated by commas", text: $tags)
             Text("enter txt below:").foregroundColor(.gray)
             TextView(placeholder: "write your txt here ...", text: self.$txt, minHeight: self.textHeight, calculatedHeight: self.$textHeight)
                 .frame(minHeight: self.textHeight, maxHeight: self.textHeight)

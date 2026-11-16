@@ -24,6 +24,12 @@
 	<true/>
 	<key>NSCameraUsageDescription</key>
 	<string>Scan QR code for server info</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Fastxt connects to your computer on this network to sync notes and to type them into the coding sessions you have open there.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Fastxt listens while you dictate a note. The audio stays on this iPhone and is never stored.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Fastxt turns what you dictate into text on this iPhone only. It uses on-device recognition, so the audio never leaves the phone.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
