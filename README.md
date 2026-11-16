@@ -14,6 +14,23 @@ Devices sync peer-to-peer over an authenticated, encrypted channel:
 - The client pins the certificate and presents the token with every request — no password, no account, no CA.
 - Edits, deletes and AI metadata propagate in both directions; a pairing code is valid only for one server session.
 
+## The `fastxt` command
+
+One command does everything on a computer apart from the desktop window:
+
+```sh
+cargo install fastxt     # or: pip install fastxt, uvx fastxt, npm install -g fastxt
+fastxt serve             # let your phone sync with this computer (shows the pairing code)
+fastxt sync <code>       # sync this computer with another one, once
+fastxt mcp               # let agents use your notes (an MCP server on stdio)
+```
+
+## Sending a note to a coding agent
+
+Started with `fastxt serve --agents`, a computer also shows paired devices the coding-agent sessions you have open in [Orca](https://www.onorca.dev) (Claude Code, Codex, Kimi and the others it runs), and types a note into the one you pick, as if you had typed it there. Nothing is typed into a session that is asking you a permission question, and nothing into a terminal with no agent in it. Every device keeps a record of what was sent where.
+
+On the computer itself, `fastxt sessions` lists them and `fastxt send --note <note> --to <session>` sends one; with `--on <pairing code>`, both work on a paired computer instead.
+
 ## On-Device AI
 
 Per platform, today:
@@ -36,7 +53,8 @@ The core desktop features (AI tagging, summarization, semantic search, AI catego
 
 - fastxt-android: Android app (Kotlin, modern toolchain; Rust core via JNI)
 - fastxt-ios: iOS and iPadOS app (SwiftUI; Rust core via XCFramework)
-- fastxt-rs: Rust workspace — `fastxt_core` (notes, sync, AI), `fastxt_desktop` (Iced GUI), `fastxt_cli` (sync server/client), `fastxt_mcp` (MCP server), `fastxt_ffi` (C/JNI bindings)
+- fastxt-rs: Rust workspace — `fastxt` (the command: serve, sync, sessions, send, mcp), `fastxt_core` (notes, sync, AI), `fastxt_desktop` (the desktop window, `fastxt-desktop`), `fastxt_ffi` (C/JNI bindings for the phones)
+- packaging/npm, pyproject.toml: the `fastxt` command's npm and PyPI packages
 - script: build helpers (`build-android-libs.sh`, `build-ios-libs.sh`)
 - archive: dormant prototypes (fastxt-mac SwiftUI, fastxt-win UWP, fastxt-flutter) — superseded, not built
 

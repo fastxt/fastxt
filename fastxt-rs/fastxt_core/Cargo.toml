@@ -1,9 +1,15 @@
 [package]
 name = "fastxt_core"
-version = "0.3.0"
-authors = ["Yi Wang"]
-license = "AGPL-3.0"
-edition = "2024"
+description = "The core of Fastxt: local-first notes in SQLite with full-text and vector search, on-device AI, and peer-to-peer sync"
+version.workspace = true
+authors.workspace = true
+license.workspace = true
+edition.workspace = true
+repository.workspace = true
+homepage.workspace = true
+readme = "../../README.md"
+keywords = ["notes", "local-first", "sync", "sqlite", "p2p"]
+categories = ["database", "text-processing"]
 
 [features]
 default = []

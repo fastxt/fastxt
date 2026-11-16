@@ -58,6 +58,13 @@ Status as of the v0.6.0 core rewrite (2026-09). Only items that are done end-to-
 - [x] `ai_tags` indexed and searchable alongside text and tags
 - [ ] Clustering-based organization (embeddings → LLM-named clusters; needs shared embedding model across devices — R1 in the roadmap doc)
 
+## Phase 7: Dictation → Coding-Agent Sessions
+
+- [x] Computer: `fastxt sessions` lists the agent sessions open in Orca and `fastxt send` types a note into one; refused while it asks a permission question or when no agent runs there (`fastxt::dispatch`)
+- [x] Link: protocol v3 offers a computer's sessions to paired devices (`fastxt serve --agents`); a record of each send, kept on both sides and synced (schema 0.7 `sent`)
+- [ ] MCP tool that pulls the phone's prompts into an agent
+- [ ] A bundled recognizer (SenseVoice Small) on the phone, then Android
+
 ## Ongoing / Cross-Cutting
 
 - [x] Typed `Fastxt` API; JSON dispatcher only for the mobile FFI; no panics in core paths

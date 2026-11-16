@@ -8,7 +8,7 @@
 
   Preprocessor variables:
     Version   — numeric x.y.z (MSI forbids anything else; tags must be vX.Y.Z)
-    TargetDir — directory containing fastxt.exe, with trailing backslash
+    TargetDir — directory containing fastxt-desktop.exe, with trailing backslash
     IconsDir  — directory containing Fastxt.ico
 -->
 <Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
@@ -41,7 +41,9 @@
 
     <ComponentGroup Id="ProductComponents" Directory="INSTALLDIR">
       <Component Id="FastxtExe" Guid="*" Win64="yes">
-        <File Id="FastxtExeFile" Source="$(var.TargetDir)fastxt.exe" KeyPath="yes" />
+        <!-- Built as fastxt-desktop.exe (fastxt is the command); installed under
+             the name earlier installers used. The folder is not on PATH. -->
+        <File Id="FastxtExeFile" Name="fastxt.exe" Source="$(var.TargetDir)fastxt-desktop.exe" KeyPath="yes" />
       </Component>
       <Component Id="StartMenuShortcut" Guid="*" Directory="AppMenuDir">
         <Shortcut Id="AppShortcut"

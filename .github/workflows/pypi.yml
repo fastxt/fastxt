@@ -1,0 +1,104 @@
+name: PyPI
+
+# A tag such as v0.7.0 publishes the fastxt command to PyPI: maturin builds a wheel per
+# platform with the Rust binary as its command (pyproject.toml), and the source as an sdist,
+# and they go up through trusted publishing. `pip install fastxt` or `uvx fastxt` then runs it.
+#
+# PyPI's trusted publisher for the project names this file (pypi.yml) and the pypi
+# environment. The tag must match the version in fastxt-rs/Cargo.toml. Run by hand with a tag,
+# it builds and publishes that release's package:
+#   gh workflow run pypi.yml -f tag=v0.7.0
+
+on:
+  push:
+    tags: ["v[0-9]+.[0-9]+.[0-9]+*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "The release's tag, such as v0.7.0"
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+      - name: The tag matches the version
+        env:
+          TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          version=$(sed -n 's/^version = "\([^"]*\)".*/\1/p' fastxt-rs/Cargo.toml | head -1)
+          test "v$version" = "$TAG" || { echo "The tag is $TAG but the version is $version"; exit 1; }
+
+  wheels:
+    name: wheel, ${{ matrix.platform.target }}
+    needs: version
+    runs-on: ${{ matrix.platform.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          - { runner: ubuntu-22.04, target: x86_64-unknown-linux-gnu }
+          # On ARM itself: the image maturin cross-compiles in has a GCC too old for ring's assembly.
+          - { runner: ubuntu-22.04-arm, target: aarch64-unknown-linux-gnu }
+          - { runner: macos-15-intel, target: x86_64-apple-darwin }
+          - { runner: macos-latest, target: aarch64-apple-darwin }
+          - { runner: windows-latest, target: x86_64-pc-windows-msvc }
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+      - name: Build the wheel
+        uses: PyO3/maturin-action@v1
+        with:
+          target: ${{ matrix.platform.target }}
+          args: --release --locked --out dist
+          manylinux: auto
+      - name: Install it and run the command
+        shell: bash
+        run: |
+          python3 -m venv venv || python -m venv venv
+          bin=venv/bin; [ -d venv/Scripts ] && bin=venv/Scripts
+          "$bin/python" -m pip install --quiet dist/*.whl
+          "$bin/fastxt" --version
+          "$bin/fastxt" --help > /dev/null
+      - uses: actions/upload-artifact@v6
+        with:
+          name: package-${{ matrix.platform.target }}
+          path: dist/*.whl
+
+  sdist:
+    needs: version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+      - name: Build the sdist
+        uses: PyO3/maturin-action@v1
+        with:
+          command: sdist
+          args: --out dist
+      - uses: actions/upload-artifact@v6
+        with:
+          name: package-sdist
+          path: dist/*.tar.gz
+
+  pypi:
+    needs: [wheels, sdist]
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v7
+        with:
+          pattern: package-*
+          path: dist/
+          merge-multiple: true
+      - uses: pypa/gh-action-pypi-publish@release/v1

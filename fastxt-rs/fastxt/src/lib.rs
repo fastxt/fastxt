@@ -16,7 +16,18 @@
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
 
-//! The coding-agent sessions open on this computer: [`dispatch`] lists them
-//! and types a prompt into one.
+//! `fastxt`, the command: everything Fastxt does on a computer apart from its
+//! desktop window.
+//!
+//! - `fastxt serve` lets paired devices sync with this computer and, with
+//!   `--agents`, type notes into the coding-agent sessions open here
+//!   ([`dispatch`]).
+//! - `fastxt sync` syncs this computer with a paired one.
+//! - `fastxt sessions` and `fastxt send` list those sessions and type into
+//!   one, here or, with `--on`, on a paired computer.
+//! - `fastxt mcp` is the MCP server that lets agents use the notes ([`mcp`]).
+//!
+//! The notes, search, sync and AI are [`fastxt_core`]'s.
 
 pub mod dispatch;
+pub mod mcp;

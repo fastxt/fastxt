@@ -1,0 +1,53 @@
+name: crates.io
+
+# A tag such as v0.7.0 publishes fastxt_core and then fastxt to crates.io, from which
+# `cargo install fastxt` builds the command. It publishes through crates.io's trusted
+# publishing, which each crate's settings on crates.io set up once its first version is there
+# (published by hand with an API token): this repo, this file (crates.yml) and the crates-io
+# environment. Run by hand with a tag, it publishes that tag's crates:
+#   gh workflow run crates.yml -f tag=v0.7.0
+#
+# The same tag also runs release.yml (the desktop app's installers), pypi.yml and npm.yml.
+
+on:
+  push:
+    tags: ["v[0-9]+.[0-9]+.[0-9]+*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "The release's tag, such as v0.7.0"
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment: crates-io
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+      - name: The tag matches the version
+        env:
+          TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          version=$(sed -n 's/^version = "\([^"]*\)".*/\1/p' fastxt-rs/Cargo.toml | head -1)
+          test "v$version" = "$TAG" || { echo "The tag is $TAG but the version is $version"; exit 1; }
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: rust-lang/crates-io-auth-action@v1
+        id: auth
+      # The core first: cargo waits until crates.io serves it before fastxt, which needs it.
+      - name: Publish fastxt_core
+        working-directory: fastxt-rs
+        run: cargo publish -p fastxt_core --locked
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
+      - name: Publish fastxt
+        working-directory: fastxt-rs
+        run: cargo publish -p fastxt --locked
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}

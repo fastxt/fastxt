@@ -6,3 +6,10 @@ external-libs/*
 !.gitattributes
 !.mrconfig-template
 !.github
+
+# Package build output (the publishing workflows copy these in)
+packaging/npm/vendor/
+packaging/npm/*.tgz
+packaging/npm/README.md
+packaging/npm/LICENSE
+/dist/

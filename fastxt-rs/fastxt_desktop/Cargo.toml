@@ -1,15 +1,18 @@
 [package]
 name = "fastxt_desktop"
-version = "0.1.0"
-edition = "2024"
-authors = ["Yi Wang"]
-license = "AGPL-3.0"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
 description = "Fastxt desktop app — local-first text notes with on-device AI"
-homepage = "https://fastxt.app"
-repository = "https://github.com/fastxt/fastxt"
+homepage.workspace = true
+repository.workspace = true
+# Shipped as installers (.dmg, .msi, .deb), not through crates.io.
+publish = false
 
+# `fastxt` is the command; the window is `fastxt-desktop`.
 [[bin]]
-name = "fastxt"
+name = "fastxt-desktop"
 path = "src/bin/main.rs"
 
 [features]
@@ -25,11 +28,11 @@ iced = { version = "0.14", features = ["qr_code", "tokio"] }
 # Packaging metadata for cargo-deb (`cargo deb`). Paths are relative to this
 # manifest; `target/...` resolves to the workspace target dir.
 [package.metadata.deb]
-name = "fastxt"
+name = "fastxt-desktop"
 maintainer = "Yi Wang <yi@yilab.com>"
 depends = "$auto"
 assets = [
-    ["target/release/fastxt", "usr/bin/", "755"],
+    ["target/release/fastxt-desktop", "usr/bin/", "755"],
     ["packaging/fastxt.desktop", "usr/share/applications/", "644"],
     ["icons/fastxt-512.png", "usr/share/icons/hicolor/512x512/apps/fastxt.png", "644"],
 ]

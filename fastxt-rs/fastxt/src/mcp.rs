@@ -16,7 +16,8 @@
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
 
-//! Fastxt as an MCP server: notes, search, AI and agent memory.
+//! Fastxt as an MCP server (`fastxt mcp`): notes, search, AI and agent
+//! memory.
 //!
 //! Every database and AI call runs through the typed `fastxt_core` API on a
 //! blocking thread (`spawn_blocking`) — never on the async runtime, which the
@@ -553,24 +554,23 @@ impl ServerHandler for FastxtMcpServer {
     }
 }
 
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // stderr only: stdout carries the MCP protocol.
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            tracing_subscriber::EnvFilter::from_default_env()
-                .add_directive(tracing::Level::INFO.into()),
-        )
-        .with_writer(std::io::stderr)
-        .with_ansi(false)
-        .init();
-
-    tracing::info!("starting Fastxt MCP server");
-    let server = FastxtMcpServer::new()?;
-    let service = server
-        .serve((tokio::io::stdin(), tokio::io::stdout()))
-        .await
-        .inspect_err(|e| tracing::error!("serving error: {e:?}"))?;
-    service.waiting().await?;
-    Ok(())
+/// Serve MCP on stdin and stdout until the client hangs up. Logs go to
+/// stderr: stdout carries the protocol.
+///
+/// # Errors
+/// When the notes database can't be opened, or the transport fails.
+pub fn serve() -> Result<(), Box<dyn std::error::Error>> {
+    tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()?
+        .block_on(async {
+            tracing::info!("starting Fastxt MCP server");
+            let server = FastxtMcpServer::new()?;
+            let service = server
+                .serve((tokio::io::stdin(), tokio::io::stdout()))
+                .await
+                .inspect_err(|e| tracing::error!("serving error: {e:?}"))?;
+            service.waiting().await?;
+            Ok(())
+        })
 }

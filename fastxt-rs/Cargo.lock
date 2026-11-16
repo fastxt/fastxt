@@ -1126,30 +1126,26 @@ checksum = "da7c62ceae207dd37ea5b845da6a0696c799f85e97da1ab5b7910be3c1c80223"
 
 [[package]]
 name = "fastxt"
-version = "0.1.0"
+version = "0.7.0"
 dependencies = [
+ "clap",
+ "ctrlc",
  "dirs",
  "fastxt_core",
+ "rmcp",
+ "schemars",
  "serde",
  "serde_json",
  "tempfile",
  "thiserror 2.0.20",
-]
-
-[[package]]
-name = "fastxt_cli"
-version = "0.2.0"
-dependencies = [
- "clap",
- "ctrlc",
- "fastxt_core",
+ "tokio",
  "tracing",
  "tracing-subscriber",
 ]
 
 [[package]]
 name = "fastxt_core"
-version = "0.3.0"
+version = "0.7.0"
 dependencies = [
  "chrono",
  "dirs",
@@ -1176,7 +1172,7 @@ dependencies = [
 
 [[package]]
 name = "fastxt_desktop"
-version = "0.1.0"
+version = "0.7.0"
 dependencies = [
  "fastxt_core",
  "iced",
@@ -1186,24 +1182,10 @@ dependencies = [
 
 [[package]]
 name = "fastxt_ffi"
-version = "0.1.0"
+version = "0.7.0"
 dependencies = [
  "fastxt_core",
  "jni 0.21.1",
-]
-
-[[package]]
-name = "fastxt_mcp"
-version = "0.2.0"
-dependencies = [
- "fastxt_core",
- "rmcp",
- "schemars",
- "serde",
- "serde_json",
- "tokio",
- "tracing",
- "tracing-subscriber",
 ]
 
 [[package]]

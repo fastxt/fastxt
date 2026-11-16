@@ -27,10 +27,12 @@ fastxt-rs/                    # Rust workspace (core library + apps)
 │       ├── json.rs           # JSON command dispatcher (mobile FFI contract)
 │       ├── ffi.rs            # C ABI: fastxt_run / fastxt_free / fastxt_set_db_dir
 │       └── error.rs          # thiserror; nothing in core panics on bad input
-├── fastxt/                   # dispatch/: types a prompt into a coding-agent session open in Orca
-├── fastxt_cli/               # fastxt-server (pairing code), fastxt-sync (client)
-├── fastxt_desktop/           # Iced GUI (app.rs view, commands.rs typed logic)
-├── fastxt_mcp/               # MCP server: notes + AI + agent-memory tools
+├── fastxt/                   # The one command, `fastxt` (crates.io, PyPI, npm): serve, sync, sessions, send, mcp
+│   └── src/
+│       ├── cli/              # The subcommands (binary only)
+│       ├── dispatch/         # Types a prompt into a coding-agent session open in Orca; the server's AgentHost
+│       └── mcp.rs            # MCP server: notes + AI + agent-memory tools (`fastxt mcp`)
+├── fastxt_desktop/           # Iced GUI, binary `fastxt-desktop` (app.rs view, commands.rs typed logic); installers only
 └── fastxt_ffi/               # staticlib (iOS) + cdylib (Android/JNI), include/fastxt.h
 
 fastxt-android/               # Android app (Kotlin, AGP 9, JNI to fastxt_ffi)
@@ -50,15 +52,24 @@ cargo build --release
 cargo test --workspace                              # no AI deps
 cargo test --workspace --features fastxt_core/ai    # with AI backends
 cargo clippy --workspace --all-targets --features fastxt_core/ai -- -D warnings
-cargo run -p fastxt_cli --bin fastxt-server          # sync server + pairing code
-cargo run -p fastxt_cli --bin fastxt-sync -- FASTXT1:192.168.1.5:3456:…:…
+cargo run -p fastxt -- serve                         # sync server + pairing code (--agents: offer the Orca sessions)
+cargo run -p fastxt -- sync FASTXT1:192.168.1.5:3456:…:…
+cargo run -p fastxt -- sessions                      # agent sessions open in Orca (--on CODE: on a paired computer)
+cargo run -p fastxt -- send --note 7 --to 5e47       # type a note into one (--on CODE, --dry-run)
+cargo run -p fastxt -- mcp                           # MCP server (stdio)
 cargo run -p fastxt_desktop --release                # desktop GUI
-cargo run -p fastxt_mcp                              # MCP server (stdio)
 ```
 
-### Desktop releases (CI)
+### Releases (CI)
 
-Plain `vX.Y.Z` tags build .dmg/.msi/.zip/.deb/.tar.gz via `.github/workflows/release.yml`.
+One version for everything, `[workspace.package]` in `fastxt-rs/Cargo.toml`; `packaging/npm/package.json` must say the same. A plain `vX.Y.Z` tag runs four workflows, each re-runnable alone with `gh workflow run <file> -f tag=vX.Y.Z`:
+
+- `release.yml`: the desktop app's .dmg/.msi/.zip/.deb/.tar.gz, attached to a GitHub release.
+- `crates.yml`: `fastxt_core`, then `fastxt`, to crates.io (`cargo install fastxt`).
+- `pypi.yml`: maturin wheels with the `fastxt` binary for five platforms, and the sdist (`pip install fastxt`, `uvx fastxt`; `pyproject.toml` at the repo root).
+- `npm.yml`: one package holding the binary for five platforms (`npm install -g fastxt`; `packaging/npm`).
+
+All three registries publish through trusted publishing (environments `crates-io`, `pypi`, `npm`), which each registry only lets you set up once a first version is there: the first upload of each is by hand. Check a release locally with `cargo package -p fastxt_core -p fastxt`, `uvx maturin build --release`, and `npm pack` in a copy of `packaging/npm` with the binary in `vendor/<platform>-<arch>/`.
 
 ### Mobile
 
@@ -92,7 +103,7 @@ cd website && npm install && npm start
 - Sent records (`sent.rs`, table `sent`): one per time a note was typed into a coding-agent session. Written once by the computer that typed it, merged by id after the notes, and deleted with their note (a tombstone clears them on every device).
 - `PROTOCOL_VERSION` in `sync/mod.rs` is independent of the schema version. Clients require an exact match, so a v3 device can't sync with a v2 one.
 - Sync server: `sync::server::serve(db, port)` (also a process-global server for the JSON API). Client: `sync::client::sync(code, db)`.
-- Agent sessions (v3): `sync::server::serve_with(db, port, Some(host))` also offers the coding-agent sessions open on that computer, through an `AgentHost` (`fastxt::dispatch::Dispatcher` is the one for Orca). A paired device calls `sync::client::agent_sessions(code)` and `sync::client::send_note(code, db, key, handle)`, which types the note's text as it is on that device and stores the returned record on both sides. Without a host, both calls are refused with `SendRefusal::UNAVAILABLE`; every refusal carries a reason (`unavailable`, `gone`, `asking`, `not-an-agent`, `invalid`, `failed`) and a message. The JSON protocol has `agent-sessions`, `send-to-session` and `sent` for the phones.
+- Agent sessions (v3): `sync::server::serve_with(db, port, Some(host))` also offers the coding-agent sessions open on that computer, through an `AgentHost` (`fastxt::dispatch::Dispatcher` is the one for Orca; `fastxt serve --agents` uses it). A paired device calls `sync::client::agent_sessions(code)` and `sync::client::send_note(code, db, key, handle)`, which types the note's text as it is on that device and stores the returned record on both sides. Without a host, both calls are refused with `SendRefusal::UNAVAILABLE`; every refusal carries a reason (`unavailable`, `gone`, `asking`, `not-an-agent`, `invalid`, `failed`) and a message. The JSON protocol has `agent-sessions`, `send-to-session` and `sent` for the phones.
 
 ### Database
 

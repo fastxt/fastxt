@@ -1,0 +1,41 @@
+{
+  "name": "fastxt",
+  "version": "0.7.0",
+  "description": "Local-first notes that sync between your phone and your computers with no server in between, and go into the coding-agent session you pick.",
+  "license": "AGPL-3.0-or-later",
+  "author": "Yi Wang",
+  "homepage": "https://fastxt.app",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/fastxt/fastxt.git"
+  },
+  "bugs": {
+    "url": "https://github.com/fastxt/fastxt/issues"
+  },
+  "keywords": [
+    "notes",
+    "local-first",
+    "sync",
+    "mcp",
+    "claude-code",
+    "codex",
+    "coding-agent"
+  ],
+  "bin": {
+    "fastxt": "bin/fastxt"
+  },
+  "files": [
+    "bin/",
+    "vendor/",
+    "run.js",
+    "install.js",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "postinstall": "node install.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

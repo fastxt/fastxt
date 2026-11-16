@@ -1,17 +1,38 @@
 [package]
 name = "fastxt"
-description = "Types a prompt into a coding-agent session open on this computer"
-version = "0.1.0"
-authors = ["Yi Wang"]
-license = "AGPL-3.0"
-edition = "2024"
+description = "Local-first notes that sync between your phone and computer with no server in between, and go into the coding-agent session you pick"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+readme = "../../README.md"
+keywords = ["notes", "local-first", "sync", "mcp", "coding-agent"]
+categories = ["command-line-utilities"]
+
+[lib]
+name = "fastxt"
+path = "src/lib.rs"
+
+[[bin]]
+name = "fastxt"
+path = "src/main.rs"
 
 [dependencies]
-fastxt_core = { path = "../fastxt_core" }
+# With its AI backends: the MCP tools tag and summarize through them.
+fastxt_core = { path = "../fastxt_core", version = "0.7.0", features = ["ai"] }
+clap = { version = "4", features = ["derive"] }
+ctrlc = "3"
 dirs = "7"
+rmcp = { version = "3", features = ["server", "transport-io"] }
+schemars = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 # What a command prints is captured in unnamed files, not pipes, so a command
 # that leaves a process behind can't keep the read from ending.
 tempfile = "3"
 thiserror = "2"
+tokio = { version = "1", features = ["full"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }

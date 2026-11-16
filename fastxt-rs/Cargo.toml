@@ -1,14 +1,26 @@
 [workspace]
 resolver = "2"
 
+# fastxt is the one command (published to crates.io, PyPI and npm), over
+# fastxt_core; fastxt_desktop is the desktop window and fastxt_ffi the
+# library the phone apps link, both shipped their own ways.
 members = [
     "fastxt",
-    "fastxt_cli",
     "fastxt_core",
     "fastxt_desktop",
     "fastxt_ffi",
-    "fastxt_mcp",
 ]
+
+# One version for everything: a vX.Y.Z tag releases the command to every
+# registry and the desktop app's installers, so they must all say X.Y.Z.
+[workspace.package]
+version = "0.7.0"
+edition = "2024"
+authors = ["Yi Wang"]
+# The source headers grant version 3 "or (at your option) any later version".
+license = "AGPL-3.0-or-later"
+repository = "https://github.com/fastxt/fastxt"
+homepage = "https://fastxt.app"
 
 [profile.dev]
 opt-level = 1

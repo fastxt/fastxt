@@ -5,7 +5,7 @@ name: Release
 #
 #   tag push (vX.Y.Z) — full run, publishes a GitHub Release.
 #   workflow_dispatch — build-only smoke test: versions come from
-#     fastxt_desktop/Cargo.toml and the publish step is skipped, so the
+#     fastxt-rs/Cargo.toml and the publish step is skipped, so the
 #     Windows/Linux packaging can be verified before cutting a real tag.
 #
 # Tags must be plain numeric vX.Y.Z — the MSI format forbids anything else.
@@ -35,7 +35,7 @@ jobs:
           if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
             V=${GITHUB_REF_NAME#v}
           else
-            V=$(grep -m1 '^version' fastxt-rs/fastxt_desktop/Cargo.toml | sed 's/.*"\(.*\)".*/\1/')
+            V=$(grep -m1 '^version' fastxt-rs/Cargo.toml | sed 's/.*"\(.*\)".*/\1/')
           fi
           echo "v=$V" >> "$GITHUB_OUTPUT"
 
@@ -59,8 +59,8 @@ jobs:
           fastxt-rs/fastxt_desktop/packaging/bundle-macos.sh \
             "${{ steps.ver.outputs.v }}" \
             "$PWD/fastxt-rs/target/dist" \
-            fastxt-rs/target/aarch64-apple-darwin/release/fastxt \
-            fastxt-rs/target/x86_64-apple-darwin/release/fastxt
+            fastxt-rs/target/aarch64-apple-darwin/release/fastxt-desktop \
+            fastxt-rs/target/x86_64-apple-darwin/release/fastxt-desktop
 
       - uses: actions/upload-artifact@v4
         with:
@@ -81,7 +81,7 @@ jobs:
           if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
             V=${GITHUB_REF_NAME#v}
           else
-            V=$(grep -m1 '^version' fastxt-rs/fastxt_desktop/Cargo.toml | sed 's/.*"\(.*\)".*/\1/')
+            V=$(grep -m1 '^version' fastxt-rs/Cargo.toml | sed 's/.*"\(.*\)".*/\1/')
           fi
           echo "v=$V" >> "$GITHUB_OUTPUT"
 
@@ -129,7 +129,7 @@ jobs:
         env:
           V: ${{ steps.ver.outputs.v }}
         run: |
-          Compress-Archive -Path fastxt-rs\target\release\fastxt.exe, LICENSE `
+          Compress-Archive -Path fastxt-rs\target\release\fastxt-desktop.exe, LICENSE `
             -DestinationPath "Fastxt-$($env:V)-x86_64-windows.zip"
 
       - uses: actions/upload-artifact@v4
@@ -152,7 +152,7 @@ jobs:
           if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
             V=${GITHUB_REF_NAME#v}
           else
-            V=$(grep -m1 '^version' fastxt-rs/fastxt_desktop/Cargo.toml | sed 's/.*"\(.*\)".*/\1/')
+            V=$(grep -m1 '^version' fastxt-rs/Cargo.toml | sed 's/.*"\(.*\)".*/\1/')
           fi
           echo "v=$V" >> "$GITHUB_OUTPUT"
 
@@ -177,10 +177,10 @@ jobs:
         run: |
           cargo deb -p fastxt_desktop --no-build
           mkdir -p target/dist/stage
-          cp target/release/fastxt ../LICENSE target/dist/stage/
+          cp target/release/fastxt-desktop ../LICENSE target/dist/stage/
           tar czf "target/dist/Fastxt-${V}-x86_64-linux.tar.gz" \
-            -C target/dist/stage fastxt LICENSE
-          cp target/debian/fastxt_*_amd64.deb "target/dist/Fastxt-${V}-amd64.deb"
+            -C target/dist/stage fastxt-desktop LICENSE
+          cp target/debian/fastxt-desktop_*_amd64.deb "target/dist/Fastxt-${V}-amd64.deb"
           rm -rf target/dist/stage
 
       - uses: actions/upload-artifact@v4
