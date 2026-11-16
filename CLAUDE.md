@@ -27,6 +27,7 @@ fastxt-rs/                    # Rust workspace (core library + apps)
 │       ├── json.rs           # JSON command dispatcher (mobile FFI contract)
 │       ├── ffi.rs            # C ABI: fastxt_run / fastxt_free / fastxt_set_db_dir
 │       └── error.rs          # thiserror; nothing in core panics on bad input
+├── fastxt/                   # dispatch/: types a prompt into a coding-agent session open in Orca
 ├── fastxt_cli/               # fastxt-server (pairing code), fastxt-sync (client)
 ├── fastxt_desktop/           # Iced GUI (app.rs view, commands.rs typed logic)
 ├── fastxt_mcp/               # MCP server: notes + AI + agent-memory tools
@@ -103,6 +104,14 @@ cd website && npm install && npm start
 - `AiBackend` = transport; `Ai` orchestrator = prompts, JSON-schema output, majority voting, model selection. Default backend `ollama`; `llamacpp`/`foundry-local`/`openai` share the OpenAI-compatible transport.
 - Chat model (tags/summaries/categories) and embedding model are separate settings.
 - Without the `ai` feature, HTTP backends are absent and `Ai::check()` reports unavailable.
+
+### Dispatch (a prompt into an open coding-agent session)
+
+- A session is one its user started and can see: an agent running in a terminal window. `fastxt::dispatch` lists the open ones and types a prompt into one, as if the user had typed it there. It starts nothing, and nothing runs out of sight. It has no part in the notes database; the caller passes the text.
+- Typing into a window takes the program that hosts it. For now that is Orca, through its own command (`orca.rs`): `orca worktree ps` and `orca terminal list` for the sessions, `orca terminal send --text … --enter` to type. Any agent in an Orca terminal is a session.
+- A prompt never answers a question: text and Enter go in one command, which Orca refuses while the agent shows a permission or trust question. Never send them apart.
+- Only an agent gets a prompt. A terminal with a plain shell in it would run the text as a command, so a session is looked up again right before every send, and a receipt that names no agent is an error.
+- The tests run against a stand-in script (`fastxt/tests/fake_orca.rs`). The behaviour it replays is written down, with the version it was checked on, at the top of `fastxt/src/dispatch/orca.rs`; check there again when Orca's command changes.
 
 ## Conventions
 

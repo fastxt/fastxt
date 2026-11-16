@@ -1,0 +1,16 @@
+[package]
+name = "fastxt"
+description = "Types a prompt into a coding-agent session open on this computer"
+version = "0.1.0"
+authors = ["Yi Wang"]
+license = "AGPL-3.0"
+edition = "2024"
+
+[dependencies]
+dirs = "7"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# What a command prints is captured in unnamed files, not pipes, so a command
+# that leaves a process behind can't keep the read from ending.
+tempfile = "3"
+thiserror = "2"
