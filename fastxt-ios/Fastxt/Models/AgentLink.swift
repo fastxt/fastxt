@@ -47,12 +47,15 @@ struct AgentSession: Codable, Identifiable, Hashable {
     }
 }
 
-/// A record that a note was typed into a session: where and when.
+/// A record that a note went to a coding agent, typed into its session or
+/// taken by the agent itself: where and when.
 struct SentRecord: Codable, Identifiable, Hashable {
     var uuid4: String
     var note_uuid: String
     /// UTC, `yyyy-MM-dd HH:mm:ss`.
     var sent_at: String
+    /// The program that hosted the session, or `mcp` when the agent took
+    /// the note itself.
     var host: String
     var agent: String
     var session: String
@@ -60,6 +63,19 @@ struct SentRecord: Codable, Identifiable, Hashable {
     var started: Bool
 
     var id: String { uuid4 }
+
+    /// Whether an agent took the note itself, through `fastxt mcp` on the
+    /// computer, rather than having it typed into its session.
+    var taken: Bool { host == "mcp" }
+
+    /// Where it went, for people: the agent and its session, or the agent
+    /// that took it.
+    var title: String {
+        if taken {
+            return "Taken by \(agent)"
+        }
+        return "\(agent) · \(session.isEmpty ? "untitled session" : session)"
+    }
 }
 
 /// What a sync moved.

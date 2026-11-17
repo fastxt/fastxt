@@ -85,6 +85,9 @@ fn filter_sql(filter: &Filter, first: usize) -> (String, Vec<String>) {
             first + values.len() - 1
         ));
     }
+    if filter.unsent {
+        clauses.push("NOT EXISTS (SELECT 1 FROM sent s WHERE s.note_uuid = n.uuid4)".into());
+    }
     if clauses.is_empty() {
         clauses.push("1 = 1".into());
     }
@@ -469,6 +472,37 @@ mod tests {
         assert_eq!(db.list(10, 0, &tagged(&["100%_done"])).unwrap().count, 1);
         assert_eq!(db.list(10, 0, &tagged(&["100_done"])).unwrap().count, 0);
         assert_eq!(db.list(10, 0, &tagged(&["  "])).unwrap().count, 4);
+    }
+
+    #[test]
+    fn the_unsent_filter_keeps_the_notes_no_agent_has_had() {
+        let mut db = db();
+        add(&mut db, "fix the login test", "kind:prompt", None);
+        add(&mut db, "add a retry", "kind:prompt", None);
+        add(&mut db, "an idea", "kind:idea", None);
+        let sent = db.search("login", 1, 0, &Filter::default()).unwrap();
+        db.record_sent(crate::sent::NewSent {
+            note_uuid: sent.notes[0].uuid4.clone(),
+            ..Default::default()
+        })
+        .unwrap();
+
+        let waiting = Filter {
+            unsent: true,
+            ..tagged(&["kind:prompt"])
+        };
+        let page = db.list(10, 0, &waiting).unwrap();
+        assert_eq!(page.count, 1);
+        assert_eq!(page.notes[0].txt, "add a retry");
+        // On the FTS path and the LIKE path too.
+        assert_eq!(db.search("login", 10, 0, &waiting).unwrap().count, 0);
+        assert_eq!(db.search("retry", 10, 0, &waiting).unwrap().count, 1);
+        assert_eq!(db.search("re", 10, 0, &waiting).unwrap().count, 1);
+        let any_kind = Filter {
+            unsent: true,
+            ..Filter::default()
+        };
+        assert_eq!(db.list(10, 0, &any_kind).unwrap().count, 2);
     }
 
     #[test]

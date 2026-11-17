@@ -16,21 +16,33 @@
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
 
-//! Fastxt as an MCP server (`fastxt mcp`): notes, search, AI and agent
-//! memory.
+//! Fastxt as an MCP server (`fastxt mcp`): notes, search, AI, agent memory,
+//! and the prompts the user prepared, most often dictated on their phone,
+//! for an agent to take.
+//!
+//! An agent takes a prompt with the `take_prompt` tool when the user asks
+//! it to, or the user hands one over with the `take` MCP prompt (in Claude
+//! Code, `/mcp__fastxt__take` with the server added as `fastxt`), which puts
+//! the text in as the user's own message. Either way the take is recorded
+//! like a send ([`Sent::TAKEN`]): the prompt stops waiting, and the phone
+//! shows where it went once it syncs.
 //!
 //! Every database and AI call runs through the typed `fastxt_core` API on a
 //! blocking thread (`spawn_blocking`) — never on the async runtime, which the
 //! blocking HTTP AI client would stall.
 
-use fastxt_core::model::{Filter, NewNote, NoteKey, TagCount};
+use fastxt_core::model::{Filter, NewNote, Note, NoteKey, Sent, TagCount};
+use fastxt_core::sent::Take;
+use fastxt_core::tags::{KIND_IDEA, KIND_PROMPT};
 use fastxt_core::{Fastxt, SharedDb};
 use rmcp::{
-    ErrorData as McpError, ServerHandler, ServiceExt, handler::server::wrapper::Parameters,
-    model::*, schemars, tool, tool_handler, tool_router,
+    ErrorData as McpError, Peer, RoleServer, ServerHandler, ServiceExt,
+    handler::server::wrapper::Parameters, model::*, prompt, prompt_handler, prompt_router,
+    schemars, tool, tool_handler, tool_router,
 };
 use schemars::JsonSchema;
 use serde::Deserialize;
+use serde_json::json;
 use std::sync::Arc;
 
 type DynResult<T> = Result<T, McpError>;
@@ -154,6 +166,150 @@ struct SummarizeTopicParams {
     max_notes: Option<u32>,
 }
 
+#[derive(Debug, Deserialize, JsonSchema)]
+struct WaitingParams {
+    /// `prompt` (the default) or `idea`.
+    kind: Option<String>,
+    /// Words the text must have.
+    query: Option<String>,
+    /// Also list the ones already typed into a session or taken by an agent,
+    /// with where they went.
+    include_sent: Option<bool>,
+    /// Maximum number of results (default 20).
+    limit: Option<u32>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+struct TakeParams {
+    /// The note's rowid, as waiting_prompts lists it, or its uuid4. Without
+    /// either, the newest waiting prompt.
+    rowid: Option<i64>,
+    uuid4: Option<String>,
+    /// Without rowid or uuid4: words from the waiting prompt to take.
+    query: Option<String>,
+    /// Without rowid or uuid4: `prompt` (the default) or `idea`.
+    kind: Option<String>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+struct TakeArgs {
+    /// Words from the prompt, or its number. Empty: the newest one waiting.
+    note: Option<String>,
+}
+
+/// The tag of a kind of note, as people name the kind.
+fn kind_tag(kind: Option<&str>) -> DynResult<&'static str> {
+    match kind.map(|k| k.trim().to_lowercase()).as_deref() {
+        None | Some("" | "prompt" | "prompts") => Ok(KIND_PROMPT),
+        Some("idea" | "ideas") => Ok(KIND_IDEA),
+        Some(other) => Err(McpError {
+            code: ErrorCode::INVALID_PARAMS,
+            message: format!("kind is prompt or idea, not {other:?}").into(),
+            data: None,
+        }),
+    }
+}
+
+/// Who takes a note: the agent, as its MCP client names itself, and the
+/// folder this server runs in, which is the one the agent started it in.
+fn taker(peer: &Peer<RoleServer>) -> (String, String) {
+    let agent = peer
+        .peer_info()
+        .map(|info| {
+            let client = &info.client_info;
+            client
+                .title
+                .as_deref()
+                .map(str::trim)
+                .filter(|title| !title.is_empty())
+                .unwrap_or_else(|| client.name.trim())
+                .to_string()
+        })
+        .filter(|agent| !agent.is_empty())
+        .unwrap_or_else(|| "agent".to_string());
+    let cwd = std::env::current_dir()
+        .map(|dir| dir.display().to_string())
+        .unwrap_or_default();
+    (agent, cwd)
+}
+
+/// The start of a note's text, for a list.
+fn preview(text: &str) -> String {
+    const WIDTH: usize = 200;
+    if text.chars().count() <= WIDTH {
+        text.to_string()
+    } else {
+        let kept: String = text.chars().take(WIDTH - 1).collect();
+        format!("{kept}…")
+    }
+}
+
+/// A note's tags apart from its kind.
+fn shown_tags(note: &Note) -> Vec<String> {
+    note.tag_list()
+        .into_iter()
+        .filter(|tag| !tag.to_lowercase().starts_with("kind:"))
+        .collect()
+}
+
+/// Why nothing was taken from the waiting notes of a kind.
+fn none_waiting(tag: &str, words: &str) -> String {
+    let what = if tag == KIND_IDEA { "idea" } else { "prompt" };
+    let words = words.trim();
+    if words.is_empty() {
+        format!(
+            "No {what} is waiting. They come from the Fastxt app, most often dictated on the \
+             phone, and reach this computer when the phone syncs with it: on the phone, \
+             Computer, then Sync notes now, while `fastxt serve` runs here."
+        )
+    } else {
+        format!("No waiting {what} has {words:?}.")
+    }
+}
+
+/// Whether text is a note's number or uuid rather than words from it.
+fn is_note_id(given: &str) -> bool {
+    let uuid = given.len() == 36
+        && given.chars().enumerate().all(|(i, c)| match i {
+            8 | 13 | 18 | 23 => c == '-',
+            _ => c.is_ascii_hexdigit(),
+        });
+    uuid || given.parse::<i64>().is_ok()
+}
+
+/// A note named by its number (rowid) or uuid.
+fn note_key(given: &str) -> NoteKey {
+    given
+        .parse::<i64>()
+        .map_or_else(|_| NoteKey::Uuid(given.to_string()), NoteKey::Rowid)
+}
+
+/// The note to take: a given one, or one of those waiting.
+enum Which {
+    Key(NoteKey),
+    Waiting { tag: &'static str, words: String },
+}
+
+/// Take a note for the agent behind `peer`; when none matches, why.
+async fn take_for(
+    db: &SharedDb,
+    which: Which,
+    peer: &Peer<RoleServer>,
+) -> DynResult<Result<(Note, Sent), String>> {
+    let (agent, cwd) = taker(peer);
+    with_db(db, move |db| {
+        let taken = match &which {
+            Which::Key(key) => db.take(Take::Note(key), &agent, &cwd)?,
+            Which::Waiting { tag, words } => db.take(Take::Waiting { tag, words }, &agent, &cwd)?,
+        };
+        Ok(taken.ok_or_else(|| match &which {
+            Which::Key(key) => format!("there is no note with {key}"),
+            Which::Waiting { tag, words } => none_waiting(tag, words),
+        }))
+    })
+    .await
+}
+
 fn key_of(rowid: Option<i64>, uuid4: Option<String>) -> DynResult<NoteKey> {
     match (rowid, uuid4) {
         (Some(rowid), _) => Ok(NoteKey::Rowid(rowid)),
@@ -196,15 +352,16 @@ struct FastxtMcpServer {
     db: SharedDb,
 }
 
+impl FastxtMcpServer {
+    fn new(db: Fastxt) -> Self {
+        FastxtMcpServer {
+            db: Arc::new(std::sync::Mutex::new(db)),
+        }
+    }
+}
+
 #[tool_router]
 impl FastxtMcpServer {
-    fn new() -> DynResult<Self> {
-        let db = Fastxt::open_default().map_err(db_error)?;
-        Ok(FastxtMcpServer {
-            db: Arc::new(std::sync::Mutex::new(db)),
-        })
-    }
-
     #[tool(
         name = "search_notes",
         description = "Search notes by text. Terms match note text, tags and AI tags; all terms must match. Empty query lists recent notes. Optionally restricted to one AI category."
@@ -218,7 +375,7 @@ impl FastxtMcpServer {
         let offset = params.offset.unwrap_or(0);
         let filter = Filter {
             category: params.category,
-            tags: Vec::new(),
+            ..Filter::default()
         };
         with_db(&self.db, move |db| {
             let page = db.search(&query, limit, offset, &filter)?;
@@ -239,7 +396,7 @@ impl FastxtMcpServer {
         let offset = params.offset.unwrap_or(0);
         let filter = Filter {
             category: params.category,
-            tags: Vec::new(),
+            ..Filter::default()
         };
         with_db(&self.db, move |db| {
             let page = db.list(limit, offset, &filter)?;
@@ -405,6 +562,88 @@ impl FastxtMcpServer {
         .await
     }
 
+    // ---- prompts the user prepared ---------------------------------------
+
+    #[tool(
+        name = "waiting_prompts",
+        description = "List the prompts the user prepared in Fastxt, most often dictated on their phone, that wait for an agent: never typed into a session nor taken. Newest first, with the start of each text; created_at is UTC. kind=idea lists their ideas instead; include_sent=true adds the ones already sent or taken, with where they went. When the user asks you to work on one, take it with take_prompt."
+    )]
+    async fn waiting_prompts(
+        &self,
+        Parameters(params): Parameters<WaitingParams>,
+    ) -> DynResult<String> {
+        let tag = kind_tag(params.kind.as_deref())?;
+        let query = params.query.unwrap_or_default();
+        let limit = params.limit.unwrap_or(20);
+        let include_sent = params.include_sent.unwrap_or(false);
+        let filter = Filter {
+            tags: vec![tag.to_string()],
+            unsent: !include_sent,
+            ..Filter::default()
+        };
+        with_db(&self.db, move |db| {
+            let page = db.search(&query, limit, 0, &filter)?;
+            let mut prompts = Vec::with_capacity(page.notes.len());
+            for note in &page.notes {
+                let mut listed = json!({
+                    "rowid": note.rowid,
+                    "uuid4": note.uuid4,
+                    "created_at": note.created_at,
+                    "text": preview(&note.txt),
+                    "tags": shown_tags(note),
+                });
+                if include_sent {
+                    listed["sent"] = serde_json::to_value(db.sent(Some(&note.uuid4), 20)?)?;
+                }
+                prompts.push(listed);
+            }
+            let mut out = json!({ "count": page.count, "prompts": prompts });
+            if page.count == 0 && !include_sent {
+                out["message"] = json!(none_waiting(tag, &query));
+            }
+            Ok(out.to_string())
+        })
+        .await
+    }
+
+    #[tool(
+        name = "take_prompt",
+        description = "Take one of the prompts the user prepared, when they ask you to: returns its whole text, which they wrote for an agent to carry out, and records that you took it, so it stops waiting and their phone shows where it went. Without rowid or uuid4, takes the newest waiting prompt, or the waiting one that query's words find; kind=idea takes an idea instead."
+    )]
+    async fn take_prompt(
+        &self,
+        Parameters(params): Parameters<TakeParams>,
+        peer: Peer<RoleServer>,
+    ) -> DynResult<String> {
+        let which = match (params.rowid, params.uuid4) {
+            (None, None) => Which::Waiting {
+                tag: kind_tag(params.kind.as_deref())?,
+                words: params.query.unwrap_or_default(),
+            },
+            (rowid, uuid4) => Which::Key(key_of(rowid, uuid4)?),
+        };
+        let given = matches!(which, Which::Key(_));
+        match take_for(&self.db, which, &peer).await? {
+            Ok((note, sent)) => Ok(json!({
+                "text": note.txt,
+                "note": {
+                    "rowid": note.rowid,
+                    "uuid4": note.uuid4,
+                    "created_at": note.created_at,
+                    "tags": shown_tags(&note),
+                },
+                "taken": sent,
+            })
+            .to_string()),
+            Err(message) if given => Err(McpError {
+                code: ErrorCode::INVALID_PARAMS,
+                message: message.into(),
+                data: None,
+            }),
+            Err(message) => Ok(json!({ "text": null, "message": message }).to_string()),
+        }
+    }
+
     // ---- agent memory ---------------------------------------------------
 
     #[tool(
@@ -443,8 +682,8 @@ impl FastxtMcpServer {
             .map(|t| format!("topic:{t}"));
         // Exact tag membership, applied in SQL so the count is real.
         let filter = Filter {
-            category: None,
             tags: [agent, topic].into_iter().flatten().collect(),
+            ..Filter::default()
         };
         with_db(&self.db, move |db| {
             let page = db.search(&query, limit, 0, &filter)?;
@@ -505,8 +744,8 @@ impl FastxtMcpServer {
         with_db(&self.db, move |db| {
             // Exact tag membership, not a text search for "topic:…".
             let filter = Filter {
-                category: None,
                 tags: vec![format!("topic:{topic}")],
+                ..Filter::default()
             };
             let page = db.list(max_notes, 0, &filter)?;
             let texts: Vec<&str> = page.notes.iter().map(|n| n.txt.as_str()).collect();
@@ -533,40 +772,82 @@ impl FastxtMcpServer {
     }
 }
 
-#[tool_handler]
-impl ServerHandler for FastxtMcpServer {
-    fn get_info(&self) -> ServerConfig {
-        ServerConfig::new(ServerCapabilities::builder().enable_tools().build())
-            .with_server_info(
-                Implementation::new("fastxt-mcp", env!("CARGO_PKG_VERSION")).with_description(
-                    "Fastxt local-first notes with on-device AI and agent memory",
-                ),
-            )
-            .with_instructions(
-                "Fastxt note store.\n\n\
-                 Notes: search_notes, list_notes, get_note, save_note, update_note, delete_note.\n\
-                 AI (needs a local backend, see ai_status): suggest_tags, summarize_text, \
-                 find_related, get_categories.\n\
-                 Agent memory: remember, recall, forget, list_topics, summarize_topic — \
-                 memories are notes with agent:/topic:/importance: tags; filter recall by \
-                 agent_id or topic.",
-            )
+#[prompt_router]
+impl FastxtMcpServer {
+    #[prompt(
+        name = "take",
+        description = "Your newest prompt from Fastxt that no agent has taken, or the one your words find, as your message here. It is marked as taken, on your phone too."
+    )]
+    async fn take_message(
+        &self,
+        Parameters(args): Parameters<TakeArgs>,
+        peer: Peer<RoleServer>,
+    ) -> Result<GetPromptResult, McpError> {
+        let which = match args.note.as_deref().map(str::trim).unwrap_or_default() {
+            given if is_note_id(given) => Which::Key(note_key(given)),
+            words => Which::Waiting {
+                tag: KIND_PROMPT,
+                words: words.to_string(),
+            },
+        };
+        match take_for(&self.db, which, &peer).await? {
+            // Only the text: it goes in as if the user had typed it here.
+            Ok((note, _)) => Ok(GetPromptResult::new(vec![PromptMessage::new_text(
+                Role::User,
+                note.txt,
+            )])),
+            Err(message) => Err(McpError {
+                code: ErrorCode::INVALID_PARAMS,
+                message: message.into(),
+                data: None,
+            }),
+        }
     }
 }
 
-/// Serve MCP on stdin and stdout until the client hangs up. Logs go to
-/// stderr: stdout carries the protocol.
+#[tool_handler]
+#[prompt_handler]
+impl ServerHandler for FastxtMcpServer {
+    fn get_info(&self) -> ServerConfig {
+        ServerConfig::new(
+            ServerCapabilities::builder()
+                .enable_tools()
+                .enable_prompts()
+                .build(),
+        )
+        .with_server_info(
+            Implementation::new("fastxt-mcp", env!("CARGO_PKG_VERSION")).with_description(
+                "Fastxt local-first notes with on-device AI, agent memory, and the prompts you prepared on your phone",
+            ),
+        )
+        .with_instructions(
+            "Fastxt note store.\n\n\
+             Notes: search_notes, list_notes, get_note, save_note, update_note, delete_note.\n\
+             Prompts the user prepared, most often dictated on their phone: waiting_prompts \
+             lists the ones no agent has had yet; take_prompt gives you one to work on and \
+             records that you took it, so it stops waiting. Take one only when the user asks. \
+             The `take` prompt hands the user their newest one as their own message.\n\
+             AI (needs a local backend, see ai_status): suggest_tags, summarize_text, \
+             find_related, get_categories.\n\
+             Agent memory: remember, recall, forget, list_topics, summarize_topic — \
+             memories are notes with agent:/topic:/importance: tags; filter recall by \
+             agent_id or topic.",
+        )
+    }
+}
+
+/// Serve MCP on stdin and stdout, over `db`, until the client hangs up.
+/// Logs go to stderr: stdout carries the protocol.
 ///
 /// # Errors
-/// When the notes database can't be opened, or the transport fails.
-pub fn serve() -> Result<(), Box<dyn std::error::Error>> {
+/// When the transport fails.
+pub fn serve(db: Fastxt) -> Result<(), Box<dyn std::error::Error>> {
     tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()?
         .block_on(async {
             tracing::info!("starting Fastxt MCP server");
-            let server = FastxtMcpServer::new()?;
-            let service = server
+            let service = FastxtMcpServer::new(db)
                 .serve((tokio::io::stdin(), tokio::io::stdout()))
                 .await
                 .inspect_err(|e| tracing::error!("serving error: {e:?}"))?;

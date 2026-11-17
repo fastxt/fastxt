@@ -100,6 +100,20 @@ final class FastxtTests: XCTestCase {
         XCTAssertTrue(error.advice.contains("fastxt serve --agents"))
     }
 
+    func testARecordSaysWhetherTheAgentTookItOrWasSentIt() throws {
+        let reply = """
+        {"sent": [{"uuid4": "s2", "note_uuid": "n1", "sent_at": "2026-11-16 23:11:41", "host": "mcp",
+          "agent": "claude-code", "session": "", "cwd": "/Users/me/app", "started": true},
+         {"uuid4": "s1", "note_uuid": "n1", "sent_at": "2026-11-16 23:10:00", "host": "orca",
+          "agent": "claude", "session": "Fix login", "cwd": "/Users/me/app", "started": true}]}
+        """
+        let records = try AgentLink.decode(reply, field: "sent", as: [SentRecord].self).get()
+        XCTAssertTrue(records[0].taken)
+        XCTAssertEqual(records[0].title, "Taken by claude-code")
+        XCTAssertFalse(records[1].taken)
+        XCTAssertEqual(records[1].title, "claude · Fix login")
+    }
+
     func testAReplyWithoutTheFieldIsAnError() {
         XCTAssertThrowsError(try AgentLink.decode(#"{"count": 0}"#, field: "sessions", as: [AgentSession].self).get())
         XCTAssertThrowsError(try AgentLink.decode("not json", field: "sessions", as: [AgentSession].self).get())

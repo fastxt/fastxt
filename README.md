@@ -22,7 +22,7 @@ One command does everything on a computer apart from the desktop window:
 cargo install fastxt     # or: pip install fastxt, uvx fastxt, npm install -g fastxt
 fastxt serve             # let your phone sync with this computer (shows the pairing code)
 fastxt sync <code>       # sync this computer with another one, once
-fastxt mcp               # let agents use your notes (an MCP server on stdio)
+fastxt mcp               # let agents use your notes and take your prompts (an MCP server on stdio)
 ```
 
 ## Sending a note to a coding agent
@@ -36,6 +36,17 @@ On the computer itself, `fastxt sessions` lists them and `fastxt send --note <no
 The iPhone app is a notebook for the ideas and prompts you speak. Dictation, in English or Chinese, runs on the phone only: Fastxt uses the recognizer built into iOS, on the device, and doesn't start when the phone can't recognize the language without the network, so the audio never leaves the phone and is never stored. Each note is kept as an idea or a prompt.
 
 Pair the phone with a computer running `fastxt serve --agents` (scan or paste the code it shows), and a note's **Send** lists the sessions open there, by project, and types the note into the one you pick.
+
+## Taking a prompt in any agent
+
+An agent can also take a prompt itself, in any session that has Fastxt's MCP server, whether Orca hosts it or not. Add the server once:
+
+```sh
+claude mcp add --scope user fastxt -- fastxt mcp    # Claude Code
+codex mcp add fastxt -- fastxt mcp                  # Codex
+```
+
+Once the phone has synced with the computer (on the phone: **Computer**, then **Sync notes now**), the prompts no agent has had yet wait there. In Claude Code, `/mcp__fastxt__take` puts the newest one in as your own message, and `/mcp__fastxt__take login` the waiting one with "login" in it; in any agent, asking it to take your prompt from Fastxt does the same through its tools. Either way the prompt stops waiting, and after its next sync the phone shows which agent took it, and in which folder.
 
 ## On-Device AI
 

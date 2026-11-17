@@ -19,6 +19,7 @@
 //! The subcommands, and what they share.
 
 pub mod agents;
+pub mod mcp;
 pub mod serve;
 pub mod sync;
 

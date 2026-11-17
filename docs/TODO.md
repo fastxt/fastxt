@@ -65,7 +65,7 @@ Status as of the v0.6.0 core rewrite (2026-09). Only items that are done end-to-
 - [x] iPhone: ideas and prompts (`kind:` tags), filters (All, Ideas, Prompts, Sent), pairing with a computer (code in the Keychain), its sessions listed by project, sent history on each note; UI-tested on the simulator against a live `fastxt serve --agents`
 - [ ] iPhone: dictation in English and Chinese, on-device only (`Dictation.swift`); built, needs a real device to test
 - [ ] iPhone: a note typed into a session from the phone; built, listing tested live, not yet sent from a phone
-- [ ] MCP tool that pulls the phone's prompts into an agent
+- [ ] MCP: an agent takes a prompt itself (`fastxt mcp`: `waiting_prompts`, `take_prompt`, and the `take` prompt, a slash command in Claude Code), recorded and synced like a send; built and tested over stdio against the real binary, not yet tried in a live agent
 - [ ] A bundled recognizer (SenseVoice Small) on the phone, then Android
 
 ## Ongoing / Cross-Cutting

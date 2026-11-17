@@ -16,8 +16,8 @@
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
 
-//! What was sent where: one record per time a note was typed into a
-//! coding-agent session.
+//! What was sent where: one record per time a note went to a coding agent,
+//! typed into its session or taken by the agent itself ([`Fastxt::take`]).
 //!
 //! A record is written once, by the device whose computer did the typing,
 //! and never changed, so devices merge them by id: each takes the records it
@@ -25,7 +25,7 @@
 //! keeps it from coming back.
 
 use crate::error::{Error, Result};
-use crate::model::Sent;
+use crate::model::{Filter, Note, NoteKey, Sent};
 use crate::store::{Fastxt, now_utc};
 use rusqlite::{Connection, OptionalExtension, Row, params};
 
@@ -71,6 +71,17 @@ impl NewSent {
             started: self.started,
         }
     }
+}
+
+/// Which note an agent takes ([`Fastxt::take`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Take<'a> {
+    /// The newest waiting note with this tag (a kind, such as
+    /// [`crate::tags::KIND_PROMPT`]): one never sent nor taken. With words,
+    /// the waiting one a search for them puts first.
+    Waiting { tag: &'a str, words: &'a str },
+    /// This note, waiting or not.
+    Note(&'a NoteKey),
 }
 
 /// Drop the records of a note that is being deleted.
@@ -183,6 +194,77 @@ impl Fastxt {
         }
         tx.commit()?;
         Ok(stored)
+    }
+
+    /// An agent takes a note to work on: the note, and the record that
+    /// `agent`, working in `cwd`, took it, written in one transaction, so
+    /// two agents can't both take the one note waiting. `None`, with nothing
+    /// recorded, when no note matches.
+    ///
+    /// # Errors
+    /// Fails on a database error; nothing is recorded then.
+    pub fn take(
+        &mut self,
+        which: Take<'_>,
+        agent: &str,
+        cwd: &str,
+    ) -> Result<Option<(Note, Sent)>> {
+        // IMMEDIATE takes the write lock before the note is looked for, so it
+        // is still waiting when the record is written.
+        self.conn.execute_batch("BEGIN IMMEDIATE")?;
+        match self.find_and_record(which, agent, cwd) {
+            Ok(taken) => {
+                let end = if taken.is_some() {
+                    "COMMIT"
+                } else {
+                    "ROLLBACK"
+                };
+                match self.conn.execute_batch(end) {
+                    Ok(()) => Ok(taken),
+                    Err(e) => {
+                        let _ = self.conn.execute_batch("ROLLBACK");
+                        Err(e.into())
+                    }
+                }
+            }
+            Err(e) => {
+                let _ = self.conn.execute_batch("ROLLBACK");
+                Err(e)
+            }
+        }
+    }
+
+    fn find_and_record(
+        &self,
+        which: Take<'_>,
+        agent: &str,
+        cwd: &str,
+    ) -> Result<Option<(Note, Sent)>> {
+        let note = match which {
+            Take::Note(key) => self.get(key)?,
+            Take::Waiting { tag, words } => {
+                let waiting = Filter {
+                    tags: vec![tag.to_string()],
+                    unsent: true,
+                    ..Filter::default()
+                };
+                self.search(words, 1, 0, &waiting)?.notes.into_iter().next()
+            }
+        };
+        let Some(note) = note else {
+            return Ok(None);
+        };
+        let sent = NewSent {
+            note_uuid: note.uuid4.clone(),
+            host: Sent::TAKEN.to_string(),
+            agent: agent.trim().to_string(),
+            session: String::new(),
+            cwd: cwd.to_string(),
+            started: true,
+        }
+        .into_record();
+        insert(&self.conn, &sent)?;
+        Ok(Some((note, sent)))
     }
 }
 
@@ -313,6 +395,126 @@ mod tests {
         }])
         .unwrap();
         assert!(db.sent(None, 10).unwrap().is_empty());
+    }
+
+    #[test]
+    fn an_agent_takes_the_newest_waiting_prompt_and_it_stops_waiting() {
+        use crate::tags::{KIND_IDEA, KIND_PROMPT};
+        let mut db = db();
+        db.insert(NewNote::new("Fix the flaky login test", "kind:prompt,auth"))
+            .unwrap();
+        db.insert(NewNote::new("Cache the session list", "kind:idea"))
+            .unwrap();
+        let sent_already = db
+            .insert(NewNote::new("Rename the crate", "kind:prompt"))
+            .unwrap();
+        db.record_sent(new_sent(&sent_already.uuid4, "Rename"))
+            .unwrap();
+        db.insert(NewNote::new("Add a retry to the upload", "Kind:Prompt"))
+            .unwrap();
+        let newest = Take::Waiting {
+            tag: KIND_PROMPT,
+            words: "",
+        };
+
+        let (note, sent) = db
+            .take(newest, " Claude Code ", "/code/api")
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            note.txt, "Add a retry to the upload",
+            "newest, any case of the tag"
+        );
+        assert_eq!(sent.note_uuid, note.uuid4);
+        assert!(sent.taken());
+        assert_eq!(sent.host, Sent::TAKEN);
+        assert_eq!(sent.agent, "Claude Code");
+        assert_eq!(sent.session, "");
+        assert_eq!(sent.cwd, "/code/api");
+        assert!(sent.started);
+        assert_eq!(db.sent(Some(&note.uuid4), 10).unwrap(), [sent]);
+
+        // Taken, it is no longer waiting: the next is the older prompt, and
+        // then there are none. The idea and the sent prompt never were.
+        let (older, _) = db.take(newest, "codex", "/code/api").unwrap().unwrap();
+        assert_eq!(older.txt, "Fix the flaky login test");
+        assert!(db.take(newest, "codex", "/code/api").unwrap().is_none());
+        assert_eq!(
+            db.sent(None, 10).unwrap().len(),
+            3,
+            "nothing recorded for none"
+        );
+
+        let idea = Take::Waiting {
+            tag: KIND_IDEA,
+            words: "",
+        };
+        let (idea, _) = db.take(idea, "codex", "").unwrap().unwrap();
+        assert_eq!(idea.txt, "Cache the session list");
+    }
+
+    #[test]
+    fn words_pick_among_the_waiting_and_a_key_takes_any_note() {
+        use crate::tags::KIND_PROMPT;
+        let mut db = db();
+        db.insert(NewNote::new("Fix the flaky login test", "kind:prompt"))
+            .unwrap();
+        let upload = db
+            .insert(NewNote::new("Add a retry to the upload", "kind:prompt"))
+            .unwrap();
+        let plain = db.insert(NewNote::new("Just a note", "")).unwrap();
+        let login = Take::Waiting {
+            tag: KIND_PROMPT,
+            words: "login",
+        };
+
+        let (note, _) = db.take(login, "claude", "").unwrap().unwrap();
+        assert_eq!(note.txt, "Fix the flaky login test");
+        assert!(
+            db.take(login, "claude", "").unwrap().is_none(),
+            "taken already"
+        );
+        // A short word goes the LIKE way.
+        let up = Take::Waiting {
+            tag: KIND_PROMPT,
+            words: "up",
+        };
+        assert_eq!(
+            db.take(up, "claude", "").unwrap().unwrap().0.uuid4,
+            upload.uuid4
+        );
+
+        // By its key, a note is taken whatever its kind, and again.
+        let key = NoteKey::Rowid(plain.rowid);
+        for _ in 0..2 {
+            let (note, _) = db.take(Take::Note(&key), "claude", "").unwrap().unwrap();
+            assert_eq!(note.txt, "Just a note");
+        }
+        assert_eq!(db.sent(Some(&plain.uuid4), 10).unwrap().len(), 2);
+        let gone = NoteKey::Rowid(999);
+        assert!(db.take(Take::Note(&gone), "claude", "").unwrap().is_none());
+        // Nothing is left open: a plain write works.
+        db.insert(NewNote::new("After", "")).unwrap();
+    }
+
+    #[test]
+    fn two_handles_on_one_file_cannot_take_the_same_prompt() {
+        use crate::tags::KIND_PROMPT;
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("notes.sqlite3");
+        let mut a = Fastxt::open(&path).unwrap();
+        let mut b = Fastxt::open(&path).unwrap();
+        a.insert(NewNote::new("The one prompt", "kind:prompt"))
+            .unwrap();
+        let newest = Take::Waiting {
+            tag: KIND_PROMPT,
+            words: "",
+        };
+        let first = std::thread::spawn(move || a.take(newest, "a", "").unwrap().is_some());
+        let second = b.take(newest, "b", "").unwrap().is_some();
+        let first = first.join().unwrap();
+        assert!(first ^ second, "exactly one takes it: {first} {second}");
+        assert_eq!(b.sent(None, 10).unwrap().len(), 1);
     }
 
     #[test]

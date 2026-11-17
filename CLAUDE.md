@@ -31,7 +31,7 @@ fastxt-rs/                    # Rust workspace (core library + apps)
 │   └── src/
 │       ├── cli/              # The subcommands (binary only)
 │       ├── dispatch/         # Types a prompt into a coding-agent session open in Orca; the server's AgentHost
-│       └── mcp.rs            # MCP server: notes + AI + agent-memory tools (`fastxt mcp`)
+│       └── mcp.rs            # MCP server (`fastxt mcp`): notes, AI, agent memory, and agents taking the user's prompts
 ├── fastxt_desktop/           # Iced GUI, binary `fastxt-desktop` (app.rs view, commands.rs typed logic); installers only
 └── fastxt_ffi/               # staticlib (iOS) + cdylib (Android/JNI), include/fastxt.h
 
@@ -56,7 +56,7 @@ cargo run -p fastxt -- serve                         # sync server + pairing cod
 cargo run -p fastxt -- sync FASTXT1:192.168.1.5:3456:…:…
 cargo run -p fastxt -- sessions                      # agent sessions open in Orca (--on CODE: on a paired computer)
 cargo run -p fastxt -- send --note 7 --to 5e47       # type a note into one (--on CODE, --dry-run)
-cargo run -p fastxt -- mcp                           # MCP server (stdio)
+cargo run -p fastxt -- mcp                           # MCP server on stdio (-d DB: another database)
 cargo run -p fastxt_desktop --release                # desktop GUI
 ```
 
@@ -104,7 +104,7 @@ cd website && npm install && npm start
 
 - TLS with a per-session self-signed server certificate; the client pins its fingerprint from the **pairing code** (`FASTXT1:host:port:<32 hex>:<10 base32>`, the first 128 bits of the certificate's SHA-256). A session token authorizes every RPC; there is no remote stop.
 - Each note has two hybrid-logical-clock stamps: `updated_at` (text/tags) and `ai_updated_at` (AI fields). Merge is per group, newest wins; deletes are tombstones and propagate.
-- Sent records (`sent.rs`, table `sent`): one per time a note was typed into a coding-agent session. Written once by the computer that typed it, merged by id after the notes, and deleted with their note (a tombstone clears them on every device).
+- Sent records (`sent.rs`, table `sent`): one per time a note was typed into a coding-agent session, or taken by an agent through `fastxt mcp` (`host` is then `mcp`, `Sent::TAKEN`). Written once by the computer where it happened, merged by id after the notes, and deleted with their note (a tombstone clears them on every device).
 - `PROTOCOL_VERSION` in `sync/mod.rs` is independent of the schema version. Clients require an exact match, so a v3 device can't sync with a v2 one.
 - Sync server: `sync::server::serve(db, port)` (also a process-global server for the JSON API). Client: `sync::client::sync(code, db)`.
 - Agent sessions (v3): `sync::server::serve_with(db, port, Some(host))` also offers the coding-agent sessions open on that computer, through an `AgentHost` (`fastxt::dispatch::Dispatcher` is the one for Orca; `fastxt serve --agents` uses it). A paired device calls `sync::client::agent_sessions(code)` and `sync::client::send_note(code, db, key, handle)`, which types the note's text as it is on that device and stores the returned record on both sides. Without a host, both calls are refused with `SendRefusal::UNAVAILABLE`; every refusal carries a reason (`unavailable`, `gone`, `asking`, `not-an-agent`, `invalid`, `failed`) and a message. The JSON protocol has `agent-sessions`, `send-to-session` and `sent` for the phones.
@@ -136,6 +136,13 @@ cd website && npm install && npm start
 - A prompt never answers a question: text and Enter go in one command, which Orca refuses while the agent shows a permission or trust question. Never send them apart.
 - Only an agent gets a prompt. A terminal with a plain shell in it would run the text as a command, so a session is looked up again right before every send, and a receipt that names no agent is an error.
 - The tests run against a stand-in script (`fastxt/tests/fake_orca.rs`). The behaviour it replays is written down, with the version it was checked on, at the top of `fastxt/src/dispatch/orca.rs`; check there again when Orca's command changes.
+
+### Taking a prompt (MCP)
+
+- The other way into a session: the agent takes the prompt itself, so any agent with MCP can, Orca or not. `fastxt mcp` has the tools `waiting_prompts` (notes tagged `kind:prompt`, or `kind:idea`, with no sent record: `Filter::unsent`) and `take_prompt`, and the MCP prompt `take`, which Claude Code offers as the slash command `/mcp__fastxt__take` and which puts the text in as the user's own message.
+- A take is `Fastxt::take` (`sent.rs`): it finds the note and writes its sent record in one `BEGIN IMMEDIATE` transaction, so two agents can't take the one waiting prompt. The record's `agent` is the MCP client's title or name and its `cwd` the folder `fastxt mcp` runs in; it syncs like a send, and the phone shows it as "Taken by …".
+- Only the user starts a take: the server tells agents to take one only when asked, and listing changes nothing.
+- `fastxt/tests/mcp_take.rs` runs the real binary over stdio against a temporary database, as an agent would.
 
 ## Conventions
 

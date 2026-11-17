@@ -28,8 +28,9 @@
 //! ```
 //!
 //! `select` and `search` take the same optional filters: `category` (one AI
-//! category) and `tag` / `tags` (user tags the note must carry; `tags` is an
-//! array or a comma-separated string).
+//! category), `tag` / `tags` (user tags the note must carry; `tags` is an
+//! array or a comma-separated string) and `unsent` (`true`: only notes never
+//! typed into a session nor taken by an agent).
 //!
 //! A paired computer's coding-agent sessions, through its pairing code:
 //!
@@ -163,7 +164,8 @@ fn page_json(page: &Page) -> String {
     ok(&json!({ "count": page.count, "notes": page.notes }))
 }
 
-/// The `category`, `tag` and `tags` fields of a list or search request.
+/// The `category`, `tag`, `tags` and `unsent` fields of a list or search
+/// request.
 fn filter_of(request: &Value) -> crate::model::Filter {
     let mut tags: Vec<String> = match request.get("tags") {
         Some(Value::Array(items)) => items
@@ -179,6 +181,10 @@ fn filter_of(request: &Value) -> crate::model::Filter {
     crate::model::Filter {
         category: opt_str(request, "category"),
         tags,
+        unsent: request
+            .get("unsent")
+            .and_then(Value::as_bool)
+            .unwrap_or(false),
     }
 }
 
@@ -609,6 +615,25 @@ mod tests {
             json!({"action": "select", "tag": "topic:sync", "category": "work"}),
         );
         assert_eq!(none["count"], 0);
+
+        shared
+            .lock()
+            .unwrap()
+            .record_sent(crate::sent::NewSent {
+                note_uuid: synced["note"]["uuid4"].as_str().unwrap().to_string(),
+                ..Default::default()
+            })
+            .unwrap();
+        let waiting = run_json(&shared, json!({"action": "select", "unsent": true}));
+        assert_eq!(waiting["count"], 1);
+        assert_eq!(waiting["notes"][0]["txt"], "rust cooking notes");
+        let searched = run_json(
+            &shared,
+            json!({"action": "search", "query": "rust", "unsent": true}),
+        );
+        assert_eq!(searched["count"], 1);
+        let all = run_json(&shared, json!({"action": "select", "unsent": false}));
+        assert_eq!(all["count"], 2);
     }
 
     #[test]

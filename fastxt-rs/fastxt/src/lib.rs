@@ -25,7 +25,8 @@
 //! - `fastxt sync` syncs this computer with a paired one.
 //! - `fastxt sessions` and `fastxt send` list those sessions and type into
 //!   one, here or, with `--on`, on a paired computer.
-//! - `fastxt mcp` is the MCP server that lets agents use the notes ([`mcp`]).
+//! - `fastxt mcp` is the MCP server that lets agents use the notes and take
+//!   the prompts the user prepared ([`mcp`]).
 //!
 //! The notes, search, sync and AI are [`fastxt_core`]'s.
 

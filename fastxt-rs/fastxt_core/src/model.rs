@@ -172,6 +172,9 @@ pub struct Filter {
     /// Only notes carrying every one of these user tags. Whole tags only
     /// (`go` does not match `golang`), ASCII case-insensitive.
     pub tags: Vec<String>,
+    /// Only notes still waiting: never typed into a session, nor taken by an
+    /// agent (they have no [`Sent`] record).
+    pub unsent: bool,
 }
 
 // ---------------------------------------------------------------------------
@@ -286,8 +289,9 @@ impl std::fmt::Display for SendRefusal {
     }
 }
 
-/// A record that a note was typed into a session: where and when it went.
-/// Written once and never changed; it goes when its note is deleted.
+/// A record that a note went to a coding agent, typed into its session or
+/// taken by the agent itself: where and when. Written once and never
+/// changed; it goes when its note is deleted.
 #[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq, Eq)]
 pub struct Sent {
     /// The record's own id.
@@ -296,15 +300,28 @@ pub struct Sent {
     pub note_uuid: String,
     /// UTC, `%Y-%m-%d %H:%M:%S`.
     pub sent_at: String,
-    /// The program that hosted the session.
+    /// The program that hosted the session, or [`Sent::TAKEN`] when the
+    /// agent took the note itself.
     pub host: String,
     pub agent: String,
-    /// What the session was called.
+    /// What the session was called; empty when the agent took the note.
     pub session: String,
     /// The project folder the session worked in.
     pub cwd: String,
     /// Whether the agent was seen starting on it.
     pub started: bool,
+}
+
+impl Sent {
+    /// The `host` of a record of an agent taking the note itself, through
+    /// `fastxt mcp`, rather than having it typed into its window.
+    pub const TAKEN: &'static str = "mcp";
+
+    /// Whether an agent took the note itself (see [`Sent::TAKEN`]).
+    #[must_use]
+    pub fn taken(&self) -> bool {
+        self.host == Self::TAKEN
+    }
 }
 
 // ---------------------------------------------------------------------------

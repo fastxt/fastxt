@@ -44,8 +44,9 @@ enum Command {
     Sessions(cli::agents::SessionsArgs),
     /// Type a note, or text, into an open coding-agent session, as you would.
     Send(cli::agents::SendArgs),
-    /// Let agents use your notes: an MCP server on stdin and stdout.
-    Mcp,
+    /// Let agents use your notes and take the prompts you prepared: an MCP
+    /// server on stdin and stdout.
+    Mcp(cli::mcp::Args),
 }
 
 fn main() {
@@ -53,7 +54,7 @@ fn main() {
     // Logs go to stderr: stdout is the command's output, and `mcp`'s protocol.
     // A server says what it does; the other commands only warn.
     let level = match cli.command {
-        Command::Serve(_) | Command::Mcp => tracing::Level::INFO,
+        Command::Serve(_) | Command::Mcp(_) => tracing::Level::INFO,
         _ => tracing::Level::WARN,
     };
     tracing_subscriber::fmt()
@@ -69,7 +70,7 @@ fn main() {
         Command::Sync(args) => cli::sync::run(args),
         Command::Sessions(args) => cli::agents::sessions(args),
         Command::Send(args) => cli::agents::send(args),
-        Command::Mcp => fastxt::mcp::serve().map_err(|e| format!("the MCP server stopped: {e}")),
+        Command::Mcp(args) => cli::mcp::run(args),
     };
     if let Err(message) = result {
         eprintln!("{message}");
@@ -96,6 +97,7 @@ mod tests {
                 "fastxt", "send", "--note", "7", "--to", "5e47", "--on", code,
             ],
             vec!["fastxt", "mcp"],
+            vec!["fastxt", "mcp", "--db", "notes.sqlite3"],
         ] {
             assert!(Cli::try_parse_from(&args).is_ok(), "{args:?}");
         }

@@ -24,6 +24,13 @@
 
 use std::collections::HashSet;
 
+/// The tag that makes a note a prompt: text ready for a coding agent. The
+/// phone sets it, or [`KIND_IDEA`]; a note has one kind at most.
+pub const KIND_PROMPT: &str = "kind:prompt";
+
+/// The tag that makes a note an idea, not yet a prompt.
+pub const KIND_IDEA: &str = "kind:idea";
+
 fn is_separator(c: char) -> bool {
     matches!(c, ',' | '，' | '\n' | '\r')
 }

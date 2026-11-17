@@ -81,7 +81,7 @@ struct TxtDetailView: View {
                             .font(.headline)
                         ForEach(sentRecords) { record in
                             VStack(alignment: .leading, spacing: 2) {
-                                Text("\(record.agent) · \(record.session.isEmpty ? "untitled session" : record.session)")
+                                Text(record.title)
                                     .font(.subheadline)
                                 Text("\((record.cwd as NSString).lastPathComponent) · \(Stamp.local(record.sent_at))\(record.started ? "" : " · not seen starting")")
                                     .font(.caption)

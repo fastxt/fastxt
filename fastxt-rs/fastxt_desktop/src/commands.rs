@@ -191,7 +191,7 @@ fn page_outcome(page: Page, offset: u32, verb: &str) -> ListOutcome {
 pub fn list(db: &AppDb, limit: u32, offset: u32, category: Option<&str>) -> ListOutcome {
     let filter = Filter {
         category: category.map(str::to_string),
-        tags: Vec::new(),
+        ..Filter::default()
     };
     match lock(db, |db| db.list(limit, offset, &filter)) {
         Ok(page) => page_outcome(page, offset, "listed"),
