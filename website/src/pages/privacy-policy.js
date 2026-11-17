@@ -36,13 +36,13 @@ Platform providers and underlying operating systems (android, ios, web browsers,
 <h2>Dictation</h2>
 <ul>
 <li>
-Dictation uses the speech recognizer built into iOS, set to recognize on the device only. When the phone can't recognize a language without the network, dictation doesn't start: Fastxt never sends your voice to a server to be recognized.
+Dictation recognizes speech on your iPhone with one of two recognizers: the one built into iOS, set to recognize on the device only, or SenseVoice Small, a speech model inside the app. Fastxt never sends your voice to a server to be recognized: when neither can recognize a language on the phone, dictation doesn't start.
 </li>
 <li>
 The audio is never stored or sent anywhere. Only the text you save is kept, as a note.
 </li>
 <li>
-iOS asks for your permission to use the microphone and speech recognition before the first dictation.
+iOS asks for your permission to use the microphone before the first dictation, and to use its speech recognition before Fastxt first uses it.
 </li>
 </ul>
 

@@ -36,10 +36,11 @@ fastxt-rs/                    # Rust workspace (core library + apps)
 └── fastxt_ffi/               # staticlib (iOS) + cdylib (Android/JNI), include/fastxt.h
 
 fastxt-android/               # Android app (Kotlin, AGP 9, JNI to fastxt_ffi)
-fastxt-ios/                   # iOS app (SwiftUI, Fastxt.xcframework from fastxt_ffi)
+fastxt-ios/                   # iOS app (SwiftUI, Fastxt.xcframework from fastxt_ffi; sherpa-onnx for SenseVoice)
+└── SpeechModels/             # SenseVoice Small + Silero VAD, fetched (ignored); its README.md ships in the app
 website/                      # Docusaurus website (fastxt.app)
 archive/                      # Dormant prototypes (fastxt-mac, fastxt-win, fastxt-flutter) — not built
-script/                       # build-android-libs.sh, build-ios-libs.sh
+script/                       # build-android-libs.sh, build-ios-libs.sh, fetch-speech-models.sh
 ```
 
 ## Build Commands
@@ -77,7 +78,8 @@ All three registries publish through trusted publishing (environments `crates-io
 script/build-android-libs.sh   # cargo-ndk → fastxt-android/app/src/main/jniLibs
 cd fastxt-android && ./gradlew assembleDebug        # needs JDK 17
 
-script/build-ios-libs.sh       # staticlibs + lipo → fastxt-ios/Fastxt.xcframework
+script/build-ios-libs.sh       # staticlibs + lipo → fastxt-ios/Fastxt.xcframework; fetches sherpa-onnx + onnxruntime xcframeworks
+script/fetch-speech-models.sh  # SenseVoice Small (239 MB) + Silero VAD → fastxt-ios/SpeechModels; test recordings
 cd fastxt-ios && xcodebuild -project Fastxt.xcodeproj -scheme Fastxt \
   -destination 'generic/platform=iOS Simulator' build
 cd fastxt-ios && xcodebuild -project Fastxt.xcodeproj -scheme Fastxt \
@@ -85,6 +87,8 @@ cd fastxt-ios && xcodebuild -project Fastxt.xcodeproj -scheme Fastxt \
 ```
 
 With `TEST_RUNNER_FASTXT_PAIRING_CODE` set to the code of a running `fastxt serve --agents -d <temporary db>`, its host changed to `127.0.0.1`, the UI tests also pair with it and list its sessions; they never send to one.
+
+Without `script/fetch-speech-models.sh` the app still builds (a Debug build warns) and dictation has only the iOS recognizer; the SenseVoice tests skip. A Release build fails without the models, so a release always carries them.
 
 ### Website
 
@@ -128,7 +132,9 @@ A push to `main` that touches `website/` deploys fastxt.app to GitHub Pages (`de
 ### iPhone (`fastxt-ios`)
 
 - A note is an idea or a prompt by a `kind:idea` / `kind:prompt` tag (`Models/NoteKind.swift`), so the kind syncs and every client can filter by it.
-- Dictation (`Fastxt/Services/Dictation.swift`) is Apple's recognizer with `requiresOnDeviceRecognition`, English (`en-US`) and Chinese (`zh-CN`). When a language can't be recognized on the device, it doesn't start: never a network recognizer, and the audio is never stored.
+- Dictation (`Fastxt/Services/Dictation.swift`) has two recognizers, both on the phone: Apple's with `requiresOnDeviceRecognition` for English (`en-US`) or Chinese (`zh-CN`) when the iPhone can hear that language on the device, and SenseVoice otherwise and always for "中文 + EN", Chinese and English mixed (`Dictation.Recognizer.choose`). When neither can, it doesn't start: never a network recognizer, and the audio is never stored.
+- SenseVoice (`Fastxt/Services/SenseVoice.swift`) is SenseVoice Small (int8) through sherpa-onnx's C API (`import SherpaOnnxC`), from the iOS xcframeworks of sherpa-onnx and ONNX Runtime that `build-ios-libs.sh` fetches by pinned SHA-256; no Swift package, since that downloads every platform's binaries. Silero VAD cuts the audio at pauses of 0.6 s and each stretch is recognized when it ends, on one serial queue, so text comes at the pauses. The model (a 239 MB file) loads on first use and stays loaded until a memory warning drops it.
+- The weights are under the FunASR Model License 1.1, which asks for the source, authors and model name wherever they are shared: `SpeechModels/README.md` (in the app bundle) carries them and the license texts, and the Dictate screen names "SenseVoice Small from FunAudioLLM" when it is the recognizer. Keep both if the model changes.
 - `Models/AgentLink.swift` wraps the JSON actions `agent-sessions`, `send-to-session`, `sent` and `sync`; call them off the main thread. The paired computer's code is kept in the Keychain (`PairedComputer`).
 - The core's stamps are UTC; the app shows them in local time (`Stamp`, in `Models/AppState.swift`).
 

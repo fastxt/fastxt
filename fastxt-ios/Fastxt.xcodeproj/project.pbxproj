@@ -35,6 +35,10 @@
 		3CF1A01426F10A0000C4B014 /* DictateView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3CF1A00426F10A0000C4B004 /* DictateView.swift */; };
 		3CF1A01526F10A0000C4B015 /* PairView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3CF1A00526F10A0000C4B005 /* PairView.swift */; };
 		3CF1A01626F10A0000C4B016 /* SendSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3CF1A00626F10A0000C4B006 /* SendSheet.swift */; };
+		3CF2B01126F20A0000C5B011 /* SenseVoice.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3CF2B00126F20A0000C5B001 /* SenseVoice.swift */; };
+		3CF2B01226F20A0000C5B012 /* SpeechModels in Resources */ = {isa = PBXBuildFile; fileRef = 3CF2B00226F20A0000C5B002 /* SpeechModels */; };
+		3CF2B01326F20A0000C5B013 /* sherpa-onnx.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 3CF2B00326F20A0000C5B003 /* sherpa-onnx.xcframework */; };
+		3CF2B01426F20A0000C5B014 /* onnxruntime.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 3CF2B00426F20A0000C5B004 /* onnxruntime.xcframework */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -91,6 +95,10 @@
 		3CF1A00426F10A0000C4B004 /* DictateView.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = DictateView.swift; sourceTree = "<group>"; };
 		3CF1A00526F10A0000C4B005 /* PairView.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = PairView.swift; sourceTree = "<group>"; };
 		3CF1A00626F10A0000C4B006 /* SendSheet.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = SendSheet.swift; sourceTree = "<group>"; };
+		3CF2B00126F20A0000C5B001 /* SenseVoice.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = SenseVoice.swift; path = Fastxt/Services/SenseVoice.swift; sourceTree = "<group>"; };
+		3CF2B00226F20A0000C5B002 /* SpeechModels */ = {isa = PBXFileReference; lastKnownFileType = folder; path = SpeechModels; sourceTree = "<group>"; };
+		3CF2B00326F20A0000C5B003 /* sherpa-onnx.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; path = "sherpa-onnx.xcframework"; sourceTree = "<group>"; };
+		3CF2B00426F20A0000C5B004 /* onnxruntime.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; path = onnxruntime.xcframework; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -100,6 +108,8 @@
 			files = (
 				3CD80C0023D7B9C2007182F7 /* Fastxt.xcframework in Frameworks */,
 				3CD80C0123D7B9D0007182F7 /* libresolv.tbd in Frameworks */,
+				3CF2B01326F20A0000C5B013 /* sherpa-onnx.xcframework in Frameworks */,
+				3CF2B01426F20A0000C5B014 /* onnxruntime.xcframework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -154,6 +164,8 @@
 			children = (
 				3CD80BFF23D7B66A007182F7 /* libresolv.tbd */,
 				3CD80BFE23D7B630007182F7 /* Fastxt.xcframework */,
+				3CF2B00326F20A0000C5B003 /* sherpa-onnx.xcframework */,
+				3CF2B00426F20A0000C5B004 /* onnxruntime.xcframework */,
 			);
 			name = Frameworks;
 			sourceTree = "<group>";
@@ -166,8 +178,10 @@
 				3CD80BFC23D7B3F8007182F7 /* Fastxt-Bridging-Header.h */,
 				3CF0A10126F00B1200C4A001 /* AppleAIBackend.swift */,
 				3CF1A00326F10A0000C4B003 /* Dictation.swift */,
+				3CF2B00126F20A0000C5B001 /* SenseVoice.swift */,
 				3CF0A10226F00B1200C4A002 /* CategoryView.swift */,
 				3CED13EB238372810097A12B /* Fastxt */,
+				3CF2B00226F20A0000C5B002 /* SpeechModels */,
 				3CED1402238372870097A12B /* FastxtTests */,
 				3CED140D238372870097A12B /* FastxtUITests */,
 				3CED13EA238372810097A12B /* Products */,
@@ -236,6 +250,7 @@
 				3CED13E5238372810097A12B /* Sources */,
 				3CED13E6238372810097A12B /* Frameworks */,
 				3CED13E7238372810097A12B /* Resources */,
+				3CF2B03126F20A0000C5B031 /* Check the speech models */,
 			);
 			buildRules = (
 			);
@@ -333,6 +348,7 @@
 				3CED13F9238372860097A12B /* LaunchScreen.storyboard in Resources */,
 				3CED13F6238372860097A12B /* Preview Assets.xcassets in Resources */,
 				3CED13F3238372860097A12B /* Assets.xcassets in Resources */,
+				3CF2B01226F20A0000C5B012 /* SpeechModels in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -351,6 +367,25 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		3CF2B03126F20A0000C5B031 /* Check the speech models */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+			);
+			name = "Check the speech models";
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "# A release carries SenseVoice; a debug build may go without it.\nif [ ! -f \"$PROJECT_DIR/SpeechModels/sense-voice/model.int8.onnx\" ]; then\n  if [ \"$CONFIGURATION\" = Release ]; then\n    echo \"error: the speech models are missing: run script/fetch-speech-models.sh\"\n    exit 1\n  fi\n  echo \"warning: this build carries no speech models, so no SenseVoice: run script/fetch-speech-models.sh\"\nfi\n";
+			showEnvVarsInLog = 0;
+		};
+/* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		3CED13E5238372810097A12B /* Sources */ = {
@@ -378,6 +413,7 @@
 				3CF1A01426F10A0000C4B014 /* DictateView.swift in Sources */,
 				3CF1A01526F10A0000C4B015 /* PairView.swift in Sources */,
 				3CF1A01626F10A0000C4B016 /* SendSheet.swift in Sources */,
+				3CF2B01126F20A0000C5B011 /* SenseVoice.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -556,6 +592,12 @@
 				);
 				"LIBRARY_SEARCH_PATHS[arch=*]" = "$(PROJECT_DIR)";
 				MARKETING_VERSION = 0.1.0;
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-lc++",
+					"-framework",
+					CoreML,
+				);
 				PRODUCT_BUNDLE_IDENTIFIER = app.fastxt.ios;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				"SWIFT_OBJC_BRIDGING_HEADER[arch=*]" = "$(PROJECT_DIR)/Fastxt-Bridging-Header.h";
@@ -580,6 +622,12 @@
 				);
 				"LIBRARY_SEARCH_PATHS[arch=*]" = "$(PROJECT_DIR)";
 				MARKETING_VERSION = 0.1.0;
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-lc++",
+					"-framework",
+					CoreML,
+				);
 				PRODUCT_BUNDLE_IDENTIFIER = app.fastxt.ios;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				"SWIFT_OBJC_BRIDGING_HEADER[arch=*]" = "$(PROJECT_DIR)/Fastxt-Bridging-Header.h";

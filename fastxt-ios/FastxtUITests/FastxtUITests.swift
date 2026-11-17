@@ -12,7 +12,8 @@ import XCTest
 /// under Prompts, open it, and reach the sheet that sends it.
 ///
 /// Speaking is not tested here: the simulator has no voice to hear. The text
-/// is typed into the same screen instead.
+/// is typed into the same screen instead, and SenseVoice hears recordings in
+/// the unit tests.
 ///
 /// With `TEST_RUNNER_FASTXT_PAIRING_CODE` set to the code of a running
 /// `fastxt serve --agents`, the pairing test pairs with it and lists the
@@ -56,6 +57,32 @@ final class FastxtUITests: XCTestCase {
 
         app.navigationBars.buttons.element(boundBy: 0).tap()
         delete(text)
+    }
+
+    func testChineseAndEnglishTogetherAreHeardBySenseVoice() throws {
+        let dictate = app.buttons["dictate"]
+        XCTAssertTrue(dictate.waitForExistence(timeout: 10))
+        dictate.tap()
+        XCTAssertTrue(app.buttons["record"].waitForExistence(timeout: 5))
+        let mixed = app.buttons["中文 + EN"]
+        guard mixed.exists else {
+            app.buttons["Cancel"].tap()
+            throw XCTSkip("this build carries no speech models: run script/fetch-speech-models.sh first")
+        }
+        let before = ["English", "中文", "中文 + EN"].first { app.buttons[$0].isSelected }
+
+        mixed.tap()
+        let caption = app.staticTexts["recognizer"]
+        XCTAssertTrue(caption.waitForExistence(timeout: 5))
+        XCTAssertTrue(caption.label.contains("by SenseVoice Small from FunAudioLLM"), caption.label)
+        XCTAssertTrue(caption.label.contains("never stored or sent anywhere"), caption.label)
+        snap("dictate-mixed")
+
+        // Leave the language as it was.
+        if let before = before {
+            app.buttons[before].tap()
+        }
+        app.buttons["Cancel"].tap()
     }
 
     func testPairingListsTheComputersSessions() throws {

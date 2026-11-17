@@ -78,3 +78,14 @@ fastlane/test_output
 
 iOSInjectionProject/
 Fastxt.xcframework/
+
+# Speech libraries: script/build-ios-libs.sh
+sherpa-onnx.xcframework/
+onnxruntime.xcframework/
+.speech-libs
+
+# Speech models and test recordings: script/fetch-speech-models.sh
+SpeechModels/*
+!SpeechModels/README.md
+FastxtTests/SpeechSamples/
+.speech-models

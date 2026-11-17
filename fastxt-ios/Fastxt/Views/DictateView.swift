@@ -31,7 +31,7 @@ struct DictateView: View {
     var body: some View {
         VStack(spacing: 14) {
             Picker("Language", selection: $dictation.language) {
-                ForEach(Dictation.Language.allCases) { language in
+                ForEach(Dictation.languages) { language in
                     Text(language.label).tag(language)
                 }
             }
@@ -79,13 +79,14 @@ struct DictateView: View {
                 .accessibilityIdentifier("record")
                 .accessibilityLabel(dictation.isRecording ? "Stop dictating" : "Dictate")
 
-                Text(dictation.isRecording ? "Listening. Tap to stop." : "Tap to dictate")
+                Text(status)
                     .font(.footnote)
                     .foregroundColor(.secondary)
-                Text("Speech becomes text on this iPhone. The audio is never stored or sent anywhere.")
+                Text(caption)
                     .font(.caption)
                     .foregroundColor(.secondary)
                     .multilineTextAlignment(.center)
+                    .accessibilityIdentifier("recognizer")
             }
 
             Spacer(minLength: 0)
@@ -129,7 +130,7 @@ struct DictateView: View {
         }
         .onChange(of: dictation.isRecording) { recording in
             if !recording {
-                text = joined(text, dictation.takeHeard())
+                text = Dictation.join(text, dictation.takeHeard())
             }
         }
         .onDisappear { dictation.cancel() }
@@ -137,18 +138,31 @@ struct DictateView: View {
 
     /// The text with what is being heard now after it.
     private var shown: String {
-        joined(text, dictation.heard)
+        Dictation.join(text, dictation.heard)
     }
 
     private var trimmed: String {
         text.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    private func joined(_ before: String, _ heard: String) -> String {
-        guard !heard.isEmpty else { return before }
-        guard !before.isEmpty else { return heard }
-        let separator = before.last?.isWhitespace == true ? "" : dictation.language.joiner
-        return before + separator + heard
+    private var status: String {
+        if dictation.isFinishing {
+            return "Finishing…"
+        }
+        return dictation.isRecording ? "Listening. Tap to stop." : "Tap to dictate"
+    }
+
+    /// Who turns the speech into text, and that it stays on the phone.
+    private var caption: String {
+        let stays = "The audio is never stored or sent anywhere."
+        switch dictation.recognizer {
+        case .ios:
+            return "Speech becomes text on this iPhone, by iOS. \(stays)"
+        case .senseVoice:
+            return "Speech becomes text on this iPhone at each pause, by SenseVoice Small from FunAudioLLM. \(stays)"
+        case .none:
+            return "Speech becomes text on this iPhone only. \(stays)"
+        }
     }
 
     private func save(_ kind: NoteKind) {

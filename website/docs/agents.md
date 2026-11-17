@@ -15,9 +15,9 @@ This is new: it is in Fastxt's source code and not yet in the App Store apps. It
 
 ## Dictate
 
-On the iPhone, open **Dictate**, pick English or Chinese, tap the microphone and speak. Correct what was heard by typing, then **Save as Idea** or **Save as Prompt**. Your notes list shows all of them, or only the ideas, the prompts, or the ones already sent.
+On the iPhone, open **Dictate**, pick **English**, **中文**, or **中文 + EN** for both in one sentence, tap the microphone and speak. Correct what was heard by typing, then **Save as Idea** or **Save as Prompt**. Your notes list shows all of them, or only the ideas, the prompts, or the ones already sent.
 
-The phone recognizes your speech itself, with the recognizer built into iOS set to work on the device only. When it can't recognize a language without the network, dictation doesn't start. The audio is never stored and never leaves the phone.
+The phone recognizes your speech itself. For English or Chinese it uses the recognizer built into iOS, set to work on the device only, when the phone can do that for the language. For the two mixed, or where the iOS recognizer would need the network, it uses [SenseVoice Small](https://github.com/FunAudioLLM/SenseVoice) by FunAudioLLM, a speech model inside the app, whose text comes at each pause. The audio is never stored and never leaves the phone.
 
 ## Connect the phone to your computer
 

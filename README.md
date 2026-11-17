@@ -8,13 +8,18 @@ Underneath, it is still a sister project to [Local Native](https://localnative.a
 
 ## Where it stands
 
-- **iPhone**: dictation, ideas and prompts, pairing with a computer and sending to its sessions are built and tested in the simulator. They aren't in an App Store release yet, and dictation has yet to be tried on a real phone.
+- **iPhone**: dictation, ideas and prompts, pairing with a computer and sending to its sessions are built and tested in the simulator, and so is SenseVoice, the speech model the app carries, on recordings. They aren't in an App Store release yet, and dictation has yet to be tried on a real phone.
 - **Computer**: the `fastxt` command and the desktop window. The command isn't on crates.io, PyPI or npm yet; until its first release, install it from a clone (below).
-- **Android**: notes, with on-device tag suggestions and summaries. Dictation and sending come to it after the iPhone gets a speech model of its own (SenseVoice Small).
+- **Android**: notes, with on-device tag suggestions and summaries. Dictation and sending come to it next, with the same speech model.
 
 ## Dictating on the phone
 
-The iPhone app is a notebook for the ideas and prompts you speak. Dictation, in English or Chinese, runs on the phone only: Fastxt uses the recognizer built into iOS, on the device, and doesn't start when the phone can't recognize the language without the network, so the audio never leaves the phone and is never stored. Correct what was heard by typing, then save it as an idea or a prompt.
+The iPhone app is a notebook for the ideas and prompts you speak, in English, Chinese, or both in one sentence. Dictation runs on the phone only, so the audio never leaves it and is never stored:
+
+- For English or Chinese, Fastxt uses the recognizer built into iOS, on the device, when the phone can recognize that language without the network.
+- For the two mixed, or where the iOS recognizer would need the network, it uses [SenseVoice Small](https://github.com/FunAudioLLM/SenseVoice) by FunAudioLLM, a speech model the app carries and runs with [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx). Its text comes at each pause rather than word by word.
+
+Correct what was heard by typing, then save it as an idea or a prompt. To build the app with SenseVoice, run `script/fetch-speech-models.sh` first (it fetches 163 MB); without it, the app has only the iOS recognizer.
 
 ## Sending a note to a coding agent
 

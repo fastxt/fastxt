@@ -11,9 +11,11 @@ const steps = [
     title: 'Dictate on your phone',
     description: (
       <>
-        Speak an idea or a prompt, in English or Chinese. The iPhone recognizes
-        it on the device itself: the audio never leaves the phone and is never
-        stored. Correct it by typing, and keep it as an idea or a prompt.
+        Speak an idea or a prompt, in English, Chinese, or both in one
+        sentence. The iPhone recognizes it on the device itself, with iOS or
+        the speech model inside Fastxt: the audio never leaves the phone and
+        is never stored. Correct it by typing, and keep it as an idea or a
+        prompt.
       </>
     ),
   },
@@ -78,13 +80,8 @@ const features = [
 
 const roadmapItems = [
   {
-    title: 'A Speech Model in the App',
-    description:
-      'An open model for English and Chinese (SenseVoice Small) inside the app, so dictation stays on the phone even where the system recognizer would need the network.',
-  },
-  {
     title: 'Android',
-    description: 'Dictation and sending to coding agents on Android too.',
+    description: 'Dictation and sending to coding agents on Android, with the same speech model.',
   },
   {
     title: 'Semantic Search on the Phone',

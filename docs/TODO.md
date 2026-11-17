@@ -66,7 +66,8 @@ Status as of 2026-11-16 (0.7.0, not yet released). Only items that are done end-
 - [ ] iPhone: dictation in English and Chinese, on-device only (`Dictation.swift`); built, needs a real device to test
 - [ ] iPhone: a note typed into a session from the phone; built, listing tested live, not yet sent from a phone
 - [ ] MCP: an agent takes a prompt itself (`fastxt mcp`: `waiting_prompts`, `take_prompt`, and the `take` prompt, a slash command in Claude Code), recorded and synced like a send; built and tested over stdio against the real binary, not yet tried in a live agent
-- [ ] A bundled recognizer (SenseVoice Small) on the phone, then Android
+- [ ] iPhone: SenseVoice Small in the app (int8, through sherpa-onnx), for Chinese and English mixed and wherever the iOS recognizer would need the network; built, hears its sample recordings in the simulator (unit tests), not yet tried on a real phone
+- [ ] Android: dictation and sending to sessions, with the same model
 
 ## Ongoing / Cross-Cutting
 
