@@ -1,6 +1,6 @@
-# On-Device AI — TODO
+# Fastxt — TODO
 
-Status as of the v0.6.0 core rewrite (2026-09). Only items that are done end-to-end (implemented, wired into a shipped UI, tested) are ticked.
+Status as of 2026-11-16 (0.7.0, not yet released). Only items that are done end-to-end (implemented, wired into a shipped UI, tested) are ticked.
 
 ---
 
@@ -72,7 +72,8 @@ Status as of the v0.6.0 core rewrite (2026-09). Only items that are done end-to-
 
 - [x] Typed `Fastxt` API; JSON dispatcher only for the mobile FFI; no panics in core paths
 - [x] Temp-DB tests for dispatcher and merge logic; two-peer sync tests
-- [x] CI: Rust on Linux/macOS/Windows, Android (Rust lib + APK), iOS (XCFramework + simulator build)
+- [x] CI: Rust on Linux/macOS/Windows, iOS (XCFramework + simulator build)
+- [ ] CI: Android (Rust lib + APK) has failed before building anything on every run since at least 2026-09-27: `android-actions/setup-android@v3` asks sdkmanager for the `tools` package, which it no longer finds
 - [x] Website and privacy policy match shipped behavior
 - [ ] Bundled multilingual embedding model so mobile devices share one vector space (R1)
 - [ ] UniFFI bindings with callbacks so mobile platforms can supply AI to the core (R3)

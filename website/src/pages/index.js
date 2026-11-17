@@ -6,24 +6,60 @@ import useDocusaurusContext from '@docusaurus/useDocusaurusContext';
 import useBaseUrl from '@docusaurus/useBaseUrl';
 import styles from './styles.module.css';
 
+const steps = [
+  {
+    title: 'Dictate on your phone',
+    description: (
+      <>
+        Speak an idea or a prompt, in English or Chinese. The iPhone recognizes
+        it on the device itself: the audio never leaves the phone and is never
+        stored. Correct it by typing, and keep it as an idea or a prompt.
+      </>
+    ),
+  },
+  {
+    title: 'Send it to a session',
+    description: (
+      <>
+        Pair the phone with your computer and pick one of the coding-agent
+        sessions you have open there in Orca: Claude Code, Codex and the others
+        it runs. Fastxt types the prompt in, as if you had, and never into a
+        session that is asking you a question.
+      </>
+    ),
+  },
+  {
+    title: 'Or let the agent take it',
+    description: (
+      <>
+        Any agent with Fastxt's MCP server can take your newest prompt when you
+        ask; in Claude Code, that's <code>/mcp__fastxt__take</code>. Every
+        device records which agent had which prompt, and in which project.
+      </>
+    ),
+  },
+];
+
 const features = [
+  {
+    title: <>No Server in Between</>,
+    imageUrl: 'img/fastxt-sync-server-qr-mac.png',
+    description: (
+      <>
+        Your notes live in a SQLite database on each of your devices and sync
+        directly between them, over an encrypted connection pinned by a
+        pairing code. No account, no Fastxt server.
+      </>
+    ),
+  },
   {
     title: <>On-Device AI</>,
     imageUrl: 'img/undraw_fast_loading_0lbh.svg',
     description: (
       <>
-        Native AI models on every platform. <br/>
-        Apple Foundation Models, Android App Functions, self-hosted LLMs. <br/>
-        Your data never leaves your device.
-      </>
-    ),
-  },
-  {
-    title: <>Decentralized</>,
-    imageUrl: 'img/fastxt-sync-server-qr-mac.png',
-    description: (
-      <>
-      Fastxt empowers you to save and sync your text in local SQLite database without going through any centralized service.
+        Tags and summaries on the phone, from Apple's on-device models; semantic
+        search and categories too on the desktop, from a model server on your
+        own machine, such as Ollama.
       </>
     ),
   },
@@ -32,7 +68,9 @@ const features = [
     imageUrl: 'img/undraw_mobile_devices_k1ok.svg',
     description: (
       <>
-      Sync between multiple devices you own (desktop or mobile) by scanning QR code generated on the same network (Wi-Fi/LAN).
+        iPhone and iPad, Android, macOS, Windows and Linux, plus one{' '}
+        <code>fastxt</code> command for your computer. Devices on the same
+        network pair by scanning a QR code.
       </>
     ),
   },
@@ -40,24 +78,18 @@ const features = [
 
 const roadmapItems = [
   {
-    title: 'Smart Tagging',
-    description: 'Auto-suggest tags for saved text based on content analysis using on-device AI.',
+    title: 'A Speech Model in the App',
+    description:
+      'An open model for English and Chinese (SenseVoice Small) inside the app, so dictation stays on the phone even where the system recognizer would need the network.',
   },
   {
-    title: 'Semantic Search',
-    description: 'Find notes by meaning, not just keyword matching — powered by local embeddings.',
+    title: 'Android',
+    description: 'Dictation and sending to coding agents on Android too.',
   },
   {
-    title: 'Summarization',
-    description: 'Condense long text entries into concise summaries, all processed on-device.',
-  },
-  {
-    title: 'AI-Assisted Organization',
-    description: 'Automatic grouping and categorization of notes using native AI models.',
-  },
-  {
-    title: 'Cross-Device AI Sync',
-    description: 'AI-generated metadata (tags, summaries) syncs alongside your text via P2P.',
+    title: 'Semantic Search on the Phone',
+    description:
+      'One multilingual embedding model on every device, so the phones search by meaning too.',
   },
 ];
 
@@ -82,7 +114,7 @@ function Home() {
   return (
     <Layout
       title={`${siteConfig.title}`}
-      description="Decentralized cross-platform text app with on-device AI">
+      description="Dictate ideas and prompts on your phone and hand them to your coding agents. Local-first notes with on-device AI.">
       <header className={clsx('hero hero--primary', styles.heroBanner)}>
         <div className="container">
           <h1 className="hero__title">{siteConfig.title}</h1>
@@ -105,12 +137,30 @@ function Home() {
               macOS
             </Link>
           </div>
+          <p className={styles.status}>
+            New in the source code, not yet in the App Store apps: dictation,
+            and handing your prompts to coding agents.{' '}
+            <Link to="/docs/agents">How it works</Link>
+          </p>
         <div className="container">
             <iframe width="560" height="315" src="https://www.youtube-nocookie.com/embed/fB-XNO6-TXo" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
         </div>
         </div>
       </header>
       <main>
+        <section className={styles.features}>
+          <div className="container">
+            <h2 style={{textAlign: 'center', marginBottom: '2rem'}}>From Your Voice to Your Coding Agent</h2>
+            <div className="row">
+              {steps.map((item, idx) => (
+                <div key={idx} className={clsx('col col--4', styles.feature)}>
+                  <h3>{idx + 1}. {item.title}</h3>
+                  <p>{item.description}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
         {features && features.length && (
           <section className={styles.features}>
             <div className="container">

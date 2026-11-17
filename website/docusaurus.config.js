@@ -2,7 +2,7 @@ const darkCodeTheme = require('prism-react-renderer').themes.dracula;
 
 module.exports = {
   title: 'Fastxt',
-  tagline: 'Own your txt. On-device AI. Sync everywhere.',
+  tagline: 'Speak your ideas and prompts. Hand them to your coding agents. Your voice never leaves your phone.',
   url: 'https://fastxt.app',
   baseUrl: '/',
   favicon: 'img/favicon.ico',
@@ -28,7 +28,7 @@ module.exports = {
       },
       items: [
         {
-          to: 'docs/developer-setup',
+          to: 'docs/agents',
           activeBasePath: 'docs',
           label: 'Docs',
           position: 'left',
@@ -54,6 +54,10 @@ module.exports = {
         {
           title: 'Docs',
           items: [
+            {
+              label: 'Phone to Coding Agent',
+              to: 'docs/agents',
+            },
             {
               label: 'Developer Setup',
               to: 'docs/developer-setup',

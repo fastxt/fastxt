@@ -90,7 +90,10 @@ With `TEST_RUNNER_FASTXT_PAIRING_CODE` set to the code of a running `fastxt serv
 
 ```bash
 cd website && npm install && npm start
+cd website && npm run build    # what CI runs; a broken link fails it
 ```
+
+A push to `main` that touches `website/` deploys fastxt.app to GitHub Pages (`deploy-website.yml`), so pushing website changes publishes them. The user guide for phone → agent is `website/docs/agents.md`; keep it, the README and the privacy policy (`website/src/pages/privacy-policy.js`) saying the same about what leaves the phone.
 
 ## Architecture
 

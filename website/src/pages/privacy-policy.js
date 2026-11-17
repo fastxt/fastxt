@@ -29,7 +29,36 @@ Fastxt App developer does not run any service to collect or store any personal i
 If you choose to sync data between devices, notes travel directly between your devices over an authenticated, TLS-encrypted connection (the pairing code carries a certificate fingerprint and a one-time session token). No Fastxt server relays or stores your data. Be aware that syncing shares your data with the devices you pair with.
 </li>
 <li>
-Platform providers and underlying operating systems (android, ios, web browsers, app store) may collect information about the application (crash reports, usage stats) and make those avaliable to Fastxt App developer, who may use those data to improve the application.
+Platform providers and underlying operating systems (android, ios, web browsers, app store) may collect information about the application (crash reports, usage stats) and make those available to Fastxt App developer, who may use those data to improve the application.
+</li>
+</ul>
+
+<h2>Dictation</h2>
+<ul>
+<li>
+Dictation uses the speech recognizer built into iOS, set to recognize on the device only. When the phone can't recognize a language without the network, dictation doesn't start: Fastxt never sends your voice to a server to be recognized.
+</li>
+<li>
+The audio is never stored or sent anywhere. Only the text you save is kept, as a note.
+</li>
+<li>
+iOS asks for your permission to use the microphone and speech recognition before the first dictation.
+</li>
+</ul>
+
+<h2>Coding Agents</h2>
+<ul>
+<li>
+When you send a note to a coding-agent session, its text goes from your phone to your paired computer over the same encrypted connection as sync, and Fastxt types it into the session you picked.
+</li>
+<li>
+If you add Fastxt's MCP server to an agent, that agent can search, read, add, change and delete your notes through it, and take the prompts you prepared. The server runs on your own computer.
+</li>
+<li>
+From there, the agent treats the text like anything you type into it. An agent that uses a cloud model sends it to that model's provider, under the provider's terms. Fastxt has no part in that, and no server of its own.
+</li>
+<li>
+Each send or take is recorded with its note: when, which agent, which session and which project folder. The record stays on your devices and syncs with the note; deleting the note deletes its records on every device.
 </li>
 </ul>
 
@@ -69,7 +98,7 @@ The AI features analyze your note text to generate:
 <li>Category suggestions for organization</li>
 </ul>
 <p>
-All of this data is stored in your local SQLite database alongside your notes and is never transmitted to external services.
+All of this data is stored in your local SQLite database alongside your notes and is never transmitted to external services, unless you give an agent access to your notes (see Coding Agents above).
 </p>
 
 </div>

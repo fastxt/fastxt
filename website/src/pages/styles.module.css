@@ -23,6 +23,12 @@
   justify-content: center;
 }
 
+.status {
+  margin: 1.5rem auto 0;
+  max-width: 40rem;
+  font-size: 1rem;
+}
+
 .features {
   display: flex;
   align-items: center;
